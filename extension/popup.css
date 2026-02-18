@@ -1,0 +1,250 @@
+:root {
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+body,
+body[data-theme="light"] {
+  margin: 0;
+  min-width: 320px;
+  background: #f5f7ff;
+  color: #111827;
+}
+
+.popup {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.popup-header h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+body[data-theme="light"] .popup-header h1 {
+  color: #0f1e42;
+}
+
+body[data-theme="dark"] .popup-header h1 {
+  color: #ecf2ff;
+}
+
+.popup-header p,
+body[data-theme="light"] .popup-header p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.card,
+body[data-theme="light"] .card {
+  border: 1px solid #d8e0f3;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.muted,
+body[data-theme="light"] .muted {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.theme-options {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.option-chip {
+  position: relative;
+  cursor: pointer;
+}
+
+.option-chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.option-chip span,
+body[data-theme="light"] .option-chip span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid #d5deef;
+  background: #f8faff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all .18s ease;
+}
+
+.option-chip input:checked + span {
+  border-color: #5a78ff;
+  background: #5a78ff;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(90, 120, 255, .3);
+}
+
+.option-chip[data-mode="dark"] input:checked + span {
+  border-color: #111b33;
+  background: linear-gradient(145deg, #0f172a, #1e293b);
+  color: #f8fbff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .42);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.actions button {
+  flex: 1;
+  border: 0;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, #5d7cff, #3f5cff);
+  color: #fff;
+}
+
+.secondary-btn {
+  background: #e8eefc;
+  color: #27406f;
+}
+
+body[data-theme="dark"] {
+  background: #0b1020;
+  color: #e5e7eb;
+}
+
+body[data-theme="dark"] .popup-header p,
+body[data-theme="dark"] .muted {
+  color: #94a3b8;
+}
+
+body[data-theme="dark"] .card {
+  border-color: #26314f;
+  background: #111a2f;
+}
+
+body[data-theme="dark"] .option-chip span {
+  border-color: #34415f;
+  background: #141f37;
+  color: #dbe3f7;
+}
+
+body[data-theme="dark"] .option-chip input:checked + span {
+  border-color: #7698ff;
+  background: linear-gradient(135deg, #5d7cff, #3f5cff);
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(93, 124, 255, .45);
+}
+
+body[data-theme="dark"] .option-chip[data-mode="dark"] input:checked + span {
+  border-color: #c2d2ff;
+  background: linear-gradient(145deg, #9ab1ff, #7a9bff);
+  color: #050a18;
+  box-shadow: 0 0 0 2px rgba(194, 210, 255, .35), 0 12px 24px rgba(112, 145, 255, .52);
+}
+
+body[data-theme="dark"] .secondary-btn {
+  background: #233355;
+  color: #d8e7ff;
+}
+
+.toast-root {
+  position: fixed;
+  right: 12px;
+  top: 12px;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.Vue-Toastification__toast {
+  pointer-events: auto;
+  min-width: 210px;
+  max-width: 320px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  box-shadow: 0 12px 26px rgba(17, 24, 39, .2);
+  animation: toast-in .18s ease;
+}
+
+.Vue-Toastification__icon {
+  margin-top: 1px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.Vue-Toastification__toast-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.Vue-Toastification__toast--success {
+  color: #0f6a43;
+  border-color: rgba(23, 165, 86, .22);
+  background: rgba(25, 183, 95, .14);
+}
+
+.Vue-Toastification__toast--error {
+  color: #9f223a;
+  border-color: rgba(230, 38, 76, .24);
+  background: rgba(230, 38, 76, .14);
+}
+
+body[data-theme="dark"] .Vue-Toastification__toast--success {
+  color: #a7f3d0;
+  border-color: rgba(16, 185, 129, .34);
+  background: rgba(16, 185, 129, .18);
+}
+
+body[data-theme="dark"] .Vue-Toastification__toast--error {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, .35);
+  background: rgba(248, 113, 113, .2);
+}
+
+.Vue-Toastification__toast.is-leaving {
+  opacity: 0;
+  transform: translateY(8px) scale(.98);
+  transition: opacity .22s ease, transform .22s ease;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 220 33% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 226 88% 59%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 220 14% 95%;
+  --secondary-foreground: 222 47% 13%;
+  --muted: 220 14% 95%;
+  --muted-foreground: 215 16% 46%;
+  --accent: 227 100% 97%;
+  --accent-foreground: 226 82% 46%;
+  --destructive: 0 73% 52%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 214 31% 90%;
+  --input: 214 31% 90%;
+  --ring: 226 88% 59%;
+  --radius: 0.875rem;
+}
+
+.dark {
+  --background: 222 47% 8%;
+  --foreground: 210 40% 98%;
+  --card: 222 38% 12%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 38% 12%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 221 83% 65%;
+  --primary-foreground: 222 47% 11%;
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 68%;
+  --accent: 217 33% 17%;
+  --accent-foreground: 210 40% 96%;
+  --destructive: 0 63% 44%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 33% 23%;
+  --input: 217 33% 23%;
+  --ring: 224 76% 62%;
+}
+
+* {
+  @apply border-border;
+}
+
+.theme-transition body,
+.theme-transition .bg-card,
+.theme-transition .bg-background,
+.theme-transition .text-foreground,
+.theme-transition .text-muted-foreground,
+.theme-transition .border-border {
+  transition:
+    background-color 0.14s ease,
+    border-color 0.14s ease,
+    color 0.14s ease;
+}
+
+body {
+  @apply bg-background text-foreground min-h-screen;
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background-image:
+    radial-gradient(circle at 0% 0%, rgba(123, 163, 255, 0.2), transparent 42%),
+    radial-gradient(circle at 100% 100%, rgba(124, 211, 255, 0.2), transparent 45%);
+}
+
+.dark body {
+  background-image:
+    radial-gradient(circle at 0% 0%, rgba(66, 99, 235, 0.28), transparent 42%),
+    radial-gradient(circle at 100% 100%, rgba(32, 159, 255, 0.2), transparent 46%);
+}
+
+.date-input {
+  padding-right: 2.25rem;
+  color-scheme: light;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.date-input:focus-visible {
+  outline: none;
+  border-color: hsl(var(--ring) / 0.58);
+  box-shadow: none;
+}
+
+.dark .date-input {
+  color-scheme: dark;
+}
+
+.dark .date-input:focus-visible {
+  border-color: hsl(var(--ring) / 0.62);
+  box-shadow: none;
+}
+
+#app {
+  @apply min-h-screen;
+}
+
+details > summary {
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+@layer components {
+  .panel-surface {
+    @apply rounded-xl border bg-card;
+    box-shadow: 0 14px 34px -22px hsl(var(--foreground) / 0.42);
+    transition:
+      box-shadow 220ms ease,
+      transform 220ms ease,
+      border-color 220ms ease,
+      background-color 220ms ease;
+  }
+
+  .panel-surface-soft {
+    @apply rounded-lg border bg-background/60;
+    box-shadow: 0 10px 26px -24px hsl(var(--foreground) / 0.4);
+    transition:
+      box-shadow 220ms ease,
+      border-color 220ms ease,
+      background-color 220ms ease;
+  }
+
+  .interactive-lift {
+    transition:
+      transform 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .interactive-lift:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 34px -24px hsl(var(--foreground) / 0.5);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button,
+  [role="button"],
+  input,
+  textarea,
+  select,
+  .transition-ui {
+    transition:
+      color 180ms ease,
+      background-color 180ms ease,
+      border-color 180ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease,
+      opacity 180ms ease;
+  }
+}

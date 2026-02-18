@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+backend/data/
+.env
+extension/.output/
+extension/.wxt/
+extension/release/packages/

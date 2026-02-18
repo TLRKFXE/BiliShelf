@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BiliShelf Helper</title>
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup-header">
+        <h1 id="popup-title">BiliShelf Helper</h1>
+        <p id="popup-subtitle">Extension settings</p>
+      </header>
+
+      <section class="card">
+        <h2 id="theme-title">Floating Panel Theme</h2>
+        <p id="theme-subtitle" class="muted">Same theme style as manager: light / dark / auto.</p>
+        <div class="theme-options" role="radiogroup" aria-label="Theme mode">
+          <label class="option-chip" data-mode="auto">
+            <input type="radio" name="theme" value="auto" />
+            <span id="theme-auto-label">Auto</span>
+          </label>
+          <label class="option-chip" data-mode="light">
+            <input type="radio" name="theme" value="light" />
+            <span id="theme-light-label">Light</span>
+          </label>
+          <label class="option-chip" data-mode="dark">
+            <input type="radio" name="theme" value="dark" />
+            <span id="theme-dark-label">Dark</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="card actions">
+        <button id="open-manager" class="primary-btn" type="button">Open Manager</button>
+        <button id="open-video" class="secondary-btn" type="button">Open Bilibili Video</button>
+      </section>
+    </main>
+    <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <script type="module" src="./popup/main.ts"></script>
+  </body>
+</html>

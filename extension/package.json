@@ -1,0 +1,28 @@
+{
+  "name": "bilishelf-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt --browser chrome",
+    "dev:chrome": "wxt --browser chrome",
+    "dev:edge": "wxt --browser edge",
+    "dev:firefox": "wxt --browser firefox",
+    "build": "wxt build --browser chrome",
+    "build:chrome": "wxt build --browser chrome",
+    "build:edge": "wxt build --browser edge",
+    "build:firefox": "wxt build --browser firefox",
+    "build:all": "pnpm run build:chrome && pnpm run build:edge && pnpm run build:firefox",
+    "zip": "wxt zip --browser chrome",
+    "zip:chrome": "wxt zip --browser chrome",
+    "zip:edge": "wxt zip --browser edge",
+    "zip:firefox": "wxt zip --browser firefox",
+    "zip:all": "pnpm run zip:chrome && pnpm run zip:edge && pnpm run zip:firefox",
+    "release:prepare": "pnpm run zip:all && node ./scripts/prepare-release.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.24",
+    "typescript": "^5.9.2",
+    "wxt": "^0.20.6"
+  }
+}
