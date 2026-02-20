@@ -5,6 +5,7 @@ import { db, sqlite } from "../db/client.js";
 import { folderItems, folders, tags, videoTags, videos } from "../db/schema.js";
 
 const BLOCKED_SYSTEM_TAGS = new Set(["uncategorized", "未分类"]);
+const BILI_ORIGIN = "https://www.bilibili.com";
 
 const upsertVideoSchema = z.object({
   bvid: z.string().min(3).max(32),
@@ -98,6 +99,34 @@ function normalizeCoverUrl(value: string) {
   } catch {
     return trimmed;
   }
+}
+
+function normalizeBiliVideoUrl(value: string, bvidFallback?: string) {
+  const raw = value.trim();
+  const fallbackBvid = (bvidFallback || "").trim();
+  const fallback = fallbackBvid ? `${BILI_ORIGIN}/video/${fallbackBvid}/` : "";
+
+  if (!raw) return fallback;
+
+  const appSchemeMatch = raw.match(/^bilibili:\/\/video\/([^/?#]+)/i);
+  if (appSchemeMatch) {
+    const token = (appSchemeMatch[1] || "").trim();
+    if (/^BV[0-9A-Za-z]+$/i.test(token)) return `${BILI_ORIGIN}/video/${token}/`;
+    if (fallback) return fallback;
+    if (/^\d+$/.test(token)) return `${BILI_ORIGIN}/video/av${token}/`;
+    return `${BILI_ORIGIN}/video/${token}/`;
+  }
+
+  if (raw.startsWith("//")) return `https:${raw}`;
+  if (raw.startsWith("/video/")) return `${BILI_ORIGIN}${raw}`;
+  if (/^video\//i.test(raw)) return `${BILI_ORIGIN}/${raw}`;
+  if (/^BV[0-9A-Za-z]+$/i.test(raw)) return `${BILI_ORIGIN}/video/${raw}/`;
+  if (/^av\d+$/i.test(raw)) return `${BILI_ORIGIN}/video/${raw}/`;
+  if (/^\d+$/.test(raw)) return fallback || `${BILI_ORIGIN}/video/av${raw}/`;
+  if (/^http:\/\//i.test(raw)) return raw.replace(/^http:\/\//i, "https://");
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  return fallback || raw;
 }
 
 function normalizeOutputBvid(value: string) {
@@ -222,6 +251,7 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
     const body = upsertVideoSchema.parse(request.body);
     const now = Date.now();
     const normalizedCoverUrl = normalizeCoverUrl(body.coverUrl);
+    const normalizedBvidUrl = normalizeBiliVideoUrl(body.bvidUrl, body.bvid);
     const partitionValue = body.partition?.trim() || "uncategorized";
 
     const folderIds = [...new Set(body.folderIds)];
@@ -253,7 +283,7 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
           description: body.description,
           partition: partitionValue,
           publishAt: body.publishAt ?? null,
-          bvidUrl: body.bvidUrl,
+          bvidUrl: normalizedBvidUrl,
           isInvalid: body.isInvalid ?? false,
           deletedAt: null,
           updatedAt: now
@@ -271,7 +301,7 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
           description: body.description,
           partition: partitionValue,
           publishAt: body.publishAt ?? null,
-          bvidUrl: body.bvidUrl,
+          bvidUrl: normalizedBvidUrl,
           isInvalid: body.isInvalid ?? false,
           deletedAt: null,
           createdAt: now,
@@ -557,7 +587,7 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
       if (!sourceVideo) continue;
 
       const cloneSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const copiedBvid = `${sourceVideo.bvid}__copy__${cloneSuffix}`;
+      const copiedBvid = `${normalizeOutputBvid(sourceVideo.bvid)}__copy__${cloneSuffix}`;
       const inserted = db
         .insert(videos)
         .values({

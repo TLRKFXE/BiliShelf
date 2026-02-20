@@ -46,6 +46,41 @@ function normalizeErrorMessage(message: string) {
   return message;
 }
 
+function translateKnownBackendError(raw: string, t: TranslateFn) {
+  const message = raw.trim();
+  if (!message) return message;
+
+  const isZhLocale = /[\u4e00-\u9fff]/.test(t("common.cancel"));
+  if (!isZhLocale) return message;
+
+  const exactMap: Record<string, string> = {
+    "Folder name already exists": "收藏夹名称已存在",
+    "Tag name already exists": "标签名称已存在",
+    "Folder not found": "未找到收藏夹",
+    "Video not found": "未找到视频",
+    "Tag not found": "未找到标签",
+    "At least one folder is required": "至少需要选择一个收藏夹",
+    "Video payload is incomplete": "视频信息不完整",
+    "Target folder is invalid": "目标收藏夹无效",
+    "mode is invalid": "批处理模式无效",
+    "mode must be move or copy": "批处理模式必须为移动或复制",
+    "folderId is required": "缺少收藏夹参数",
+    "Request failed": "请求失败",
+    "Internal server error": "服务器内部错误",
+  };
+
+  if (exactMap[message]) return exactMap[message];
+
+  if (message.startsWith("Route not found")) {
+    return message.replace("Route not found", "接口不存在");
+  }
+  if (message.startsWith("Bilibili API request failed")) {
+    return message.replace("Bilibili API request failed", "B站接口请求失败");
+  }
+
+  return message;
+}
+
 export function useAppToast(t: TranslateFn) {
   const toast = useToast();
 
@@ -73,7 +108,7 @@ export function useAppToast(t: TranslateFn) {
           ? error.message
           : "";
     const description = rawMessage
-      ? normalizeErrorMessage(rawMessage) || fallback
+      ? translateKnownBackendError(normalizeErrorMessage(rawMessage) || fallback, t)
       : fallback;
     const content = description ? `${title}\n${description}` : title;
     toast.error(content, {

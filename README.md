@@ -1,103 +1,163 @@
 # BiliShelf
 
-本地部署的 B 站收藏管理方案（MVP）。
+<p align="center"><em><sub>引言，我想说的话：</sub></em></p>
 
-目标：解决站内收藏夹数量和检索体验问题，支持多收藏夹、标签管理、全文检索，并为后续云同步和浏览器插件扩展预留能力。
+你是否会因为b站收藏有数量限制，亦或者是搜索不好用而感到烦恼？我不知道有多少人和我一样，有这些问题：根据记忆里的关键词，检索不到曾经看过的视频，以及在收藏夹上限后，他们迫不得已转向其他方式记录：web端或是改成浏览器收藏夹记录，app端或是改用截图保存，再有甚者忍痛割爱删除曾经的收藏夹......
+
+---
+
+## 简介
+
+一个替代bilibili收藏夹管理方案的浏览器插件，将视频信息收藏到本地，解决站内收藏夹数量限制和检索体验问题，支持多收藏夹和自定义标签的管理，以及全文检索、特殊关键词检索和批量管理。
+
+## 功能说明
+
+- 支持深色/浅色主题，i18n(CN/EN)
+- 悬浮窗收藏视频
+- 收藏夹的新建、删除、排序、检索，以及自定义简介
+- 管理自定义标签
+- 回收站功能
+- 同步B站视频（暂未完善）
+- 导出/导入备份，支持JSON/CSV格式
+- 视频检索：默认检索视频的标题和tag，也可以通过组合字段tag使用：检索UP主、简介、用户的自定义tag
+- 根据日期范围检索
+- 批处理功能（移动 / 复制 / 删除）
+- 可查看已收藏视频的卡片详情，一定程度上杜绝视频失效后无法知悉的“怅然若失”。
+
+## 使用方法（详细）
+
+### 方式一：普通用户（即装即用，推荐）
+
+1. 在仓库根目录执行：
+   ```bash
+   pnpm ext:zip:all
+   ```
+2. 构建完成后，安装 `extension/.output/` 下对应浏览器的包：
+   - `bilishelf-extension-0.1.0-chrome.zip`
+   - `bilishelf-extension-0.1.0-edge.zip`
+   - `bilishelf-extension-0.1.0-firefox.zip`
+3. 在浏览器启用开发者模式并加载插件：
+   - Chrome/Edge：加载解压后的目录（或按商店发布流程上架）
+   - Firefox：可加载 `firefox` 对应包/目录（按 Firefox 开发者加载流程）
+4. 打开任意 Bilibili 视频页，使用悬浮窗保存视频到本地收藏夹。
+5. 点击浏览器插件按钮，打开管理中心进行检索、批处理、导入导出等操作。
+
+### 方式二：贡献者（前后端开发模式）
+
+1. 启动后端：
+   ```bash
+   cd backend
+   pnpm install
+   pnpm dev
+   ```
+2. 启动前端：
+   ```bash
+   cd frontend
+   pnpm install
+   pnpm dev
+   ```
+3. 环境变量模板保留并按需复制：
+   - `backend/.env.example`
+   - `frontend/.env.example`
+   - `frontend/.env.extension`
+
+## 项目结构
+
+- `frontend/`：管理中心前端（Vue 3）
+- `backend/`：后端 API（Fastify + SQLite）
+- `extension/`：浏览器插件（WXT）
+- `docs/`：使用说明与文档
 
 ## 技术栈
 
-- 后端：`Fastify + TypeScript + Drizzle ORM + SQLite`
-- 前端：`Vue 3 + Vite + Tailwind + shadcn 风格组件`
-- 检索：`SQLite FTS5`
-- 插件（MVP）：`Chrome/Edge Manifest V3`
+- 前端：Vue 3 + TypeScript + Pinia + Vue Router + Vite
+- 组件/UI：shadcn-vue + inspira-ui（已集成）+ vue-toastification
+- 后端：Fastify + Drizzle ORM + SQLite
+- 插件：WXT（Chrome/Edge/Firefox 多目标构建）
 
-## 本地启动（不使用 Docker）
+## 版权与开源
 
-### 1) 后端
+- Author: **TLRK**
+- Copyright: **© 2026 TLRK**
+- License: **MIT**（见 `LICENSE`）
 
-```bash
-cd backend
-pnpm install
-pnpm dev
-```
+## 声明
 
-- 默认地址：`http://127.0.0.1:4321`
-- 健康检查：`GET /api/health`
+- 纯本地，无隐私风险问题。
+- 目前一些问题，因为bilibili服务端风控原因，再加上个人水平有限，不好把控导入功能，可能实际用起来问题很大，请谅解。
+- 因为暂时未接入云同步，所以使用时请一定要定期的导出备份。
+- 如有其他问题请及时反馈issue，同时也欢迎贡献PR。
 
-### 2) 前端
+---
 
-```bash
-cd frontend
-pnpm install
-pnpm dev
-```
+<details>
+<summary><strong>English Version</strong></summary>
 
-- 默认地址：`http://127.0.0.1:5173`
+## Introduction
 
-## 当前已实现
+BiliShelf is a browser extension alternative to Bilibili favorites management.  
+It stores video metadata locally, helping users overcome favorite-count limits and poor in-site search experience.
 
-### 后端能力
+## Features
 
-- 收藏夹：创建、查询、更新、删除
-- 视频：创建（含去重更新）、查询、删除
-- 关系：视频与收藏夹多对多、视频与标签多对多
-- 标签：系统标签 + 自定义标签
-- 检索：
-  - 全局检索
-  - 单收藏夹检索
-  - 标签过滤
+- Light/Dark theme, i18n (CN/EN)
+- Floating panel capture on Bilibili video pages
+- Folder create/delete/sort/search + custom folder description
+- Custom tag management
+- Trash & restore workflow
+- Sync import from Bilibili favorites (still improving)
+- Backup export/import in JSON/CSV
+- Video search: default over title + tags, plus field-token search (uploader/description/custom tags)
+- Date-range filtering
+- Batch actions (move / copy / delete)
+- Detailed video card view for archived metadata visibility
 
-### 前端能力
+## Usage
 
-- 收藏夹侧边栏（创建、切换）
-- 新增视频表单（可归档到多个收藏夹、输入标签）
-- 视频卡片展示（标题、封面、UP、简介、标签、收藏时间）
-- 全局/单收藏夹搜索 + 标签筛选
+### For normal users (install-and-use)
 
-### 本地数据存储
+1. Build extension packages from repo root:
+   ```bash
+   pnpm ext:zip:all
+   ```
+2. Install packages from `extension/.output/` for your browser:
+   - Chrome / Edge / Firefox zip outputs
+3. Open a Bilibili video page and use the floating panel to save videos locally.
+4. Open manager page from extension popup for search, batch operations, backup, etc.
 
-- SQLite 文件位置：`backend/data/app.db`
-- FTS5 索引与触发器初始化：`backend/src/db/init.ts`
+### For contributors (frontend + backend)
 
-## 已实现 API（MVP）
+1. Start backend:
+   ```bash
+   cd backend
+   pnpm install
+   pnpm dev
+   ```
+2. Start frontend:
+   ```bash
+   cd frontend
+   pnpm install
+   pnpm dev
+   ```
 
-- `GET /api/health`
-- `GET /api/folders`
-- `POST /api/folders`
-- `PATCH /api/folders/:id`
-- `DELETE /api/folders/:id`
-- `GET /api/folders/:id/videos`
-- `POST /api/videos`
-- `GET /api/videos`
-- `GET /api/videos/:id`
-- `DELETE /api/videos/:id`
-- `POST /api/videos/:id/folders/:folderId`
-- `DELETE /api/videos/:id/folders/:folderId`
-- `POST /api/videos/:id/tags`
-- `DELETE /api/videos/:id/tags/:tagId`
-- `GET /api/videos/search`
-- `GET /api/tags`
+## Project Structure & Stack
 
-## 浏览器插件（当前实现）
+- `frontend/`: Vue 3 + TS + Pinia + Router
+- `backend/`: Fastify + Drizzle + SQLite
+- `extension/`: WXT extension project
+- `docs/`: guides and docs
 
-目录：`extension`
+## Attribution & License
 
-- `manifest.json`：MV3 配置
-- `content.js`：从当前视频页读取 BV 和基础字段
-- `popup.js`：
-  - 通过官方 API 获取干净元数据（标题、封面、简介、UP）
-  - 保存时把 `publishAt` 设置为“收藏时间”
-  - 分区固定为 `uncategorized`（按你要求暂不抓取分区）
+- Author: **TLRK**
+- Copyright: **© 2026 TLRK**
+- License: **MIT** (`LICENSE`)
 
-## 关键语义说明
+## Notes
 
-- 收藏时间：当前版本使用 `publishAt=保存时刻` 表示收藏时间。
-- 单收藏夹列表和搜索结果：优先展示并按 `addedAt`（加入该收藏夹时间）排序。
-- 简介来源：优先官方 API 的 `desc`，避免页面噪音文本（播放量、推荐标题等）。
+- Fully local-first, no cloud upload by default.
+- Due to Bilibili risk-control behavior and sync complexity, import/sync may be unstable in some scenarios.
+- Please export backups regularly (JSON/CSV) before large operations.
+- Issues and PRs are welcome.
 
-## 后续建议
-
-1. 插件里自动读取收藏夹列表，避免手填 ID。
-2. 支持从 B 站“收藏夹页面”批量导入。
-3. 增加“视频编辑 / 移动收藏夹 / 批量删除”。
-4. 最后阶段接入云同步。
+</details>

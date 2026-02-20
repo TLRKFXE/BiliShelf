@@ -1,7 +1,23 @@
 <script setup lang="ts">
-import { CirclePlay, Moon, Sun } from "lucide-vue-next";
+import { ref } from "vue";
+import {
+  CirclePlay,
+  Download,
+  Moon,
+  RefreshCcw,
+  Sun,
+  Upload,
+} from "lucide-vue-next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 
 const props = defineProps<{
@@ -12,14 +28,36 @@ const props = defineProps<{
   localeToggleText: string;
   isDark: boolean;
   progressValue: number;
+  syncing: boolean;
+  exporting: boolean;
+  importing: boolean;
 }>();
 
 const emit = defineEmits<{
-  openTags: [];
-  toggleTrash: [];
-  toggleLocale: [];
-  toggleTheme: [];
+  "open-tags": [];
+  "toggle-trash": [];
+  "toggle-locale": [];
+  "toggle-theme": [];
+  "sync-import": [];
+  "import-file": [];
+  "export-json": [];
+  "export-csv": [];
 }>();
+
+const exportDialogOpen = ref(false);
+
+function openExportDialog() {
+  exportDialogOpen.value = true;
+}
+
+function submitExport(format: "json" | "csv") {
+  exportDialogOpen.value = false;
+  if (format === "json") {
+    emit("export-json");
+    return;
+  }
+  emit("export-csv");
+}
 </script>
 
 <template>
@@ -37,8 +75,11 @@ const emit = defineEmits<{
         <p class="mt-1 text-sm text-muted-foreground">
           {{ props.t("header.subtitle") }}
         </p>
+        <p class="mt-1 text-xs text-muted-foreground/80">
+          {{ props.t("header.credit") }}
+        </p>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="ml-auto flex flex-wrap items-start justify-end gap-2">
         <Badge variant="secondary">{{ props.currentViewLabel }}</Badge>
         <Badge
           v-if="!props.trashMode"
@@ -47,26 +88,7 @@ const emit = defineEmits<{
         >
           {{ props.currentScopeLabel }}
         </Badge>
-        <Button
-          v-if="!props.trashMode"
-          size="sm"
-          variant="outline"
-          @click="emit('openTags')"
-        >
-          {{ props.t("header.manageTags") }}
-        </Button>
-        <Button
-          size="sm"
-          :variant="props.trashMode ? 'default' : 'outline'"
-          @click="emit('toggleTrash')"
-        >
-          {{
-            props.trashMode
-              ? props.t("header.backManager")
-              : props.t("header.openTrash")
-          }}
-        </Button>
-        <Button size="sm" variant="outline" @click="emit('toggleLocale')">
+        <Button size="sm" variant="outline" @click="emit('toggle-locale')">
           {{ props.localeToggleText }}
         </Button>
         <Button
@@ -78,7 +100,7 @@ const emit = defineEmits<{
               ? props.t('theme.switchToLight')
               : props.t('theme.switchToDark')
           "
-          @click="emit('toggleTheme')"
+          @click="emit('toggle-theme')"
         >
           <Transition name="theme-icon" mode="out-in">
             <Sun v-if="props.isDark" key="sun" class="h-4 w-4" />
@@ -87,9 +109,93 @@ const emit = defineEmits<{
         </Button>
       </div>
     </div>
+    <div class="mt-3 flex flex-wrap items-center justify-end gap-2">
+      <Button
+        v-if="!props.trashMode"
+        size="sm"
+        variant="outline"
+        @click="emit('open-tags')"
+      >
+        {{ props.t("header.manageTags") }}
+      </Button>
+      <Button
+        size="sm"
+        :variant="props.trashMode ? 'default' : 'outline'"
+        @click="emit('toggle-trash')"
+      >
+        {{
+          props.trashMode
+            ? props.t("header.backManager")
+            : props.t("header.openTrash")
+        }}
+      </Button>
+      <Button
+        v-if="!props.trashMode"
+        size="sm"
+        variant="outline"
+        :disabled="props.syncing || props.exporting || props.importing"
+        @click="emit('sync-import')"
+      >
+        <RefreshCcw class="mr-1.5 h-3.5 w-3.5" />
+        {{
+          props.syncing
+            ? props.t("header.syncing")
+            : props.t("header.syncImport")
+        }}
+      </Button>
+      <Button
+        v-if="!props.trashMode"
+        size="sm"
+        variant="outline"
+        :disabled="props.syncing || props.exporting || props.importing"
+        @click="openExportDialog"
+      >
+        <Download class="mr-1.5 h-3.5 w-3.5" />
+        {{ props.t("header.exportBackup") }}
+      </Button>
+      <Button
+        v-if="!props.trashMode"
+        size="sm"
+        variant="outline"
+        :disabled="props.syncing || props.exporting || props.importing"
+        @click="emit('import-file')"
+      >
+        <Upload class="mr-1.5 h-3.5 w-3.5" />
+        {{ props.t("header.importData") }}
+      </Button>
+    </div>
     <div v-if="props.progressValue > 0" class="mt-3">
       <Progress :model-value="props.progressValue" />
     </div>
+    <Dialog :open="exportDialogOpen" @update:open="exportDialogOpen = $event">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ props.t("header.exportDialogTitle") }}</DialogTitle>
+          <DialogDescription>{{
+            props.t("header.exportDialogDesc")
+          }}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter class="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" @click="exportDialogOpen = false">
+            {{ props.t("common.cancel") }}
+          </Button>
+          <Button
+            variant="outline"
+            :disabled="props.syncing || props.exporting || props.importing"
+            @click="submitExport('json')"
+          >
+            {{ props.t("header.exportJson") }}
+          </Button>
+          <Button
+            variant="outline"
+            :disabled="props.syncing || props.exporting || props.importing"
+            @click="submitExport('csv')"
+          >
+            {{ props.t("header.exportCsv") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </header>
 </template>
 

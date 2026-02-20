@@ -1,8 +1,117 @@
 import type { CreateVideoPayload, Folder, Pagination, Tag, Video, VideoFilter } from "../types";
 
 const API_BASE = "/api";
+const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
+
+type LocalApiRequest = {
+  method: string;
+  path: string;
+  body?: unknown;
+};
+
+type LocalApiResponse<T = unknown> = {
+  ok: boolean;
+  status: number;
+  data?: T;
+  error?: string;
+};
+
+type ChromeLikeRuntime = {
+  id?: string;
+  sendMessage: (
+    message: unknown,
+    callback?: (response?: unknown) => void
+  ) => Promise<unknown> | void;
+};
+
+function getRuntime(): ChromeLikeRuntime | null {
+  const chromeRuntime = (globalThis as { chrome?: { runtime?: ChromeLikeRuntime } }).chrome
+    ?.runtime;
+  if (chromeRuntime?.id && typeof chromeRuntime.sendMessage === "function") {
+    return chromeRuntime;
+  }
+
+  const browserRuntime = (globalThis as { browser?: { runtime?: ChromeLikeRuntime } }).browser
+    ?.runtime;
+  if (browserRuntime?.id && typeof browserRuntime.sendMessage === "function") {
+    return browserRuntime;
+  }
+
+  return null;
+}
+
+function shouldUseLocalExtensionApi() {
+  if (import.meta.env.VITE_RUNTIME_TARGET === "extension") return true;
+  const runtime = getRuntime();
+  if (!runtime) return false;
+  return (
+    window.location.protocol === "chrome-extension:" ||
+    window.location.protocol === "moz-extension:"
+  );
+}
+
+function parseRequestBody(init?: RequestInit): unknown {
+  if (!init?.body) return undefined;
+  if (typeof init.body === "string") {
+    try {
+      return JSON.parse(init.body);
+    } catch {
+      return init.body;
+    }
+  }
+  return init.body;
+}
+
+function requestThroughExtension<T>(path: string, init?: RequestInit): Promise<T> {
+  const runtime = getRuntime();
+  if (!runtime) {
+    throw new Error("Extension runtime is unavailable");
+  }
+
+  const payload: LocalApiRequest = {
+    method: (init?.method || "GET").toUpperCase(),
+    path,
+    body: parseRequestBody(init)
+  };
+
+  const message = {
+    type: LOCAL_API_MESSAGE,
+    request: payload
+  };
+
+  return new Promise<T>((resolve, reject) => {
+    const callback = (response?: unknown) => {
+      const result = (response ?? {}) as LocalApiResponse<T>;
+      if (result.ok) {
+        resolve(result.data as T);
+        return;
+      }
+
+      reject(
+        new Error(
+          result.error || `Request failed: ${result.status ?? 500}`
+        )
+      );
+    };
+
+    try {
+      const maybePromise = runtime.sendMessage(message, callback);
+      if (maybePromise && typeof (maybePromise as Promise<unknown>).then === "function") {
+        (maybePromise as Promise<unknown>)
+          .then((response) => callback(response))
+          .catch((error) => reject(error));
+      }
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (shouldUseLocalExtensionApi()) {
+    return requestThroughExtension<T>(path, init);
+  }
+
   const headers = new Headers(init?.headers ?? {});
   if (init?.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -249,5 +358,100 @@ export async function restoreTrashVideo(id: number) {
 export async function purgeTrashVideo(id: number) {
   return request<void>(`/trash/videos/${id}`, {
     method: "DELETE"
+  });
+}
+
+export type SyncFromBilibiliPayload = {
+  cookie?: string;
+  selectedRemoteFolderIds?: number[];
+  offset?: number;
+  startPage?: number;
+  includeTagEnrichment?: boolean;
+  maxFolders?: number;
+  maxPagesPerFolder?: number;
+  maxVideosPerFolder?: number;
+};
+
+export type SyncFromBilibiliResult = {
+  ok: boolean;
+  summary: {
+    foldersDetected: number;
+    foldersSynced: number;
+    videosProcessed: number;
+    videosUpserted: number;
+    folderLinksAdded: number;
+    tagsBound: number;
+    errorCount: number;
+  };
+  hasMore?: boolean;
+  nextOffset?: number | null;
+  hasMorePage?: boolean;
+  nextPage?: number | null;
+  riskBlocked?: boolean;
+  errors: Array<{ folder: string; message: string }>;
+  errorsOmitted?: number;
+  syncedAt: number;
+};
+
+export type SyncRemoteFolder = {
+  remoteId: number;
+  title: string;
+  mediaCount: number;
+};
+
+export type ExportLibraryResult = {
+  format: "json" | "csv";
+  filename: string;
+  mimeType: string;
+  content: string;
+  summary: {
+    folders: number;
+    videos: number;
+    tags: number;
+  };
+};
+
+export type ImportLibraryPayload = {
+  format: "json" | "csv";
+  content: string;
+};
+
+export type ImportLibraryResult = {
+  ok: true;
+  summary: {
+    videosUpserted: number;
+    folderLinksAdded: number;
+    tagsBound: number;
+    foldersCreated: number;
+    tagsCreated: number;
+    rowsSkipped: number;
+  };
+  importedAt: number;
+};
+
+export async function syncFromBilibili(payload: SyncFromBilibiliPayload = {}) {
+  return request<SyncFromBilibiliResult>("/sync/bilibili", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function fetchBilibiliSyncFolders(payload?: { cookie?: string }) {
+  return request<{ ok: true; items: SyncRemoteFolder[]; total: number }>("/sync/bilibili/folders", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {})
+  });
+}
+
+export async function exportLibrary(format: "json" | "csv") {
+  const params = new URLSearchParams();
+  params.set("format", format);
+  return request<ExportLibraryResult>(`/export?${params.toString()}`);
+}
+
+export async function importLibrary(payload: ImportLibraryPayload) {
+  return request<ImportLibraryResult>("/import", {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }

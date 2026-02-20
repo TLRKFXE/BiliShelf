@@ -1,9 +1,14 @@
-import { createRouter, createWebHistory } from "vue-router";
+import { createRouter, createWebHashHistory, createWebHistory } from "vue-router";
 import { pinia } from "@/stores";
 import { useLibraryStore } from "@/stores/library";
 
+const isExtensionRuntime =
+  import.meta.env.VITE_RUNTIME_TARGET === "extension" ||
+  window.location.protocol === "chrome-extension:" ||
+  window.location.protocol === "moz-extension:";
+
 const router = createRouter({
-  history: createWebHistory(),
+  history: isExtensionRuntime ? createWebHashHistory() : createWebHistory(),
   routes: [
     {
       path: "/",

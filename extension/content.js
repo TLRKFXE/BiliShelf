@@ -1,5 +1,5 @@
 (function () {
-  const API_BASE = "http://127.0.0.1:4321/api";
+  const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
   const BILI_VIEW_API = "https://api.bilibili.com/x/web-interface/view";
   const BILI_TAG_API = "https://api.bilibili.com/x/tag/archive/tags";
   const DEFAULT_COVER = "https://i0.hdslb.com/bfs/archive/placeholder.jpg";
@@ -7,6 +7,7 @@
   const BUTTON_POS_STORAGE_KEY = "bili_like_button_pos_v2";
   const BUTTON_SIDE_STORAGE_KEY = "bili_like_button_side_v2";
   const THEME_STORAGE_KEY = "bili_like_ext_theme";
+  const LOCALE_STORAGE_KEY = "bili_like_locale";
 
   const THEME_AUTO = "auto";
   const THEME_LIGHT = "light";
@@ -20,8 +21,12 @@
       [LOCALE_EN]: "BiliShelf Collector"
     },
     "subtitle.collector": {
-      [LOCALE_ZH]: "本地保存 · 多收藏夹 · 快速采集",
-      [LOCALE_EN]: "Local save · multi-folder · quick capture"
+      [LOCALE_ZH]: "一键采集到收藏夹，回到管理中心检索与批处理",
+      [LOCALE_EN]: "Capture to folders in one click, then search and batch-manage in the manager"
+    },
+    "footer.credit": {
+      [LOCALE_ZH]: "By TLRK · © 2026 TLRK · MIT License",
+      [LOCALE_EN]: "By TLRK · © 2026 TLRK · MIT License"
     },
     "button.close": { [LOCALE_ZH]: "关闭", [LOCALE_EN]: "Close" },
     "button.save": { [LOCALE_ZH]: "保存", [LOCALE_EN]: "Save" },
@@ -44,6 +49,7 @@
     },
     "status.unknownUploader": { [LOCALE_ZH]: "未知 UP 主", [LOCALE_EN]: "Unknown uploader" },
     "status.untitled": { [LOCALE_ZH]: "未命名视频", [LOCALE_EN]: "Untitled" },
+    "status.coverAlt": { [LOCALE_ZH]: "视频封面", [LOCALE_EN]: "Video cover" },
     "status.selectedCount": { [LOCALE_ZH]: "已选 {count}", [LOCALE_EN]: "{count} selected" },
     "status.videosCount": { [LOCALE_ZH]: "{count} 个视频", [LOCALE_EN]: "{count} videos" },
     "status.noFolders": { [LOCALE_ZH]: "没有匹配的收藏夹", [LOCALE_EN]: "No folders found" },
@@ -87,7 +93,7 @@
     "error.unknown": { [LOCALE_ZH]: "未知错误", [LOCALE_EN]: "Unknown error" }
   };
 
-  function resolveLocale() {
+  function resolveLocaleFromBrowser() {
     const language = (
       chrome?.i18n?.getUILanguage?.() ||
       navigator.language ||
@@ -96,7 +102,20 @@
     return language.startsWith("zh") ? LOCALE_ZH : LOCALE_EN;
   }
 
-  let activeLocale = resolveLocale();
+  async function resolveLocale() {
+    const fallback = resolveLocaleFromBrowser();
+    try {
+      const result = await chrome.storage.local.get([LOCALE_STORAGE_KEY]);
+      const saved = result?.[LOCALE_STORAGE_KEY];
+      if (saved === LOCALE_ZH || saved === LOCALE_EN) {
+        return saved;
+      }
+    } catch {
+    }
+    return fallback;
+  }
+
+  let activeLocale = LOCALE_EN;
 
   function t(key, vars = {}) {
     const table = I18N[key];
@@ -336,38 +355,49 @@
     return merged;
   }
 
+  function requestLocalApi(method, path, body) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        {
+          type: LOCAL_API_MESSAGE,
+          request: {
+            method,
+            path,
+            body
+          }
+        },
+        (response) => {
+          const runtimeError = chrome.runtime.lastError;
+          if (runtimeError) {
+            reject(new Error(runtimeError.message || "Local API unavailable"));
+            return;
+          }
+
+          if (!response) {
+            reject(new Error("No response from local API"));
+            return;
+          }
+
+          if (response.ok) {
+            resolve(response.data);
+            return;
+          }
+
+          const error = new Error(response.error || t("error.unknown"));
+          error.statusCode = response.status || 500;
+          reject(error);
+        }
+      );
+    });
+  }
+
   async function fetchFolders() {
-    const response = await fetch(`${API_BASE}/folders`);
-    if (!response.ok) {
-      throw new Error(`${t("toast.folderLoadFail")} (${response.status})`);
-    }
-    const data = await response.json();
+    const data = await requestLocalApi("GET", "/folders");
     return data?.items || [];
   }
 
   async function createFolder(payload) {
-    const response = await fetch(`${API_BASE}/folders`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      let message = text;
-      try {
-        const parsed = JSON.parse(text);
-        if (typeof parsed?.message === "string") {
-          message = parsed.message;
-        }
-      } catch {
-      }
-      const error = new Error(message || t("toast.folderCreateFail"));
-      error.statusCode = response.status;
-      throw error;
-    }
-
-    return response.json();
+    return requestLocalApi("POST", "/folders", payload);
   }
 
   function showToast(message, type = "ok") {
@@ -648,17 +678,7 @@
         systemTags: currentVideo.systemTags || [],
         isInvalid: false
       };
-
-      const response = await fetch(`${API_BASE}/videos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `${t("toast.saveFail")} (${response.status})`);
-      }
+      await requestLocalApi("POST", "/videos", payload);
 
       setStatus(t("toast.saved"), "ok");
       await loadFolders();
@@ -1025,6 +1045,9 @@
 
       .bl-footer { margin-top: 12px; display: flex; gap: 8px; }
       .bl-footer .bl-btn { flex: 1; }
+      .bl-credit { margin-top: 8px; font-size: 11px; text-align: right; }
+      #bl-floating-panel[data-theme="light"] .bl-credit { color: #7283a3; }
+      #bl-floating-panel[data-theme="dark"] .bl-credit { color: #95a5c4; }
 
       .bl-toast-root {
         position: fixed;
@@ -1228,9 +1251,9 @@
         </div>
 
         <section class="bl-video-card">
-          <img id="bl-video-cover" class="bl-video-cover" src="${DEFAULT_COVER}" alt="cover" />
+          <img id="bl-video-cover" class="bl-video-cover" src="${DEFAULT_COVER}" alt="${t("status.coverAlt")}" />
           <div>
-            <p id="bl-video-title" class="bl-video-title">Title: -</p>
+            <p id="bl-video-title" class="bl-video-title">${t("status.noVideoTitle")}</p>
             <p id="bl-video-meta" class="bl-video-meta">-</p>
           </div>
         </section>
@@ -1266,6 +1289,7 @@
         <div class="bl-footer">
           <button id="bl-save-btn" class="bl-btn bl-btn-primary" type="button">${t("button.save")}</button>
         </div>
+        <p class="bl-credit">${t("footer.credit")}</p>
       </div>
     `);
 
@@ -1402,6 +1426,11 @@
     }
   }
 
-  injectUi();
-  setupThemeSync();
+  async function bootstrap() {
+    activeLocale = await resolveLocale();
+    injectUi();
+    setupThemeSync();
+  }
+
+  void bootstrap();
 })();

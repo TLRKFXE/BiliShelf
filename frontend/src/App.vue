@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 import ConfirmActionDialog from "./components/dialogs/ConfirmActionDialog.vue";
 import ManageTagsDialog from "./components/dialogs/ManageTagsDialog.vue";
 import RenameTagDialog from "./components/dialogs/RenameTagDialog.vue";
+import SyncImportDialog from "./components/dialogs/SyncImportDialog.vue";
 import VideoDetailDialog from "./components/dialogs/VideoDetailDialog.vue";
 import FolderSidebar from "./components/FolderSidebar.vue";
 import ManagerHeader from "./components/layout/ManagerHeader.vue";
@@ -32,6 +33,13 @@ import { useManagerPaginationActions } from "./composables/use-manager-paginatio
 import { useManagerRouteSync } from "./composables/use-manager-route-sync";
 import { useRenameTagDialog } from "./composables/use-rename-tag-dialog";
 import { useVideoDetail } from "./composables/use-video-detail";
+import {
+  exportLibrary,
+  fetchBilibiliSyncFolders,
+  importLibrary,
+  syncFromBilibili,
+  type SyncRemoteFolder,
+} from "./lib/api";
 import type { Tag } from "./types";
 
 const uiStore = useAppUiStore();
@@ -120,6 +128,42 @@ const {
 
 const toolsOpen = ref(false);
 const trashMode = computed(() => route.name === "trash");
+const syncingImport = ref(false);
+const exportingLibrary = ref(false);
+const importingLibrary = ref(false);
+const syncDialogOpen = ref(false);
+const syncFetchingFolders = ref(false);
+const syncFolders = ref<SyncRemoteFolder[]>([]);
+const syncSelectedFolderIds = ref<number[]>([]);
+const syncChunkSize = ref(20);
+const syncSpeedMode = ref<"stable" | "balanced" | "fast">("balanced");
+const syncIncludeTagEnrichment = ref(true);
+const SYNC_CURSOR_STORAGE_KEY = "bilishelf-sync-cursors-v1";
+const SYNC_CHUNK_DELAY_MS = 1100;
+const SYNC_CHUNK_DELAY_JITTER_MS = 500;
+const SYNC_MAX_ROUNDS = 800;
+const EXPORT_REMINDER_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+const LAST_EXPORT_AT_KEY = "bilishelf-last-export-at";
+const LAST_EXPORT_REMINDER_DAY_KEY = "bilishelf-last-export-reminder-day";
+const importFileInput = ref<HTMLInputElement | null>(null);
+
+const SYNC_SPEED_PROFILES = {
+  stable: {
+    pagesPerRound: 1,
+    delayMs: 1200,
+    jitterMs: 450
+  },
+  balanced: {
+    pagesPerRound: 2,
+    delayMs: 650,
+    jitterMs: 220
+  },
+  fast: {
+    pagesPerRound: 3,
+    delayMs: 260,
+    jitterMs: 120
+  }
+} as const;
 
 const { notifySuccess, notifyError } = useAppToast(t);
 const { detailOpen, detailLoading, detailVideo, openVideoDetail } = useVideoDetail(
@@ -174,6 +218,12 @@ const { prevManageCustomTagPage, nextManageCustomTagPage } = useManageTagsDialog
 async function refreshFolders() {
   try {
     await refreshFoldersData();
+    if (
+      selectedFolderId.value !== null &&
+      !folders.value.some((folder) => folder.id === selectedFolderId.value)
+    ) {
+      selectedFolderId.value = null;
+    }
   } catch (error) {
     console.error(error);
     notifyError(t("toast.loadFoldersFail"), error);
@@ -357,6 +407,354 @@ function toggleTheme() {
   uiStore.toggleTheme();
 }
 
+function downloadTextFile(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1200);
+}
+
+function sleepMs(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function readSyncCursorMap() {
+  try {
+    const raw = window.localStorage.getItem(SYNC_CURSOR_STORAGE_KEY);
+    if (!raw) return {} as Record<string, number>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const normalized: Record<string, number> = {};
+    for (const [folderId, pageRaw] of Object.entries(parsed || {})) {
+      const page = Number(pageRaw);
+      if (Number.isFinite(page) && page > 1) {
+        normalized[folderId] = Math.trunc(page);
+      }
+    }
+    return normalized;
+  } catch {
+    return {} as Record<string, number>;
+  }
+}
+
+function writeSyncCursorMap(map: Record<string, number>) {
+  try {
+    window.localStorage.setItem(SYNC_CURSOR_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+  }
+}
+
+const syncCursorMap = ref<Record<string, number>>(readSyncCursorMap());
+
+function getSyncResumePage(folderId: number) {
+  const page = Number(syncCursorMap.value[String(folderId)] || 1);
+  return Number.isFinite(page) && page > 1 ? Math.trunc(page) : 1;
+}
+
+function setSyncResumePage(folderId: number, page: number | null) {
+  const key = String(folderId);
+  if (page && Number.isFinite(page) && page > 1) {
+    syncCursorMap.value = {
+      ...syncCursorMap.value,
+      [key]: Math.trunc(page)
+    };
+  } else if (Object.prototype.hasOwnProperty.call(syncCursorMap.value, key)) {
+    const next = { ...syncCursorMap.value };
+    delete next[key];
+    syncCursorMap.value = next;
+  }
+  writeSyncCursorMap(syncCursorMap.value);
+}
+
+function markExportFinishedAt(timestamp = Date.now()) {
+  try {
+    window.localStorage.setItem(LAST_EXPORT_AT_KEY, String(timestamp));
+  } catch {
+  }
+}
+
+function maybeNotifyExportReminder() {
+  const hasData = (total.value ?? 0) > 0;
+  if (!hasData) return;
+
+  const now = Date.now();
+  const dayLabel = new Date(now).toISOString().slice(0, 10);
+  try {
+    const lastReminderDay = window.localStorage.getItem(LAST_EXPORT_REMINDER_DAY_KEY);
+    if (lastReminderDay === dayLabel) return;
+
+    const lastExportAtRaw = Number(window.localStorage.getItem(LAST_EXPORT_AT_KEY) ?? 0);
+    const lastExportAt = Number.isFinite(lastExportAtRaw) ? lastExportAtRaw : 0;
+    if (lastExportAt > 0 && now - lastExportAt < EXPORT_REMINDER_INTERVAL_MS) return;
+
+    window.localStorage.setItem(LAST_EXPORT_REMINDER_DAY_KEY, dayLabel);
+    notifyError(
+      t("toast.exportReminderTitle"),
+      t("toast.exportReminderDesc")
+    );
+  } catch {
+  }
+}
+
+async function loadSyncFolderOptions(force = false) {
+  if (syncFetchingFolders.value) return;
+  if (!force && syncFolders.value.length > 0) return;
+  syncFetchingFolders.value = true;
+  try {
+    const result = await fetchBilibiliSyncFolders();
+    syncFolders.value = result.items ?? [];
+    const available = new Set(syncFolders.value.map((item) => item.remoteId));
+    syncSelectedFolderIds.value = syncSelectedFolderIds.value.filter((id) =>
+      available.has(id)
+    );
+  } catch (error) {
+    console.error(error);
+    notifyError(t("toast.syncLoadFoldersFail"), error);
+  } finally {
+    syncFetchingFolders.value = false;
+  }
+}
+
+async function openSyncImportDialog() {
+  syncDialogOpen.value = true;
+  await loadSyncFolderOptions();
+}
+
+function toggleSyncFolder(remoteId: number, checked: boolean) {
+  if (!checked) {
+    syncSelectedFolderIds.value = syncSelectedFolderIds.value.filter((id) => id !== remoteId);
+    return;
+  }
+  syncSelectedFolderIds.value = [remoteId];
+}
+
+async function submitSyncImport() {
+  if (syncingImport.value || exportingLibrary.value) return;
+  if (syncSelectedFolderIds.value.length !== 1) {
+    notifyError(t("toast.syncPickOneFolder"));
+    return;
+  }
+
+  syncingImport.value = true;
+  try {
+    const selectedRemoteFolderId = syncSelectedFolderIds.value[0];
+    const chunkSize = Math.max(10, Math.min(30, Math.trunc(syncChunkSize.value || 20)));
+    const speedProfile = SYNC_SPEED_PROFILES[syncSpeedMode.value];
+    const maxPagesPerRound = Math.max(1, speedProfile.pagesPerRound);
+
+    let startPage = getSyncResumePage(selectedRemoteFolderId);
+    let rounds = 0;
+    let foldersSynced = 0;
+    let videosImported = 0;
+    let riskBlocked = false;
+    let hasMorePage = true;
+    let errorsOmittedTotal = 0;
+    const allErrors: Array<{ folder: string; message: string }> = [];
+
+    while (hasMorePage && !riskBlocked && rounds < SYNC_MAX_ROUNDS) {
+      rounds += 1;
+      const result = await syncFromBilibili({
+        selectedRemoteFolderIds: [selectedRemoteFolderId],
+        startPage,
+        includeTagEnrichment: syncIncludeTagEnrichment.value,
+        maxFolders: 1,
+        maxPagesPerFolder: maxPagesPerRound,
+        maxVideosPerFolder: Math.max(20, chunkSize * maxPagesPerRound)
+      });
+
+      foldersSynced = Math.max(foldersSynced, result.summary.foldersSynced);
+      videosImported += result.summary.folderLinksAdded;
+      riskBlocked = riskBlocked || Boolean(result.riskBlocked);
+      errorsOmittedTotal += Number(result.errorsOmitted ?? 0);
+      allErrors.push(...(result.errors ?? []));
+
+      const nextPage = typeof result.nextPage === "number" ? result.nextPage : null;
+      hasMorePage = Boolean(result.hasMorePage) && nextPage !== null;
+      if (!hasMorePage) {
+        setSyncResumePage(selectedRemoteFolderId, null);
+        break;
+      }
+
+      startPage = nextPage as number;
+      setSyncResumePage(selectedRemoteFolderId, startPage);
+      if (riskBlocked) break;
+      const waitMs =
+        speedProfile.delayMs +
+        Math.floor(Math.random() * speedProfile.jitterMs);
+      await sleepMs(waitMs);
+    }
+
+    if (rounds >= SYNC_MAX_ROUNDS && hasMorePage) {
+      allErrors.push({
+        folder: "__sync__",
+        message: "Sync reached safety round limit and stopped early. Re-run sync to continue."
+      });
+    }
+
+    if (videosImported > 0) {
+      selectedFolderId.value = null;
+      keyword.value = "";
+      fromDate.value = "";
+      toDate.value = "";
+      videoPage.value = 1;
+      if (!trashMode.value) {
+        await syncManagerQueryToRoute();
+      }
+    }
+
+    await refreshFoldersVideosAndTags();
+    const visibleErrors = Array.from(
+      new Set(
+        allErrors
+          .filter((item) => item.folder !== "__sync__")
+          .map((item) => `${item.folder}: ${item.message}`)
+      )
+    )
+      .slice(0, 3)
+      .join(" | ");
+    const hiddenCount = Math.max(
+      0,
+      allErrors.filter((item) => item.folder !== "__sync__").length - 3
+    );
+    const systemError = allErrors.find((item) => item.folder === "__sync__");
+    const errorDesc = [
+      visibleErrors,
+      errorsOmittedTotal > 0
+        ? t("toast.syncHiddenErrors", {
+            count: errorsOmittedTotal
+          })
+        : "",
+      hiddenCount > 0
+        ? t("toast.syncHiddenErrors", { count: hiddenCount })
+        : "",
+      systemError?.message || ""
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const fullyFailed = videosImported === 0 && allErrors.length > 0;
+    if (fullyFailed) {
+      notifyError(t("toast.syncFail"), errorDesc || t("common.requestFailed"));
+      return;
+    }
+
+    syncDialogOpen.value = false;
+    notifySuccess(
+      t("toast.syncDone"),
+      t("toast.syncSummary", {
+        folders: foldersSynced,
+        videos: videosImported
+      })
+    );
+
+    if (allErrors.length > 0) {
+      notifyError(t("toast.syncPartial"), errorDesc);
+    }
+
+    if (videosImported > 0 && getSyncResumePage(selectedRemoteFolderId) > 1) {
+      notifySuccess(
+        t("toast.syncResumeSaved"),
+        t("toast.syncResumeSavedDesc", {
+          page: getSyncResumePage(selectedRemoteFolderId)
+        })
+      );
+    }
+  } catch (error) {
+    console.error(error);
+    notifyError(t("toast.syncFail"), error);
+  } finally {
+    syncingImport.value = false;
+  }
+}
+
+async function handleExport(format: "json" | "csv") {
+  if (syncingImport.value || exportingLibrary.value || importingLibrary.value) return;
+  exportingLibrary.value = true;
+  try {
+    const payload = await exportLibrary(format);
+    if (!payload.content || payload.content.trim().length === 0) {
+      throw new Error("Export content is empty");
+    }
+    downloadTextFile(payload.filename, payload.content, payload.mimeType);
+    markExportFinishedAt();
+    notifySuccess(
+      t("toast.exportDone"),
+      t("toast.exportSummary", {
+        videos: payload.summary.videos,
+        tags: payload.summary.tags
+      })
+    );
+  } catch (error) {
+    console.error(error);
+    notifyError(t("toast.exportFail"), error);
+  } finally {
+    exportingLibrary.value = false;
+  }
+}
+
+function openImportFileDialog() {
+  if (syncingImport.value || exportingLibrary.value || importingLibrary.value) return;
+  importFileInput.value?.click();
+}
+
+function detectImportFormat(fileName: string, content: string): "json" | "csv" | null {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".csv")) return "csv";
+
+  const trimmed = content.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) return "json";
+  if (trimmed.includes(",") && trimmed.includes("\n")) return "csv";
+  return null;
+}
+
+async function handleImportFilePicked(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  if (syncingImport.value || exportingLibrary.value || importingLibrary.value) return;
+
+  importingLibrary.value = true;
+  try {
+    const content = await file.text();
+    const format = detectImportFormat(file.name, content);
+    if (!format) {
+      throw new Error("Unsupported import file type, use JSON or CSV");
+    }
+
+    const result = await importLibrary({
+      format,
+      content
+    });
+    await refreshFoldersVideosAndTags();
+    await refreshTrash();
+
+    notifySuccess(
+      t("toast.importDone"),
+      t("toast.importSummary", {
+        videos: result.summary.videosUpserted,
+        links: result.summary.folderLinksAdded,
+        tags: result.summary.tagsBound
+      })
+    );
+  } catch (error) {
+    console.error(error);
+    notifyError(t("toast.importFail"), error);
+  } finally {
+    importingLibrary.value = false;
+  }
+}
+
+const syncResumePage = computed(() => {
+  if (syncSelectedFolderIds.value.length !== 1) return 1;
+  return getSyncResumePage(syncSelectedFolderIds.value[0]);
+});
+
 function setTrashFolderSelection(id: number, checked: boolean) {
   libraryStore.setTrashFolderSelection(id, checked);
 }
@@ -440,6 +838,13 @@ watch(
   { deep: true }
 );
 
+watch(
+  () => total.value,
+  () => {
+    maybeNotifyExportReminder();
+  }
+);
+
 onMounted(async () => {
   uiStore.initFromStorage();
   if (route.name === "manager") {
@@ -448,10 +853,17 @@ onMounted(async () => {
   loading.value = true;
   try {
     await libraryStore.ensureBootstrapped();
+    if (
+      selectedFolderId.value !== null &&
+      !folders.value.some((folder) => folder.id === selectedFolderId.value)
+    ) {
+      selectedFolderId.value = null;
+    }
     if (route.name === "trash") {
       await refreshTrash();
     } else {
       await refreshVideos();
+      maybeNotifyExportReminder();
     }
     routeReady.value = true;
   } finally {
@@ -484,7 +896,14 @@ onMounted(async () => {
         :locale-toggle-text="localeToggleText"
         :is-dark="isDark"
         :progress-value="progressValue"
+        :syncing="syncingImport"
+        :exporting="exportingLibrary"
+        :importing="importingLibrary"
         @open-tags="toolsOpen = true"
+        @sync-import="openSyncImportDialog"
+        @import-file="openImportFileDialog"
+        @export-json="handleExport('json')"
+        @export-csv="handleExport('csv')"
         @toggle-trash="toggleTrashMode(!trashMode)"
         @toggle-locale="toggleLocale"
         @toggle-theme="toggleTheme"
@@ -598,6 +1017,24 @@ onMounted(async () => {
       @next-page="nextManageCustomTagPage"
     />
 
+    <SyncImportDialog
+      :open="syncDialogOpen"
+      :t="t"
+      :loading="syncingImport"
+      :fetching-folders="syncFetchingFolders"
+      :folders="syncFolders"
+      :selected-folder-ids="syncSelectedFolderIds"
+      :chunk-size="syncChunkSize"
+      :include-tag-enrichment="syncIncludeTagEnrichment"
+      :resume-page="syncResumePage"
+      @update:open="syncDialogOpen = $event"
+      @reload="loadSyncFolderOptions(true)"
+      @toggle-folder="(remoteId, checked) => toggleSyncFolder(remoteId, checked)"
+      @update:chunk-size="syncChunkSize = $event"
+      @update:include-tag-enrichment="syncIncludeTagEnrichment = $event"
+      @submit="submitSyncImport"
+    />
+
     <ConfirmActionDialog
       :open="confirmDialogOpen"
       :cancel-text="t('common.cancel')"
@@ -625,6 +1062,13 @@ onMounted(async () => {
       :loading="detailLoading"
       :detail-video="detailVideo"
       @update:open="detailOpen = $event"
+    />
+    <input
+      ref="importFileInput"
+      class="sr-only"
+      type="file"
+      accept=".json,.csv,application/json,text/csv"
+      @change="handleImportFilePicked"
     />
   </main>
 </template>

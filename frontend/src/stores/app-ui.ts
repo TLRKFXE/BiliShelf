@@ -6,6 +6,7 @@ type ThemeMode = "light" | "dark";
 
 const THEME_STORAGE_KEY = "bili-like-theme";
 const LOCALE_STORAGE_KEY = "bili-like-locale";
+const EXT_LOCALE_STORAGE_KEY = "bili_like_locale";
 
 function resolveInitialLocale(): Locale {
   const saved = window.localStorage.getItem(LOCALE_STORAGE_KEY);
@@ -30,7 +31,16 @@ export const useAppUiStore = defineStore("app-ui", () => {
   function setLocale(next: Locale, persist = true) {
     locale.value = next;
     document.documentElement.lang = next;
-    if (persist) window.localStorage.setItem(LOCALE_STORAGE_KEY, next);
+    if (persist) {
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, next);
+      try {
+        const runtimeChrome = (globalThis as { chrome?: { storage?: { local?: { set: (items: Record<string, string>) => Promise<void> | void } } } }).chrome;
+        if (runtimeChrome?.storage?.local) {
+          void runtimeChrome.storage.local.set({ [EXT_LOCALE_STORAGE_KEY]: next });
+        }
+      } catch {
+      }
+    }
   }
 
   function toggleLocale() {

@@ -7,3 +7,4 @@ backend/data/
 extension/.output/
 extension/.wxt/
 extension/release/packages/
+extension/public/manager/

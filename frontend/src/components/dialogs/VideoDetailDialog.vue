@@ -9,6 +9,7 @@ import {
 import type { Video } from "@/types";
 
 type DetailVideo = Video & { folders?: Array<{ id: number; name: string }> };
+const BILI_ORIGIN = "https://www.bilibili.com";
 
 const props = defineProps<{
   open: boolean;
@@ -20,6 +21,35 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:open": [value: boolean];
 }>();
+
+function resolveVideoUrl(video: DetailVideo | null) {
+  if (!video) return "";
+  const raw = (video.bvidUrl || "").trim();
+  const fallbackBvid = (video.bvid || "").trim();
+  const fallback = fallbackBvid ? `${BILI_ORIGIN}/video/${fallbackBvid}/` : "";
+
+  if (!raw) return fallback;
+
+  const appSchemeMatch = raw.match(/^bilibili:\/\/video\/([^/?#]+)/i);
+  if (appSchemeMatch) {
+    const token = (appSchemeMatch[1] || "").trim();
+    if (/^BV[0-9A-Za-z]+$/i.test(token)) return `${BILI_ORIGIN}/video/${token}/`;
+    if (fallback) return fallback;
+    if (/^\d+$/.test(token)) return `${BILI_ORIGIN}/video/av${token}/`;
+    return `${BILI_ORIGIN}/video/${token}/`;
+  }
+
+  if (raw.startsWith("//")) return `https:${raw}`;
+  if (raw.startsWith("/video/")) return `${BILI_ORIGIN}${raw}`;
+  if (/^video\//i.test(raw)) return `${BILI_ORIGIN}/${raw}`;
+  if (/^BV[0-9A-Za-z]+$/i.test(raw)) return `${BILI_ORIGIN}/video/${raw}/`;
+  if (/^av\d+$/i.test(raw)) return `${BILI_ORIGIN}/video/${raw}/`;
+  if (/^\d+$/.test(raw)) return fallback || `${BILI_ORIGIN}/video/av${raw}/`;
+  if (/^http:\/\//i.test(raw)) return raw.replace(/^http:\/\//i, "https://");
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  return fallback;
+}
 </script>
 
 <template>
@@ -63,7 +93,7 @@ const emit = defineEmits<{
         </p>
         <p>
           <a
-            :href="detailVideo.bvidUrl"
+            :href="resolveVideoUrl(detailVideo)"
             target="_blank"
             rel="noreferrer"
             class="text-primary underline"

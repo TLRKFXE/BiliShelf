@@ -6,6 +6,7 @@ export function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
       description TEXT,
+      remote_media_id INTEGER UNIQUE,
       sort_order INTEGER NOT NULL DEFAULT 0,
       deleted_at INTEGER,
       created_at INTEGER NOT NULL,
@@ -57,6 +58,7 @@ export function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_folder_items_folder_id ON folder_items(folder_id);
     CREATE INDEX IF NOT EXISTS idx_folder_items_video_id ON folder_items(video_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_remote_media_unique ON folders(remote_media_id);
     CREATE INDEX IF NOT EXISTS idx_videos_partition ON videos(partition);
     CREATE INDEX IF NOT EXISTS idx_video_tags_video_id ON video_tags(video_id);
     CREATE INDEX IF NOT EXISTS idx_video_tags_tag_id ON video_tags(tag_id);
@@ -105,6 +107,11 @@ export function initDb() {
   if (!folderColumns.some((column) => column.name === "deleted_at")) {
     sqlite.exec("ALTER TABLE folders ADD COLUMN deleted_at INTEGER");
   }
+
+  if (!folderColumns.some((column) => column.name === "remote_media_id")) {
+    sqlite.exec("ALTER TABLE folders ADD COLUMN remote_media_id INTEGER");
+  }
+  sqlite.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_remote_media_unique ON folders(remote_media_id)");
 
   const videoColumns = sqlite.prepare("PRAGMA table_info(videos)").all() as Array<{ name: string }>;
   if (!videoColumns.some((column) => column.name === "deleted_at")) {

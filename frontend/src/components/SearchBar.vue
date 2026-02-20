@@ -58,14 +58,18 @@ const SEARCH_TEXT: Record<
   Record<Locale, string>
 > = {
   searchPlaceholder: {
-    "zh-CN": "例如：UP主:童子军大王 简介:好厉害 关键字",
-    "en-US": "Example: uploader:CreatorName description:tips keyword",
+    "zh-CN": "默认检索标题/标签；可追加tag UP主:XXX 简介:XXX；",
+    "en-US":
+      "Searches title/tags by default, then append uploader:XXX description:XXX",
   },
   search: { "zh-CN": "搜索", "en-US": "Search" },
   reset: { "zh-CN": "清空", "en-US": "Reset" },
   fieldTokens: { "zh-CN": "字段标签", "en-US": "Field Tokens" },
   customTags: { "zh-CN": "自定义标签", "en-US": "Custom Tags" },
-  emptyCustomTag: { "zh-CN": "暂无自定义标签。", "en-US": "No custom tags yet." },
+  emptyCustomTag: {
+    "zh-CN": "暂无自定义标签。",
+    "en-US": "No custom tags yet.",
+  },
   title: { "zh-CN": "标题", "en-US": "Title" },
   uploader: { "zh-CN": "UP主", "en-US": "Uploader" },
   description: { "zh-CN": "简介", "en-US": "Description" },
@@ -95,7 +99,9 @@ const fieldTokenDefs = computed<
   },
 ]);
 
-const customTags = computed(() => props.tags.filter((tag) => tag.type === "custom"));
+const customTags = computed(() =>
+  props.tags.filter((tag) => tag.type === "custom")
+);
 const customTagPage = ref(1);
 const customTagViewportRef = ref<HTMLElement | null>(null);
 const customTagViewportWidth = ref(0);
@@ -202,7 +208,10 @@ function buildCustomTagTokenRegex(name: string) {
   const aliases = FIELD_SNIPPET_ALIASES.customTag
     .map((snippet) => escapeRegExp(snippet))
     .join("|");
-  return new RegExp(`(?:^|\\s)(?:${aliases})\\s*${escapedName}(?=\\s|$)`, "giu");
+  return new RegExp(
+    `(?:^|\\s)(?:${aliases})\\s*${escapedName}(?=\\s|$)`,
+    "giu"
+  );
 }
 
 function toggleCustomTag(name: string) {
@@ -258,7 +267,9 @@ function hasCustomTagToken(name: string) {
     </div>
 
     <div class="mt-5 space-y-2.5">
-      <p class="text-xs font-medium text-muted-foreground">{{ t("fieldTokens") }}</p>
+      <p class="text-xs font-medium text-muted-foreground">
+        {{ t("fieldTokens") }}
+      </p>
       <div class="flex flex-wrap gap-2">
         <button
           v-for="field in fieldTokenDefs"
@@ -274,8 +285,12 @@ function hasCustomTagToken(name: string) {
     </div>
 
     <div class="mt-5 space-y-2.5">
-      <p class="text-xs font-medium text-muted-foreground">{{ t("customTags") }}</p>
-      <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+      <p class="text-xs font-medium text-muted-foreground">
+        {{ t("customTags") }}
+      </p>
+      <div
+        class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between"
+      >
         <div ref="customTagViewportRef" class="min-w-0 flex-1 overflow-hidden">
           <div class="flex flex-nowrap items-center gap-2">
             <button
@@ -285,13 +300,17 @@ function hasCustomTagToken(name: string) {
               class="shrink-0"
               @click="toggleCustomTag(tag.name)"
             >
-              <Badge :variant="hasCustomTagToken(tag.name) ? 'default' : 'secondary'">
+              <Badge
+                :variant="hasCustomTagToken(tag.name) ? 'default' : 'secondary'"
+              >
                 {{ tag.name }}
               </Badge>
             </button>
-            <span v-if="customTags.length === 0" class="text-xs text-muted-foreground">{{
-              t("emptyCustomTag")
-            }}</span>
+            <span
+              v-if="customTags.length === 0"
+              class="text-xs text-muted-foreground"
+              >{{ t("emptyCustomTag") }}</span
+            >
           </div>
         </div>
 
@@ -308,7 +327,8 @@ function hasCustomTagToken(name: string) {
             {{ t("prev") }}
           </Button>
           <span class="text-xs text-muted-foreground"
-            >{{ t("page") }} {{ customTagPage }} / {{ customTagTotalPages }}</span
+            >{{ t("page") }} {{ customTagPage }} /
+            {{ customTagTotalPages }}</span
           >
           <Button
             size="sm"

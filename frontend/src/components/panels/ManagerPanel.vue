@@ -13,6 +13,7 @@ import {
 import type { Locale } from "@/stores/app-ui";
 import type { Folder, Tag, Video } from "@/types";
 import { CalendarDays } from "lucide-vue-next";
+import { ref } from "vue";
 
 type SearchFieldToken =
   | "title"
@@ -21,6 +22,7 @@ type SearchFieldToken =
   | "systemTag"
   | "customTag";
 type QuickAction = "detail" | "delete";
+type DateField = "from" | "to";
 
 const props = defineProps<{
   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -72,6 +74,9 @@ const emit = defineEmits<{
   batchDelete: [];
 }>();
 
+const fromDatePickerRef = ref<HTMLInputElement | null>(null);
+const toDatePickerRef = ref<HTMLInputElement | null>(null);
+
 function formatDateForDisplay(value: string) {
   return value ? value.replace(/-/g, "/") : "";
 }
@@ -92,6 +97,27 @@ function handleFromDateInput(value: string | number) {
 
 function handleToDateInput(value: string | number) {
   emit("update:toDate", normalizeDateFromInput(String(value ?? "")));
+}
+
+function openDatePicker(field: DateField) {
+  const picker = field === "from" ? fromDatePickerRef.value : toDatePickerRef.value;
+  if (!picker) return;
+  if (typeof picker.showPicker === "function") {
+    picker.showPicker();
+    return;
+  }
+  picker.focus();
+  picker.click();
+}
+
+function handleNativeDateChange(field: DateField, event: Event) {
+  const target = event.target as HTMLInputElement | null;
+  const value = target?.value ?? "";
+  if (field === "from") {
+    emit("update:fromDate", value);
+    return;
+  }
+  emit("update:toDate", value);
 }
 </script>
 
@@ -118,9 +144,21 @@ function handleToDateInput(value: string | number) {
             class="date-input h-10 min-w-[190px] rounded-lg border-muted-foreground/20 bg-muted/40 pr-10 focus-visible:border-primary/55 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
             @update:model-value="handleFromDateInput(String($event))"
           />
-          <CalendarDays
-            class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          <input
+            ref="fromDatePickerRef"
+            :value="fromDate"
+            type="date"
+            tabindex="-1"
+            class="pointer-events-none absolute h-0 w-0 opacity-0"
+            @change="handleNativeDateChange('from', $event)"
           />
+          <button
+            type="button"
+            class="absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+            @click="openDatePicker('from')"
+          >
+            <CalendarDays class="h-4 w-4" />
+          </button>
         </div>
         <span class="px-1 text-sm text-muted-foreground">{{ t("search.to") }}</span>
         <div class="relative min-w-[190px]">
@@ -132,9 +170,21 @@ function handleToDateInput(value: string | number) {
             class="date-input h-10 min-w-[190px] rounded-lg border-muted-foreground/20 bg-muted/40 pr-10 focus-visible:border-primary/55 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
             @update:model-value="handleToDateInput(String($event))"
           />
-          <CalendarDays
-            class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          <input
+            ref="toDatePickerRef"
+            :value="toDate"
+            type="date"
+            tabindex="-1"
+            class="pointer-events-none absolute h-0 w-0 opacity-0"
+            @change="handleNativeDateChange('to', $event)"
           />
+          <button
+            type="button"
+            class="absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+            @click="openDatePicker('to')"
+          >
+            <CalendarDays class="h-4 w-4" />
+          </button>
         </div>
         <Button size="sm" @click="emit('applyDateFilter')"
           >{{ t("search.applyDateFilter") }}</Button

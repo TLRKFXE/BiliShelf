@@ -6,13 +6,15 @@ export const folders = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     name: text("name").notNull(),
     description: text("description"),
+    remoteMediaId: integer("remote_media_id"),
     sortOrder: integer("sort_order").notNull().default(0),
     deletedAt: integer("deleted_at", { mode: "number" }),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     updatedAt: integer("updated_at", { mode: "number" }).notNull()
   },
   (table) => ({
-    folderNameUnique: uniqueIndex("folders_name_unique").on(table.name)
+    folderNameUnique: uniqueIndex("folders_name_unique").on(table.name),
+    folderRemoteMediaUnique: uniqueIndex("folders_remote_media_unique").on(table.remoteMediaId)
   })
 );
 
