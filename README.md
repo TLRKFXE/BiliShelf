@@ -18,7 +18,7 @@
 - 收藏夹的新建、删除、排序、检索，以及自定义简介
 - 管理自定义标签
 - 回收站功能
-- 同步 B 站视频（暂未完善）
+- 同步 B 站视频（暂未完善，使用体验可能不佳，详情见最后说明）
 - 导出/导入备份，支持 JSON/CSV 格式
 - 视频检索：默认检索视频的标题和 tag，也可以通过组合字段 tag 使用：检索 UP 主、简介、用户的自定义 tag
 - 根据日期范围检索
@@ -71,19 +71,18 @@
 
 ```text
 bili-like/
-├─ backend/         # API 服务（Fastify + Prisma）
+├─ backend/         # API 服务（Fastify + Drizzle ORM + SQLite）
 ├─ frontend/        # 管理中心前端（Vue 3 + Vite）
 ├─ extension/       # 浏览器插件（WXT，多浏览器构建）
-├─ docs/            # 使用与说明文档
 └─ README.md
 ```
 
 ## 技术栈
 
-- 前端：Vue 3、TypeScript、Vite、Pinia、Vue Router、shadcn-vue、Inspira UI
-- 后端：Node.js、Fastify、Prisma、SQLite
-- 插件：WXT（Manifest V3 / Firefox）
-- 构建：pnpm workspace
+- 前端（`frontend/`）：Vue 3、TypeScript、Vite、Pinia、Vue Router、Tailwind CSS、shadcn-vue、Inspira UI、vue-toastification
+- 后端（`backend/`）：Node.js、Fastify、Drizzle ORM、better-sqlite3（SQLite）、Zod、drizzle-kit
+- 插件（`extension/`）：WXT（Chrome/Edge MV3 + Firefox MV2 构建）、Background + IndexedDB 本地数据层、Content/Popup（TS/JS）
+- 构建与工具链：pnpm 脚本编排、tsup、tsx、Vite、WXT
 
 ## 声明
 

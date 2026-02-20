@@ -18,7 +18,7 @@ BiliShelf is a browser extension that replaces the default Bilibili favorite-man
 - Folder create/delete/sort/search and custom folder descriptions
 - Custom tag management
 - Recycle bin workflow
-- Bilibili sync import (still improving)
+- Bilibili sync import (still improving, the user experience may be poor, see the final note for details)
 - Backup export/import in JSON and CSV
 - Video search: default targets title + tags; fielded search supports uploader, description, and custom tags
 - Date-range search
@@ -71,19 +71,18 @@ BiliShelf is a browser extension that replaces the default Bilibili favorite-man
 
 ```text
 bili-like/
-├─ backend/         # API service (Fastify + Prisma)
+├─ backend/         # API service (Fastify + Drizzle ORM + SQLite)
 ├─ frontend/        # Manager frontend (Vue 3 + Vite)
 ├─ extension/       # Browser extension (WXT, multi-browser)
-├─ docs/            # Documentation
 └─ README.md
 ```
 
 ## Tech Stack
 
-- Frontend: Vue 3, TypeScript, Vite, Pinia, Vue Router, shadcn-vue, Inspira UI
-- Backend: Node.js, Fastify, Prisma, SQLite
-- Extension: WXT (Manifest V3 / Firefox)
-- Build tooling: pnpm workspace
+- Frontend (`frontend/`): Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind CSS, shadcn-vue, Inspira UI, vue-toastification
+- Backend (`backend/`): Node.js, Fastify, Drizzle ORM, better-sqlite3 (SQLite), Zod, drizzle-kit
+- Extension (`extension/`): WXT (Chrome/Edge MV3 + Firefox MV2 builds), Background + IndexedDB local data layer, Content/Popup in TS/JS
+- Tooling: pnpm script orchestration, tsup, tsx, Vite, WXT
 
 ## Notice
 
