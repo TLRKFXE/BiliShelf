@@ -10,6 +10,7 @@
 ---
 
 一个替代 bilibili 收藏夹管理方案的浏览器插件，将视频信息收藏到本地，解决站内收藏夹数量限制和检索体验问题，支持多收藏夹和自定义标签的管理，以及全文检索、特殊关键词检索和批量管理。
+<img width="2460" height="1275" alt="image" src="https://github.com/user-attachments/assets/ff435a0d-3777-48ea-bf60-7217966d4c70" />
 
 ## 功能说明
 
