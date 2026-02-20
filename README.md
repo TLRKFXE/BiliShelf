@@ -10,6 +10,7 @@
 ---
 
 一个替代 bilibili 收藏夹管理方案的浏览器插件，将视频信息收藏到本地，解决站内收藏夹数量限制和检索体验问题，支持多收藏夹和自定义标签的管理，以及全文检索、特殊关键词检索和批量管理。
+请一定完整阅读所有说明，包括最后的声明。
 
 <img width="2460" height="1275" alt="image" src="https://github.com/user-attachments/assets/ff435a0d-3777-48ea-bf60-7217966d4c70" />
 
@@ -86,10 +87,11 @@ bili-like/
 - 插件（`extension/`）：WXT（Chrome/Edge MV3 + Firefox MV2 构建）、Background + IndexedDB 本地数据层、Content/Popup（TS/JS）
 - 构建与工具链：pnpm 脚本编排、tsup、tsx、Vite、WXT
 
-## 声明
+## ⚠️ 声明
 
 - 纯本地存储，不上传个人收藏数据，隐私风险低。
 - 目前同步功能仍受 bilibili 服务端风控影响，再加上个人能力有限，此功能在部分场景下可能不稳定，请谅解。
+  [!IMPORTANT]
 - **_若出现 `412` 风控报错，或 B 站站内收藏夹页面打开后获取不到视频，请关闭并重新打开插件后再试，通常可恢复。_**
 - 暂未接入云同步，使用时请务必定期导出备份。
 - 如有问题请及时提交 `Issue`，也欢迎贡献 `PR`。
