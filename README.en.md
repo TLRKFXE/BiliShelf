@@ -92,7 +92,6 @@ bili-like/
 
 - Local-first architecture: data stays on your machine by default.
 - Sync import is still affected by Bilibili anti-abuse controls; reliability may vary in some scenarios.
-  [!IMPORTANT]
 - **_If you hit a `412` anti-abuse error, or the Bilibili favorites page returns no videos, close and reopen the extension, then try again._**
 - Cloud sync is not integrated yet, so regular backups are strongly recommended.
 - Please open an `Issue` for bugs and feel free to contribute a `PR`.
