@@ -10,7 +10,8 @@ Have you ever felt blocked by Bilibili's favorites limit or poor search experien
 ---
 
 BiliShelf is a browser extension that replaces the default Bilibili favorite-management workflow. It stores video metadata locally to bypass collection limits and improve search quality, with multi-folder organization, custom tags, full-text/field-aware lookup, and batch operations.
-Please make sure to read all instructions completely, including the final statement.
+
+- Please make sure to read all instructions completely, including the final statement.
 
 <img width="2460" height="1275" alt="image" src="https://github.com/user-attachments/assets/ff435a0d-3777-48ea-bf60-7217966d4c70" />
 
