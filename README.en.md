@@ -20,7 +20,7 @@ BiliShelf is a browser extension that replaces the default Bilibili favorite-man
 - Folder create/delete/sort/search and custom folder descriptions
 - Custom tag management
 - Recycle bin workflow
-- Bilibili sync import (**<font color="red">still improving, the user experience may be poor, please use with caution, see the final note for details</font>**)
+- Bilibili sync import (**==still improving, the user experience may be poor, please use with caution, see the final note for details==**)
 - Backup export/import in JSON and CSV
 - Video search: default targets title + tags; fielded search supports uploader, description, and custom tags
 - Date-range search
@@ -90,7 +90,7 @@ bili-like/
 
 - Local-first architecture: data stays on your machine by default.
 - Sync import is still affected by Bilibili anti-abuse controls; reliability may vary in some scenarios.
-- **<font color="red">If you hit a `412` anti-abuse error, or the Bilibili favorites page returns no videos, close and reopen the extension, then try again.</font>**
+- **==If you hit a `412` anti-abuse error, or the Bilibili favorites page returns no videos, close and reopen the extension, then try again.==**
 - Cloud sync is not integrated yet, so regular backups are strongly recommended.
 - Please open an `Issue` for bugs and feel free to contribute a `PR`.
 - Extension-store publishing is planned for major browser marketplaces.
