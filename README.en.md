@@ -7,6 +7,8 @@
 Have you ever felt blocked by Bilibili's favorites limit or poor search experience? I had the same pain: failing to find previously watched videos from memory keywords, then being forced to use workarounds when favorites hit the limit—web bookmarks, browser collections, screenshots, or even deleting old favorites.
 </p>
 
+---
+
 BiliShelf is a browser extension that replaces the default Bilibili favorite-management workflow. It stores video metadata locally to bypass collection limits and improve search quality, with multi-folder organization, custom tags, full-text/field-aware lookup, and batch operations.
 
 ## Features
@@ -28,11 +30,12 @@ BiliShelf is a browser extension that replaces the default Bilibili favorite-man
 ### Method 1: End users (install-and-use)
 
 1. Go to repository `Releases` and download the package for your browser.
-2. Unzip the package (or keep the single-file installer as-is if provided).
+2. Unzip the package.
 3. Open your browser extension page and install:
    - Chromium browsers (Chrome / Edge / Brave / Arc, etc.): enable Developer Mode, then `Load unpacked`.
    - Firefox: install via `about:debugging` or `Install Add-on From File`.
-4. Pin the extension icon, open popup, then open Manager to start saving/searching locally.
+4. Open a Bilibili video page and use the floating panel to save videos locally.
+5. Open manager page from extension popup for search, batch operations, backup, etc.
 
 ### Method 2: Contributors (dev/build)
 
