@@ -58,6 +58,10 @@ pnpm ext:release:prepare
    - `bilishelf-extension-0.1.0-firefox.zip`
    - `SHA256SUMS.txt`
 
+### 使用提示
+
+- 若出现 `412` 风控报错，或 B 站站内收藏夹页面打开后获取不到视频，请关闭并重新打开插件后再试，通常可恢复。
+
 ### 打包流程说明
 
 在 WXT 构建插件前，会先执行：
@@ -134,6 +138,10 @@ pnpm ext:release:prepare
    - `bilishelf-extension-0.1.0-edge.zip`
    - `bilishelf-extension-0.1.0-firefox.zip`
    - `SHA256SUMS.txt`
+
+### Usage Tip
+
+- If you hit a `412` anti-abuse error, or the Bilibili favorites page returns no videos, close and reopen the extension, then try again.
 
 ### Packaging Pipeline
 
