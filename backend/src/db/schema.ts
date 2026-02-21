@@ -26,6 +26,7 @@ export const videos = sqliteTable(
     title: text("title").notNull(),
     coverUrl: text("cover_url").notNull(),
     uploader: text("uploader").notNull(),
+    uploaderSpaceUrl: text("uploader_space_url"),
     description: text("description").notNull(),
     partition: text("partition").notNull(),
     publishAt: integer("publish_at", { mode: "number" }),

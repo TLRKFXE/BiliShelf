@@ -61,6 +61,8 @@ type BiliFolderListData = {
 
 type BiliMediaUpper = {
   name?: string;
+  mid?: number;
+  space?: string;
 };
 
 type BiliMediaTag = {
@@ -101,6 +103,7 @@ type ImportVideoRow = {
   title: string;
   coverUrl: string;
   uploader: string;
+  uploaderSpaceUrl: string | null;
   description: string;
   publishAt: number | null;
   bvidUrl: string;
@@ -203,12 +206,13 @@ function parseImportRows(format: "json" | "csv", content: string) {
       title,
       coverUrl: normalizeCoverUrl(row.coverUrl),
       uploader: normalizeText(row.uploader) || "Unknown uploader",
+      uploaderSpaceUrl: normalizeBiliSpaceUrl(row.uploaderSpaceUrl),
       description: normalizeText(row.description),
-      publishAt: row.publishAt ?? null,
+      publishAt: parseTimestampInput(row.publishAt),
       bvidUrl,
       isInvalid: Boolean(row.isInvalid),
       partition: normalizeText(row.partition) || "uncategorized",
-      addedAt: Number.isFinite(row.addedAt) && (row.addedAt ?? 0) > 0 ? Math.trunc(row.addedAt as number) : now,
+      addedAt: parseTimestampInput(row.addedAt) ?? now,
       folders: uniqueTextList((row.folders ?? []) as unknown[]),
       customTags: uniqueTextList((row.customTags ?? []) as unknown[]),
       systemTags: uniqueTextList((row.systemTags ?? []) as unknown[])
@@ -254,10 +258,10 @@ function parseImportRows(format: "json" | "csv", content: string) {
       if (!bucket.includes(folderName)) bucket.push(folderName);
       foldersByVideoId.set(key, bucket);
 
-      const addedAt = Number(item.addedAt ?? 0);
-      if (Number.isFinite(addedAt) && addedAt > 0) {
+      const addedAt = parseTimestampInput(item.addedAt ?? item.addedAtText);
+      if (addedAt && addedAt > 0) {
         const prev = addedAtByVideoId.get(key) ?? 0;
-        if (addedAt > prev) addedAtByVideoId.set(key, Math.trunc(addedAt));
+        if (addedAt > prev) addedAtByVideoId.set(key, addedAt);
       }
     }
 
@@ -281,17 +285,27 @@ function parseImportRows(format: "json" | "csv", content: string) {
     for (const video of jsonVideos) {
       const videoId = Number(video.id);
       const key = Number.isFinite(videoId) && videoId > 0 ? Math.trunc(videoId) : -1;
+      const favoriteAt =
+        addedAtByVideoId.get(key) ??
+        parseTimestampInput(
+          video.favoriteAt ??
+            video.favoriteAtText ??
+            video.addedAt ??
+            video.addedAtText
+        ) ??
+        now;
       pushRow({
         bvid: normalizeText(video.bvid),
         title: normalizeText(video.title),
         coverUrl: normalizeText(video.coverUrl),
         uploader: normalizeText(video.uploader),
+        uploaderSpaceUrl: normalizeText(video.uploaderSpaceUrl || video.uploaderUrl),
         description: normalizeText(video.description),
-        publishAt: Number.isFinite(Number(video.publishAt)) ? Math.trunc(Number(video.publishAt)) : null,
+        publishAt: parseTimestampInput(video.publishAt ?? video.publishAtText),
         bvidUrl: normalizeText(video.bvidUrl),
         isInvalid: Boolean(video.isInvalid),
         partition: normalizeText(video.partition) || "uncategorized",
-        addedAt: addedAtByVideoId.get(key) ?? now,
+        addedAt: favoriteAt,
         folders: foldersByVideoId.get(key) ?? ["Imported"],
         customTags: customTagsByVideoId.get(key) ?? [],
         systemTags: systemTagsByVideoId.get(key) ?? []
@@ -321,16 +335,19 @@ function parseImportRows(format: "json" | "csv", content: string) {
       title: pick(row, "title"),
       coverUrl: pick(row, "coverUrl"),
       uploader: pick(row, "uploader"),
+      uploaderSpaceUrl: pick(row, "uploaderSpaceUrl"),
       description: pick(row, "description"),
-      publishAt: Number.isFinite(Number(pick(row, "publishAt")))
-        ? Math.trunc(Number(pick(row, "publishAt")))
-        : null,
+      publishAt: parseTimestampInput(pick(row, "publishAtMs") || pick(row, "publishAt")),
       bvidUrl: pick(row, "bvidUrl"),
       isInvalid: pick(row, "isInvalid") === "1",
       partition: pick(row, "partition"),
-      addedAt: Number.isFinite(Number(pick(row, "addedAt")))
-        ? Math.trunc(Number(pick(row, "addedAt")))
-        : now,
+      addedAt:
+        parseTimestampInput(
+          pick(row, "favoriteAtMs") ||
+            pick(row, "favoriteAt") ||
+            pick(row, "addedAtMs") ||
+            pick(row, "addedAt")
+        ) ?? now,
       folders: parsePipeList(pick(row, "folders")),
       customTags: parsePipeList(pick(row, "customTags")),
       systemTags: parsePipeList(pick(row, "systemTags"))
@@ -392,6 +409,55 @@ function normalizeBiliVideoUrl(input: unknown, bvidFallback?: unknown) {
   if (/^https?:\/\//i.test(value)) return value;
 
   return fallback || value;
+}
+
+function normalizeBiliSpaceUrl(input: unknown, midFallback?: unknown) {
+  const value = normalizeText(input);
+  const fallbackMid = normalizeText(midFallback);
+  const fallback = /^\d+$/.test(fallbackMid) ? `${BILI_ORIGIN}/space/${fallbackMid}` : "";
+
+  if (!value) return fallback || null;
+  if (/^\d+$/.test(value)) return `${BILI_ORIGIN}/space/${value}`;
+  if (value.startsWith("//")) return `https:${value}`;
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return fallback || null;
+    if (parsed.protocol === "http:") parsed.protocol = "https:";
+    return parsed.toString();
+  } catch {
+    return fallback || null;
+  }
+}
+
+function parseTimestampInput(value: unknown) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 1e12 ? Math.trunc(value) : Math.trunc(value * 1000);
+  }
+
+  const text = normalizeText(value);
+  if (!text) return null;
+
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) {
+    return numeric > 1e12 ? Math.trunc(numeric) : Math.trunc(numeric * 1000);
+  }
+
+  const normalizedDateText = text.includes(" ") && !text.includes("T") ? text.replace(" ", "T") : text;
+  const parsed = Date.parse(normalizedDateText);
+  if (Number.isFinite(parsed)) return Math.trunc(parsed);
+  return null;
+}
+
+function formatTimestamp(value: number | null | undefined) {
+  if (!Number.isFinite(value ?? NaN) || !value) return "";
+  const date = new Date(Number(value));
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (num: number) => String(num).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function toMillis(value: unknown, fallback: number) {
@@ -717,6 +783,7 @@ async function upsertVideoFromRemote(media: BiliMedia) {
   const title = normalizeText(media.title) || bvid;
   const bvidUrl = normalizeBiliVideoUrl(media.link, bvid);
   const uploader = normalizeText(media.upper?.name) || "Unknown uploader";
+  const uploaderSpaceUrl = normalizeBiliSpaceUrl(media.upper?.space, media.upper?.mid);
   const description = normalizeText(media.intro);
   const coverUrl = normalizeCoverUrl(media.cover);
   const publishAt = toMillis(media.pubtime ?? media.ctime, now);
@@ -729,6 +796,7 @@ async function upsertVideoFromRemote(media: BiliMedia) {
         title,
         coverUrl,
         uploader,
+        uploaderSpaceUrl,
         description,
         partition,
         publishAt,
@@ -750,6 +818,7 @@ async function upsertVideoFromRemote(media: BiliMedia) {
       title,
       coverUrl,
       uploader,
+      uploaderSpaceUrl,
       description,
       partition,
       publishAt,
@@ -1091,6 +1160,7 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
           title: row.title,
           coverUrl: normalizeCoverUrl(row.coverUrl),
           uploader: row.uploader || "Unknown uploader",
+          uploaderSpaceUrl: normalizeBiliSpaceUrl(row.uploaderSpaceUrl),
           description: row.description,
           partition: row.partition || "uncategorized",
           publishAt: row.publishAt,
@@ -1196,18 +1266,34 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
     const folderItemRows = db.select().from(folderItems).all();
     const tagRows = db.select().from(tags).all();
     const videoTagRows = db.select().from(videoTags).all();
+    const latestAddedAtByVideo = new Map<number, number>();
+    for (const relation of folderItemRows) {
+      const last = latestAddedAtByVideo.get(relation.videoId) ?? 0;
+      if (relation.addedAt > last) latestAddedAtByVideo.set(relation.videoId, relation.addedAt);
+    }
 
     if (query.format === "json") {
+      const exportVideos = videoRows.map((video) => ({
+        ...video,
+        publishAtText: formatTimestamp(video.publishAt),
+        favoriteAt: latestAddedAtByVideo.get(video.id) ?? null,
+        favoriteAtText: formatTimestamp(latestAddedAtByVideo.get(video.id) ?? null)
+      }));
+      const exportFolderItems = folderItemRows.map((item) => ({
+        ...item,
+        addedAtText: formatTimestamp(item.addedAt)
+      }));
       const content = JSON.stringify(
         {
           meta: {
             version: "v1",
             exportedAt: now,
+            exportedAtText: formatTimestamp(now),
             source: "bilishelf"
           },
           folders: folderRows,
-          videos: videoRows,
-          folderItems: folderItemRows,
+          videos: exportVideos,
+          folderItems: exportFolderItems,
           tags: tagRows,
           videoTags: videoTagRows
         },
@@ -1231,7 +1317,6 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
     const folderMap = new Map(folderRows.map((row) => [row.id, row.name]));
     const tagMap = new Map(tagRows.map((row) => [row.id, row]));
     const folderNamesByVideo = new Map<number, string[]>();
-    const latestAddedAtByVideo = new Map<number, number>();
     for (const relation of folderItemRows) {
       const bucket = folderNamesByVideo.get(relation.videoId) ?? [];
       const folderName = folderMap.get(relation.folderId);
@@ -1258,12 +1343,17 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
       "bvid",
       "title",
       "uploader",
+      "uploaderSpaceUrl",
       "description",
       "coverUrl",
       "bvidUrl",
       "partition",
       "publishAt",
+      "publishAtMs",
+      "favoriteAt",
+      "favoriteAtMs",
       "addedAt",
+      "addedAtMs",
       "folders",
       "customTags",
       "systemTags",
@@ -1273,16 +1363,24 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
 
     const lines = [header.join(",")];
     for (const video of videoRows) {
+      const favoriteAtMs = latestAddedAtByVideo.get(video.id) ?? "";
+      const addedAtMs = favoriteAtMs;
+      const publishAtMs = video.publishAt ?? "";
       const row = [
         video.bvid,
         video.title,
         video.uploader,
+        video.uploaderSpaceUrl ?? "",
         video.description,
         video.coverUrl,
         video.bvidUrl,
         video.partition,
-        video.publishAt ?? "",
-        latestAddedAtByVideo.get(video.id) ?? "",
+        formatTimestamp(video.publishAt),
+        publishAtMs,
+        formatTimestamp(typeof favoriteAtMs === "number" ? favoriteAtMs : null),
+        favoriteAtMs,
+        formatTimestamp(typeof favoriteAtMs === "number" ? favoriteAtMs : null),
+        addedAtMs,
         (folderNamesByVideo.get(video.id) ?? []).join("|"),
         (customTagsByVideo.get(video.id) ?? []).join("|"),
         (systemTagsByVideo.get(video.id) ?? []).join("|"),

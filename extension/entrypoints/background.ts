@@ -15,6 +15,7 @@ type VideoRecord = {
   title: string;
   coverUrl: string;
   uploader: string;
+  uploaderSpaceUrl: string | null;
   description: string;
   publishAt: number | null;
   bvidUrl: string;
@@ -224,7 +225,12 @@ async function readState() {
               ? null
               : toInt(folder.remoteMediaId)
         })),
-        videos: raw.videos ?? [],
+        videos: (raw.videos ?? []).map((video) => ({
+          ...video,
+          uploaderSpaceUrl: normalizeBiliSpaceUrl(
+            (video as Partial<VideoRecord>).uploaderSpaceUrl
+          )
+        })),
         folderItems: raw.folderItems ?? [],
         tags: raw.tags ?? [],
         videoTags: raw.videoTags ?? []
@@ -510,6 +516,53 @@ function normalizeBiliVideoUrl(input: unknown, bvidFallback?: unknown) {
   return fallback || value;
 }
 
+function normalizeBiliSpaceUrl(input: unknown, midFallback?: unknown) {
+  const value = normalizeText(input);
+  const fallbackMid = normalizeText(midFallback);
+  const fallback = /^\d+$/.test(fallbackMid) ? `${BILI_ORIGIN}/space/${fallbackMid}` : "";
+
+  if (!value) return fallback || null;
+  if (/^\d+$/.test(value)) return `${BILI_ORIGIN}/space/${value}`;
+  if (value.startsWith("//")) return `https:${value}`;
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return fallback || null;
+    if (parsed.protocol === "http:") parsed.protocol = "https:";
+    return parsed.toString();
+  } catch {
+    return fallback || null;
+  }
+}
+
+function parseTimestampInput(value: unknown) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 1e12 ? Math.trunc(value) : Math.trunc(value * 1000);
+  }
+  const text = normalizeText(value);
+  if (!text) return null;
+
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) {
+    return numeric > 1e12 ? Math.trunc(numeric) : Math.trunc(numeric * 1000);
+  }
+  const normalizedDateText = text.includes(" ") && !text.includes("T") ? text.replace(" ", "T") : text;
+  const parsed = Date.parse(normalizedDateText);
+  if (Number.isFinite(parsed)) return Math.trunc(parsed);
+  return null;
+}
+
+function formatTimestamp(value: number | null | undefined) {
+  if (!Number.isFinite(value ?? NaN) || !value) return "";
+  const date = new Date(Number(value));
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (num: number) => String(num).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 function toMillis(value: unknown, fallback: number) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -564,6 +617,7 @@ type ImportVideoRow = {
   title: string;
   coverUrl: string;
   uploader: string;
+  uploaderSpaceUrl: string | null;
   description: string;
   publishAt: number | null;
   bvidUrl: string;
@@ -665,11 +719,12 @@ function parseImportRows(format: "json" | "csv", content: string) {
       title,
       coverUrl: normalizeCoverUrl(row.coverUrl),
       uploader: normalizeText(row.uploader) || "Unknown uploader",
+      uploaderSpaceUrl: normalizeBiliSpaceUrl(row.uploaderSpaceUrl),
       description: normalizeText(row.description),
-      publishAt: row.publishAt ?? null,
+      publishAt: parseTimestampInput(row.publishAt),
       bvidUrl,
       isInvalid: Boolean(row.isInvalid),
-      addedAt: Number.isFinite(row.addedAt) && (row.addedAt ?? 0) > 0 ? Math.trunc(row.addedAt as number) : nowTs,
+      addedAt: parseTimestampInput(row.addedAt) ?? nowTs,
       partition: normalizeText(row.partition) || "uncategorized",
       folders: uniqueTextList((row.folders ?? []) as unknown[]),
       customTags: uniqueTextList((row.customTags ?? []) as unknown[]),
@@ -720,10 +775,10 @@ function parseImportRows(format: "json" | "csv", content: string) {
       if (!bucket.includes(folderName)) bucket.push(folderName);
       foldersByVideoId.set(key, bucket);
 
-      const addedAt = Number(relation.addedAt ?? 0);
-      if (Number.isFinite(addedAt) && addedAt > 0) {
+      const addedAt = parseTimestampInput(relation.addedAt ?? relation.addedAtText);
+      if (addedAt && addedAt > 0) {
         const prev = addedAtByVideoId.get(key) ?? 0;
-        if (addedAt > prev) addedAtByVideoId.set(key, Math.trunc(addedAt));
+        if (addedAt > prev) addedAtByVideoId.set(key, addedAt);
       }
     }
 
@@ -747,17 +802,27 @@ function parseImportRows(format: "json" | "csv", content: string) {
     for (const video of jsonVideos) {
       const videoId = Number(video.id);
       const key = Number.isFinite(videoId) && videoId > 0 ? Math.trunc(videoId) : -1;
+      const favoriteAt =
+        addedAtByVideoId.get(key) ??
+        parseTimestampInput(
+          video.favoriteAt ??
+            video.favoriteAtText ??
+            video.addedAt ??
+            video.addedAtText
+        ) ??
+        nowTs;
       pushRow({
         bvid: video.bvid,
         title: video.title,
         coverUrl: video.coverUrl,
         uploader: video.uploader,
+        uploaderSpaceUrl: normalizeText(video.uploaderSpaceUrl || video.uploaderUrl),
         description: video.description,
-        publishAt: Number.isFinite(Number(video.publishAt)) ? Math.trunc(Number(video.publishAt)) : null,
+        publishAt: parseTimestampInput(video.publishAt ?? video.publishAtText),
         bvidUrl: video.bvidUrl,
         isInvalid: Boolean(video.isInvalid),
         partition: normalizeText(video.partition) || "uncategorized",
-        addedAt: addedAtByVideoId.get(key) ?? nowTs,
+        addedAt: favoriteAt,
         folders: foldersByVideoId.get(key) ?? ["Imported"],
         customTags: customTagsByVideoId.get(key) ?? [],
         systemTags: systemTagsByVideoId.get(key) ?? []
@@ -782,16 +847,19 @@ function parseImportRows(format: "json" | "csv", content: string) {
       title: pick(row, "title"),
       coverUrl: pick(row, "coverUrl"),
       uploader: pick(row, "uploader"),
+      uploaderSpaceUrl: pick(row, "uploaderSpaceUrl"),
       description: pick(row, "description"),
-      publishAt: Number.isFinite(Number(pick(row, "publishAt")))
-        ? Math.trunc(Number(pick(row, "publishAt")))
-        : null,
+      publishAt: parseTimestampInput(pick(row, "publishAtMs") || pick(row, "publishAt")),
       bvidUrl: pick(row, "bvidUrl"),
       isInvalid: pick(row, "isInvalid") === "1",
       partition: pick(row, "partition"),
-      addedAt: Number.isFinite(Number(pick(row, "addedAt")))
-        ? Math.trunc(Number(pick(row, "addedAt")))
-        : nowTs,
+      addedAt:
+        parseTimestampInput(
+          pick(row, "favoriteAtMs") ||
+            pick(row, "favoriteAt") ||
+            pick(row, "addedAtMs") ||
+            pick(row, "addedAt")
+        ) ?? nowTs,
       folders: parsePipeList(pick(row, "folders")),
       customTags: parsePipeList(pick(row, "customTags")),
       systemTags: parsePipeList(pick(row, "systemTags"))
@@ -1325,6 +1393,10 @@ async function syncFromBilibiliToState(
             title: normalizeText(media.title) || bvid,
             coverUrl: normalizeCoverUrl(media.cover),
             uploader: normalizeText((media.upper as { name?: string } | undefined)?.name) || "Unknown uploader",
+            uploaderSpaceUrl: normalizeBiliSpaceUrl(
+              (media.upper as { space?: string; mid?: number } | undefined)?.space,
+              (media.upper as { mid?: number } | undefined)?.mid
+            ),
             description: normalizeText(media.intro),
             publishAt,
             bvidUrl: normalizeBiliVideoUrl(media.link, bvid),
@@ -1343,6 +1415,7 @@ async function syncFromBilibiliToState(
           video.title = basePayload.title;
           video.coverUrl = basePayload.coverUrl;
           video.uploader = basePayload.uploader;
+          video.uploaderSpaceUrl = basePayload.uploaderSpaceUrl;
           video.description = basePayload.description;
           video.publishAt = basePayload.publishAt;
           video.bvidUrl = basePayload.bvidUrl;
@@ -1662,6 +1735,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
               title: row.title,
               coverUrl: normalizeCoverUrl(row.coverUrl),
               uploader: row.uploader,
+              uploaderSpaceUrl: normalizeBiliSpaceUrl(row.uploaderSpaceUrl),
               description: row.description,
               publishAt: row.publishAt,
               bvidUrl: row.bvidUrl,
@@ -1675,6 +1749,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
             video.title = row.title;
             video.coverUrl = normalizeCoverUrl(row.coverUrl);
             video.uploader = row.uploader || "Unknown uploader";
+            video.uploaderSpaceUrl = normalizeBiliSpaceUrl(row.uploaderSpaceUrl);
             video.description = row.description;
             video.publishAt = row.publishAt;
             video.bvidUrl = row.bvidUrl;
@@ -1760,16 +1835,27 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           buildExportPayload(state);
 
         if (format === "json") {
+          const exportVideos = state.videos.map((video) => ({
+            ...video,
+            publishAtText: formatTimestamp(video.publishAt),
+            favoriteAt: latestAddedAtByVideo.get(video.id) ?? null,
+            favoriteAtText: formatTimestamp(latestAddedAtByVideo.get(video.id) ?? null)
+          }));
+          const exportFolderItems = state.folderItems.map((item) => ({
+            ...item,
+            addedAtText: formatTimestamp(item.addedAt)
+          }));
           const content = JSON.stringify(
             {
               meta: {
                 version: "v1",
                 exportedAt,
+                exportedAtText: formatTimestamp(exportedAt),
                 source: "bilishelf-extension-local"
               },
               folders: state.folders,
-              videos: state.videos,
-              folderItems: state.folderItems,
+              videos: exportVideos,
+              folderItems: exportFolderItems,
               tags: state.tags,
               videoTags: state.videoTags
             },
@@ -1790,12 +1876,17 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           "bvid",
           "title",
           "uploader",
+          "uploaderSpaceUrl",
           "description",
           "coverUrl",
           "bvidUrl",
           "partition",
           "publishAt",
+          "publishAtMs",
+          "favoriteAt",
+          "favoriteAtMs",
           "addedAt",
+          "addedAtMs",
           "folders",
           "customTags",
           "systemTags",
@@ -1805,16 +1896,24 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         const lines = [header.join(",")];
 
         for (const video of state.videos) {
+          const favoriteAtMs = latestAddedAtByVideo.get(video.id) ?? "";
+          const addedAtMs = latestAddedAtByVideo.get(video.id) ?? "";
+          const publishAtMs = video.publishAt ?? "";
           const row = [
             video.bvid,
             video.title,
             video.uploader,
+            video.uploaderSpaceUrl ?? "",
             video.description,
             video.coverUrl,
             video.bvidUrl,
             "",
-            video.publishAt ?? "",
-            latestAddedAtByVideo.get(video.id) ?? "",
+            formatTimestamp(video.publishAt),
+            publishAtMs,
+            formatTimestamp(typeof favoriteAtMs === "number" ? favoriteAtMs : null),
+            favoriteAtMs,
+            formatTimestamp(typeof addedAtMs === "number" ? addedAtMs : null),
+            addedAtMs,
             (folderNamesByVideo.get(video.id) ?? []).join("|"),
             (customTagsByVideo.get(video.id) ?? []).join("|"),
             (systemTagsByVideo.get(video.id) ?? []).join("|"),
@@ -2000,6 +2099,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           title,
           coverUrl: normalizeText(body.coverUrl),
           uploader: normalizeText(body.uploader),
+          uploaderSpaceUrl: normalizeBiliSpaceUrl(body.uploaderSpaceUrl),
           description: normalizeText(body.description),
           publishAt: toIntOrNull(body.publishAt),
           bvidUrl,
@@ -2013,6 +2113,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         video.title = title;
         video.coverUrl = normalizeText(body.coverUrl);
         video.uploader = normalizeText(body.uploader);
+        video.uploaderSpaceUrl = normalizeBiliSpaceUrl(body.uploaderSpaceUrl);
         video.description = normalizeText(body.description);
         video.publishAt = toIntOrNull(body.publishAt);
         video.bvidUrl = bvidUrl;
@@ -2071,6 +2172,111 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           folders,
           tags
         });
+      }
+
+      if (videoByIdMatch && method === "PATCH") {
+        const videoId = toInt(videoByIdMatch[1]);
+        const video = state.videos.find((row) => row.id === videoId && row.deletedAt === null);
+        if (!video) return fail(404, "Video not found");
+
+        const hasAnyPatchField = [
+          "title",
+          "coverUrl",
+          "uploader",
+          "uploaderSpaceUrl",
+          "description",
+          "publishAt",
+          "bvidUrl",
+          "isInvalid",
+          "customTags",
+          "systemTags"
+        ].some((key) => Object.prototype.hasOwnProperty.call(body, key));
+        if (!hasAnyPatchField) return fail(400, "At least one field is required");
+
+        if (Object.prototype.hasOwnProperty.call(body, "title")) {
+          const title = normalizeText(body.title);
+          if (!title) return fail(400, "title cannot be empty");
+          video.title = title;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "coverUrl")) {
+          video.coverUrl = normalizeCoverUrl(body.coverUrl);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "uploader")) {
+          const uploader = normalizeText(body.uploader);
+          if (!uploader) return fail(400, "uploader cannot be empty");
+          video.uploader = uploader;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "uploaderSpaceUrl")) {
+          video.uploaderSpaceUrl = normalizeBiliSpaceUrl(body.uploaderSpaceUrl);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "description")) {
+          video.description = normalizeText(body.description);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "publishAt")) {
+          video.publishAt = parseTimestampInput(body.publishAt);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "bvidUrl")) {
+          video.bvidUrl = normalizeBiliVideoUrl(body.bvidUrl, video.bvid);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "isInvalid")) {
+          video.isInvalid = Boolean(body.isInvalid);
+        }
+
+        if (Object.prototype.hasOwnProperty.call(body, "customTags")) {
+          const customTagIds = new Set(
+            state.videoTags
+              .filter((edge) => edge.videoId === videoId)
+              .filter((edge) => {
+                const tag = state.tags.find((row) => row.id === edge.tagId);
+                return !!tag && tag.archivedAt === null && tag.type === "custom";
+              })
+              .map((edge) => edge.tagId)
+          );
+
+          if (customTagIds.size > 0) {
+            state.videoTags = state.videoTags.filter(
+              (edge) => !(edge.videoId === videoId && customTagIds.has(edge.tagId))
+            );
+          }
+
+          const customTagNames = uniqueTextList(Array.isArray(body.customTags) ? body.customTags : []);
+          for (const tagName of customTagNames) {
+            const tag = ensureTag(state, tagName, "custom");
+            if (!tag) continue;
+            ensureVideoTag(state, videoId, tag.id);
+          }
+        }
+
+        if (Object.prototype.hasOwnProperty.call(body, "systemTags")) {
+          const systemTagIds = new Set(
+            state.videoTags
+              .filter((edge) => edge.videoId === videoId)
+              .filter((edge) => {
+                const tag = state.tags.find((row) => row.id === edge.tagId);
+                return !!tag && tag.archivedAt === null && tag.type === "system";
+              })
+              .map((edge) => edge.tagId)
+          );
+
+          if (systemTagIds.size > 0) {
+            state.videoTags = state.videoTags.filter(
+              (edge) => !(edge.videoId === videoId && systemTagIds.has(edge.tagId))
+            );
+          }
+
+          const systemTagNames = uniqueTextList(Array.isArray(body.systemTags) ? body.systemTags : []).filter(
+            (tagName) => !BLOCKED_SYSTEM_TAGS.has(normalizeKey(tagName))
+          );
+          for (const tagName of systemTagNames) {
+            const tag = ensureTag(state, tagName, "system");
+            if (!tag) continue;
+            ensureVideoTag(state, videoId, tag.id);
+          }
+        }
+
+        video.updatedAt = now();
+
+        return ok(mapVideo(state, video));
       }
 
       if (videoByIdMatch && method === "DELETE") {
@@ -2166,6 +2372,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
             title: video.title,
             coverUrl: video.coverUrl,
             uploader: video.uploader,
+            uploaderSpaceUrl: video.uploaderSpaceUrl,
             description: video.description,
             publishAt: video.publishAt,
             bvidUrl: video.bvidUrl,

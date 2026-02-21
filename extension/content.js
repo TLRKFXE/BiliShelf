@@ -232,6 +232,17 @@
       canonical.match(/\/video\/(BV[0-9A-Za-z]+)/i) ||
       location.pathname.match(/\/(BV[0-9A-Za-z]+)/i);
 
+    const uploaderHref =
+      attrOf(".up-name", "href") ||
+      attrOf(".up-name--text", "href") ||
+      attrOf('a[href*="space.bilibili.com"]', "href");
+    const normalizedUploaderHref = uploaderHref
+      ? ensureAbsoluteUrl(
+          uploaderHref.startsWith("//") ? `https:${uploaderHref}` : uploaderHref,
+          ""
+        )
+      : "";
+
     return {
       bvid: bvidMatch?.[1] || "",
       bvidUrl: canonical,
@@ -239,6 +250,7 @@
         attrOf('meta[property="og:title"]', "content") ||
         document.title.replace(/_哔哩哔哩_bilibili$/, "").trim(),
       uploader: textOf(".up-name") || textOf(".up-name--text") || "",
+      uploaderSpaceUrl: normalizedUploaderHref,
       coverUrl:
         attrOf('meta[property="og:image"]', "content") ||
         attrOf('meta[itemprop="image"]', "content") ||
@@ -580,6 +592,10 @@
       uploader:
         (detail?.owner?.name || base.uploader || "").trim() ||
         t("status.unknownUploader"),
+      uploaderSpaceUrl:
+        (typeof detail?.owner?.mid === "number" && Number.isFinite(detail.owner.mid)
+          ? `https://space.bilibili.com/${Math.trunc(detail.owner.mid)}`
+          : base.uploaderSpaceUrl || ""),
       description: pickSafeDescription(detail),
       publishAt,
       systemTags: mergeSystemTags(apiSystemTags, detail)

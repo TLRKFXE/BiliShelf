@@ -12,6 +12,7 @@ const upsertVideoSchema = z.object({
   title: z.string().min(1).max(200),
   coverUrl: z.string().url(),
   uploader: z.string().min(1).max(80),
+  uploaderSpaceUrl: z.string().trim().url().nullable().optional(),
   description: z.string().max(5000).default(""),
   partition: z.string().min(1).max(50).optional(),
   publishAt: z.number().int().nullable().optional(),
@@ -21,6 +22,23 @@ const upsertVideoSchema = z.object({
   customTags: z.array(z.string().min(1).max(40)).default([]),
   systemTags: z.array(z.string().min(1).max(40)).default([])
 });
+
+const patchVideoSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    coverUrl: z.string().trim().url().optional(),
+    uploader: z.string().trim().min(1).max(80).optional(),
+    uploaderSpaceUrl: z.string().trim().url().nullable().optional(),
+    description: z.string().trim().max(5000).optional(),
+    publishAt: z.number().int().nullable().optional(),
+    bvidUrl: z.string().trim().url().optional(),
+    isInvalid: z.boolean().optional(),
+    customTags: z.array(z.string().trim().min(1).max(40)).optional(),
+    systemTags: z.array(z.string().trim().min(1).max(40)).optional()
+  })
+  .refine((payload) => Object.keys(payload).length > 0, {
+    message: "At least one field is required"
+  });
 
 const listVideosQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -72,6 +90,7 @@ type BaseVideoRow = {
   title: string;
   coverUrl: string;
   uploader: string;
+  uploaderSpaceUrl: string | null;
   description: string;
   partition: string;
   publishAt: number | null;
@@ -127,6 +146,23 @@ function normalizeBiliVideoUrl(value: string, bvidFallback?: string) {
   if (/^https?:\/\//i.test(raw)) return raw;
 
   return fallback || raw;
+}
+
+function normalizeBiliSpaceUrl(value: string | null | undefined) {
+  const raw = (value || "").trim();
+  if (!raw) return null;
+
+  if (/^\d+$/.test(raw)) return `${BILI_ORIGIN}/space/${raw}`;
+  if (raw.startsWith("//")) return `https:${raw}`;
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    if (parsed.protocol === "http:") parsed.protocol = "https:";
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 function normalizeOutputBvid(value: string) {
@@ -252,6 +288,7 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
     const now = Date.now();
     const normalizedCoverUrl = normalizeCoverUrl(body.coverUrl);
     const normalizedBvidUrl = normalizeBiliVideoUrl(body.bvidUrl, body.bvid);
+    const normalizedUploaderSpaceUrl = normalizeBiliSpaceUrl(body.uploaderSpaceUrl);
     const partitionValue = body.partition?.trim() || "uncategorized";
 
     const folderIds = [...new Set(body.folderIds)];
@@ -280,6 +317,7 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
           title: body.title,
           coverUrl: normalizedCoverUrl,
           uploader: body.uploader,
+          uploaderSpaceUrl: normalizedUploaderSpaceUrl,
           description: body.description,
           partition: partitionValue,
           publishAt: body.publishAt ?? null,
@@ -298,6 +336,7 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
           title: body.title,
           coverUrl: normalizedCoverUrl,
           uploader: body.uploader,
+          uploaderSpaceUrl: normalizedUploaderSpaceUrl,
           description: body.description,
           partition: partitionValue,
           publishAt: body.publishAt ?? null,
@@ -347,6 +386,123 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
     const saved = db.select().from(videos).where(eq(videos.id, videoId)).get();
     const normalizedSaved = saved ? normalizeVideoRows([saved as BaseVideoRow])[0] : null;
     return reply.code(existing ? 200 : 201).send(normalizedSaved);
+  });
+
+  app.patch("/videos/:id", async (request, reply) => {
+    const params = z.object({ id: z.coerce.number().int().positive() }).parse(request.params);
+    const body = patchVideoSchema.parse(request.body ?? {});
+
+    const existed = db
+      .select({ id: videos.id })
+      .from(videos)
+      .where(and(eq(videos.id, params.id), isNull(videos.deletedAt)))
+      .get();
+    if (!existed) {
+      return reply.notFound("Video not found");
+    }
+
+    const payload: Partial<typeof videos.$inferInsert> = {
+      updatedAt: Date.now()
+    };
+
+    if (body.title !== undefined) payload.title = body.title;
+    if (body.coverUrl !== undefined) payload.coverUrl = normalizeCoverUrl(body.coverUrl);
+    if (body.uploader !== undefined) payload.uploader = body.uploader;
+    if (body.uploaderSpaceUrl !== undefined) {
+      payload.uploaderSpaceUrl = normalizeBiliSpaceUrl(body.uploaderSpaceUrl);
+    }
+    if (body.description !== undefined) payload.description = body.description;
+    if (body.publishAt !== undefined) payload.publishAt = body.publishAt;
+    if (body.bvidUrl !== undefined) payload.bvidUrl = normalizeBiliVideoUrl(body.bvidUrl);
+    if (body.isInvalid !== undefined) payload.isInvalid = body.isInvalid;
+
+    db.update(videos).set(payload).where(eq(videos.id, params.id)).run();
+
+    const ensureTagIdForPatch = (tagName: string, type: "system" | "custom") => {
+      const normalizedName = tagName.trim();
+      if (!normalizedName) return null;
+
+      const now = Date.now();
+      let found = db
+        .select({ id: tags.id, archivedAt: tags.archivedAt })
+        .from(tags)
+        .where(eq(tags.name, normalizedName))
+        .get();
+
+      if (!found) {
+        db.insert(tags)
+          .values({
+            name: normalizedName,
+            type,
+            createdAt: now,
+            archivedAt: null
+          })
+          .onConflictDoNothing()
+          .run();
+
+        found = db
+          .select({ id: tags.id, archivedAt: tags.archivedAt })
+          .from(tags)
+          .where(eq(tags.name, normalizedName))
+          .get();
+      } else if (found.archivedAt !== null) {
+        db.update(tags).set({ archivedAt: null }).where(eq(tags.id, found.id)).run();
+      }
+
+      return found?.id ?? null;
+    };
+
+    if (body.customTags !== undefined) {
+      const customTagIds = db
+        .select({ tagId: videoTags.tagId })
+        .from(videoTags)
+        .innerJoin(tags, eq(tags.id, videoTags.tagId))
+        .where(and(eq(videoTags.videoId, params.id), eq(tags.type, "custom")))
+        .all()
+        .map((row) => row.tagId);
+
+      if (customTagIds.length > 0) {
+        db.delete(videoTags)
+          .where(and(eq(videoTags.videoId, params.id), inArray(videoTags.tagId, customTagIds)))
+          .run();
+      }
+
+      const normalizedCustomTags = normalizeTags(body.customTags);
+      for (const tagName of normalizedCustomTags) {
+        const tagId = ensureTagIdForPatch(tagName, "custom");
+        if (!tagId) continue;
+        db.insert(videoTags).values({ videoId: params.id, tagId }).onConflictDoNothing().run();
+      }
+    }
+
+    if (body.systemTags !== undefined) {
+      const systemTagIds = db
+        .select({ tagId: videoTags.tagId })
+        .from(videoTags)
+        .innerJoin(tags, eq(tags.id, videoTags.tagId))
+        .where(and(eq(videoTags.videoId, params.id), eq(tags.type, "system")))
+        .all()
+        .map((row) => row.tagId);
+
+      if (systemTagIds.length > 0) {
+        db.delete(videoTags)
+          .where(and(eq(videoTags.videoId, params.id), inArray(videoTags.tagId, systemTagIds)))
+          .run();
+      }
+
+      const normalizedSystemTags = normalizeTags(body.systemTags).filter(
+        (tagName) => !BLOCKED_SYSTEM_TAGS.has(tagName.toLowerCase())
+      );
+      for (const tagName of normalizedSystemTags) {
+        const tagId = ensureTagIdForPatch(tagName, "system");
+        if (!tagId) continue;
+        db.insert(videoTags).values({ videoId: params.id, tagId }).onConflictDoNothing().run();
+      }
+    }
+
+    const updated = db.select().from(videos).where(eq(videos.id, params.id)).get();
+    const normalized = updated ? normalizeVideoRows([updated as BaseVideoRow])[0] : null;
+    return normalized;
   });
 
   app.get("/videos", async (request) => {
@@ -413,6 +569,7 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
           title: videos.title,
           coverUrl: videos.coverUrl,
           uploader: videos.uploader,
+          uploaderSpaceUrl: videos.uploaderSpaceUrl,
           description: videos.description,
           partition: videos.partition,
           publishAt: videos.publishAt,
@@ -595,6 +752,7 @@ export const videoRoutes: FastifyPluginAsync = async (app) => {
           title: sourceVideo.title,
           coverUrl: sourceVideo.coverUrl,
           uploader: sourceVideo.uploader,
+          uploaderSpaceUrl: sourceVideo.uploaderSpaceUrl,
           description: sourceVideo.description,
           partition: sourceVideo.partition,
           publishAt: sourceVideo.publishAt,

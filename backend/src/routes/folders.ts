@@ -304,6 +304,7 @@ export const folderRoutes: FastifyPluginAsync = async (app) => {
           v.title,
           v.cover_url AS coverUrl,
           v.uploader,
+          v.uploader_space_url AS uploaderSpaceUrl,
           v.description,
           v.partition,
           v.publish_at AS publishAt,
@@ -328,6 +329,7 @@ export const folderRoutes: FastifyPluginAsync = async (app) => {
       title: string;
       coverUrl: string;
       uploader: string;
+      uploaderSpaceUrl: string | null;
       description: string;
       partition: string;
       publishAt: number | null;

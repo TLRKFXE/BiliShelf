@@ -19,6 +19,7 @@ export function initDb() {
       title TEXT NOT NULL,
       cover_url TEXT NOT NULL,
       uploader TEXT NOT NULL,
+      uploader_space_url TEXT,
       description TEXT NOT NULL,
       partition TEXT NOT NULL,
       publish_at INTEGER,
@@ -116,6 +117,10 @@ export function initDb() {
   const videoColumns = sqlite.prepare("PRAGMA table_info(videos)").all() as Array<{ name: string }>;
   if (!videoColumns.some((column) => column.name === "deleted_at")) {
     sqlite.exec("ALTER TABLE videos ADD COLUMN deleted_at INTEGER");
+  }
+
+  if (!videoColumns.some((column) => column.name === "uploader_space_url")) {
+    sqlite.exec("ALTER TABLE videos ADD COLUMN uploader_space_url TEXT");
   }
 
   const tagColumns = sqlite.prepare("PRAGMA table_info(tags)").all() as Array<{ name: string }>;

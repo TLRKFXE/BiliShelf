@@ -38,6 +38,7 @@ import {
   fetchBilibiliSyncFolders,
   importLibrary,
   syncFromBilibili,
+  updateVideo,
   type SyncRemoteFolder,
 } from "./lib/api";
 import type { Tag } from "./types";
@@ -170,6 +171,7 @@ const { detailOpen, detailLoading, detailVideo, openVideoDetail } = useVideoDeta
   t,
   notifyError
 );
+const detailSaving = ref(false);
 const isBusy = computed(() => loading.value || detailLoading.value);
 const progressValue = useLoadingProgress(isBusy);
 const {
@@ -750,6 +752,33 @@ async function handleImportFilePicked(event: Event) {
   }
 }
 
+async function handleSaveVideoDetail(payload: {
+  id: number;
+  data: {
+    title?: string;
+    uploader?: string;
+    uploaderSpaceUrl?: string | null;
+    description?: string;
+    publishAt?: number | null;
+    bvidUrl?: string;
+    customTags?: string[];
+    systemTags?: string[];
+  };
+}) {
+  if (detailSaving.value) return;
+  detailSaving.value = true;
+  try {
+    await updateVideo(payload.id, payload.data);
+    await Promise.all([refreshVideos(), refreshTrash()]);
+    await openVideoDetail(payload.id);
+    notifySuccess(t("toast.detailUpdated"));
+  } catch (error) {
+    notifyError(t("toast.detailUpdateFail"), error);
+  } finally {
+    detailSaving.value = false;
+  }
+}
+
 const syncResumePage = computed(() => {
   if (syncSelectedFolderIds.value.length !== 1) return 1;
   return getSyncResumePage(syncSelectedFolderIds.value[0]);
@@ -1060,8 +1089,10 @@ onMounted(async () => {
       :open="detailOpen"
       :t="t"
       :loading="detailLoading"
+      :saving="detailSaving"
       :detail-video="detailVideo"
       @update:open="detailOpen = $event"
+      @save="handleSaveVideoDetail"
     />
     <input
       ref="importFileInput"

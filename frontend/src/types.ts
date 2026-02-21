@@ -15,6 +15,7 @@ export type Video = {
   title: string;
   coverUrl: string;
   uploader: string;
+  uploaderSpaceUrl?: string | null;
   description: string;
   publishAt: number | null;
   bvidUrl: string;
@@ -47,6 +48,7 @@ export type CreateVideoPayload = {
   title: string;
   coverUrl: string;
   uploader: string;
+  uploaderSpaceUrl?: string | null;
   description: string;
   publishAt?: number | null;
   bvidUrl: string;

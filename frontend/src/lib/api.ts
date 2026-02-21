@@ -208,6 +208,27 @@ export async function fetchVideoById(id: number) {
   );
 }
 
+export async function updateVideo(
+  id: number,
+  payload: {
+    title?: string;
+    coverUrl?: string;
+    uploader?: string;
+    uploaderSpaceUrl?: string | null;
+    description?: string;
+    publishAt?: number | null;
+    bvidUrl?: string;
+    isInvalid?: boolean;
+    customTags?: string[];
+    systemTags?: string[];
+  }
+) {
+  return request<Video>(`/videos/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function fetchVideos(options: {
   page?: number;
   pageSize?: number;
