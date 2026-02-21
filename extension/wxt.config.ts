@@ -21,6 +21,14 @@ export default defineConfig({
         "32": "icons/32.png"
       }
     },
+    browser_specific_settings: {
+      gecko: {
+        id: "bilishelf@tlrk.dev",
+        data_collection_permissions: {
+          required: ["none"]
+        }
+      }
+    },
     host_permissions: [
       "https://www.bilibili.com/*",
       "https://api.bilibili.com/*"
