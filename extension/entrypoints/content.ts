@@ -1,8 +1,7 @@
+import { CONTENT_SCRIPT_MATCHES } from "../shared/content-matches";
+
 export default defineContentScript({
-  matches: [
-    "https://www.bilibili.com/video/*",
-    "https://www.bilibili.com/list/watchlater*",
-  ],
+  matches: CONTENT_SCRIPT_MATCHES,
   runAt: "document_idle",
   main() {
     import("../content.js");

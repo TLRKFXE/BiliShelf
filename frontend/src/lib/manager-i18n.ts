@@ -27,6 +27,14 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "管理自定义标签",
     "en-US": "Manage Custom Tags",
   },
+  "header.syncSettings": {
+    "zh-CN": "同步设置",
+    "en-US": "Sync Settings",
+  },
+  "header.webdavSettings": {
+    "zh-CN": "WebDAV备份",
+    "en-US": "WebDAV Backup",
+  },
   "header.syncImport": { "zh-CN": "同步导入", "en-US": "Sync Import" },
   "header.syncing": { "zh-CN": "同步中...", "en-US": "Syncing..." },
   "header.importData": { "zh-CN": "导入备份", "en-US": "Import Backup" },
@@ -137,9 +145,10 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
       "Fetch and enrich Bilibili tags during sync (more complete but slower). Recommended to keep off; tags will be enriched in background after main sync.",
   },
   "sync.tagEnrichDisabledHint": {
-    "zh-CN": "当前版本已关闭标签同步，仅同步收藏关系与视频基础信息，以提升稳定性并降低风控概率。",
+    "zh-CN":
+      "主同步默认不抓取 archive-tags；同步完成后将自动进入阶段2，在后台低速补全标签。",
     "en-US":
-      "Tag sync is disabled in this build. Only favorite relations and core video metadata are synced for better stability and lower risk-control chance.",
+      "Archive-tags are skipped during primary sync. Phase 2 runs automatically in background to enrich tags at a low rate.",
   },
   "sync.resumeHint": {
     "zh-CN": "检测到上次中断进度：将从第 {page} 页继续导入。",
@@ -282,6 +291,107 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "sync.runTagEnrichNow": {
     "zh-CN": "立即跑一批",
     "en-US": "Run one batch now",
+  },
+  "sync.settings.title": {
+    "zh-CN": "B站监听设置",
+    "en-US": "Bilibili Action Sync Settings",
+  },
+  "sync.settings.desc": {
+    "zh-CN": "仅监听 B站端收藏动作，并将变更对账到本地（支持增删移动复制）。",
+    "en-US":
+      "Only monitor Bilibili favorite actions and reconcile them into local folders (add/remove/move/copy).",
+  },
+  "sync.settings.biliToLocalTitle": {
+    "zh-CN": "B站收藏时同步到插件",
+    "en-US": "Sync Bilibili favorite actions to local",
+  },
+  "sync.settings.biliToLocalDesc": {
+    "zh-CN":
+      "在视频页检测到 B站原生收藏动作后，自动将该视频与远端收藏夹状态对账到本地。",
+    "en-US":
+      "When native favorite actions are detected on Bilibili pages, this video is reconciled to match remote favorite folders.",
+  },
+  "sync.settings.localToBiliTitle": {
+    "zh-CN": "插件收藏时同步到B站",
+    "en-US": "Sync local saves back to Bilibili",
+  },
+  "sync.settings.localToBiliDesc": {
+    "zh-CN":
+      "在悬浮窗保存视频时，同时写回到对应的 B站收藏夹（仅对已绑定远端 media_id 的收藏夹生效）。",
+    "en-US":
+      "When saving in floating panel, also write to mapped Bilibili favorite folders (folders with remote media_id only).",
+  },
+  "sync.settings.reload": {
+    "zh-CN": "刷新设置",
+    "en-US": "Reload",
+  },
+  "webdav.title": {
+    "zh-CN": "WebDAV 备份/恢复",
+    "en-US": "WebDAV Backup/Restore",
+  },
+  "webdav.desc": {
+    "zh-CN": "配置远端 WebDAV 后，可测试连通性并执行上传备份、下载和一键恢复。",
+    "en-US": "Configure WebDAV, then test connectivity and perform backup upload, download, and restore.",
+  },
+  "webdav.enableTitle": {
+    "zh-CN": "启用 WebDAV 备份",
+    "en-US": "Enable WebDAV backup",
+  },
+  "webdav.enableDesc": {
+    "zh-CN": "开启后即可使用上传和恢复入口。",
+    "en-US": "Enable to use upload and restore actions.",
+  },
+  "webdav.baseUrl": {
+    "zh-CN": "服务器地址",
+    "en-US": "Server URL",
+  },
+  "webdav.username": {
+    "zh-CN": "用户名",
+    "en-US": "Username",
+  },
+  "webdav.password": {
+    "zh-CN": "密码 / 应用专用密码",
+    "en-US": "Password / App password",
+  },
+  "webdav.passwordPlaceholderKeep": {
+    "zh-CN": "留空表示保持现有密码",
+    "en-US": "Leave blank to keep current password",
+  },
+  "webdav.remotePath": {
+    "zh-CN": "远端目录",
+    "en-US": "Remote directory",
+  },
+  "webdav.reload": {
+    "zh-CN": "刷新状态",
+    "en-US": "Reload",
+  },
+  "webdav.test": {
+    "zh-CN": "连通测试",
+    "en-US": "Test",
+  },
+  "webdav.upload": {
+    "zh-CN": "上传备份",
+    "en-US": "Upload backup",
+  },
+  "webdav.download": {
+    "zh-CN": "下载备份",
+    "en-US": "Download backup",
+  },
+  "webdav.restore": {
+    "zh-CN": "远端恢复",
+    "en-US": "Restore",
+  },
+  "webdav.statusTest": {
+    "zh-CN": "最近测试：{time}",
+    "en-US": "Last test: {time}",
+  },
+  "webdav.statusBackup": {
+    "zh-CN": "最近备份：{time}",
+    "en-US": "Last backup: {time}",
+  },
+  "webdav.statusRestore": {
+    "zh-CN": "最近恢复：{time}",
+    "en-US": "Last restore: {time}",
   },
   "trash.foldersTitle": {
     "zh-CN": "回收站收藏夹",
@@ -619,6 +729,70 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "toast.tagEnrichTriggerFail": {
     "zh-CN": "触发标签补全失败",
     "en-US": "Failed to trigger tag enrichment",
+  },
+  "toast.syncSettingsSaved": {
+    "zh-CN": "同步设置已保存",
+    "en-US": "Sync settings saved",
+  },
+  "toast.syncSettingsSaveFail": {
+    "zh-CN": "保存同步设置失败",
+    "en-US": "Failed to save sync settings",
+  },
+  "toast.syncSettingsLoadFail": {
+    "zh-CN": "加载同步设置失败",
+    "en-US": "Failed to load sync settings",
+  },
+  "toast.webdavSettingsSaved": {
+    "zh-CN": "WebDAV 配置已保存",
+    "en-US": "WebDAV settings saved",
+  },
+  "toast.webdavSettingsSaveFail": {
+    "zh-CN": "保存 WebDAV 配置失败",
+    "en-US": "Failed to save WebDAV settings",
+  },
+  "toast.webdavSettingsLoadFail": {
+    "zh-CN": "加载 WebDAV 配置失败",
+    "en-US": "Failed to load WebDAV settings",
+  },
+  "toast.webdavTestDone": {
+    "zh-CN": "WebDAV 连通测试通过",
+    "en-US": "WebDAV connectivity test passed",
+  },
+  "toast.webdavTestFail": {
+    "zh-CN": "WebDAV 连通测试失败",
+    "en-US": "WebDAV connectivity test failed",
+  },
+  "toast.webdavUploadDone": {
+    "zh-CN": "WebDAV 备份上传完成",
+    "en-US": "WebDAV backup uploaded",
+  },
+  "toast.webdavUploadSummary": {
+    "zh-CN": "视频 {videos} 条，标签 {tags} 个",
+    "en-US": "{videos} videos, {tags} tags",
+  },
+  "toast.webdavUploadFail": {
+    "zh-CN": "WebDAV 上传失败",
+    "en-US": "WebDAV upload failed",
+  },
+  "toast.webdavDownloadDone": {
+    "zh-CN": "已下载 WebDAV 备份",
+    "en-US": "WebDAV backup downloaded",
+  },
+  "toast.webdavDownloadFail": {
+    "zh-CN": "下载 WebDAV 备份失败",
+    "en-US": "Failed to download WebDAV backup",
+  },
+  "toast.webdavRestoreDone": {
+    "zh-CN": "WebDAV 恢复完成",
+    "en-US": "WebDAV restore completed",
+  },
+  "toast.webdavRestoreSummary": {
+    "zh-CN": "写入视频 {videos} 条，收藏关系 {links} 条，标签绑定 {tags} 条",
+    "en-US": "Imported {videos} videos, {links} folder links, and {tags} tag links",
+  },
+  "toast.webdavRestoreFail": {
+    "zh-CN": "WebDAV 恢复失败",
+    "en-US": "WebDAV restore failed",
   },
   "toast.autoInitPickFolder": {
     "zh-CN": "请至少选择一个收藏夹再开始初始化",

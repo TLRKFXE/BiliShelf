@@ -9,6 +9,8 @@ import ManageTagsDialog from "./components/dialogs/ManageTagsDialog.vue";
 import RenameTagDialog from "./components/dialogs/RenameTagDialog.vue";
 import SyncImportDialog from "./components/dialogs/SyncImportDialog.vue";
 import AutoInitSetupDialog from "./components/dialogs/AutoInitSetupDialog.vue";
+import BidirectionalSyncSettingsDialog from "./components/dialogs/BidirectionalSyncSettingsDialog.vue";
+import WebDavBackupDialog from "./components/dialogs/WebDavBackupDialog.vue";
 import VideoDetailDialog from "./components/dialogs/VideoDetailDialog.vue";
 import FolderSidebar from "./components/FolderSidebar.vue";
 import ManagerHeader from "./components/layout/ManagerHeader.vue";
@@ -40,14 +42,24 @@ import {
   exportLibrary,
   fetchHistoryModelSyncStatus,
   fetchTagEnrichmentStatus,
+  fetchBidirectionalSyncSettings,
+  fetchWebDavSettings,
   fetchBilibiliSyncFolders,
   importLibrary,
+  downloadWebDavBackup,
   pauseTagEnrichment,
   resumeTagEnrichment,
+  restoreWebDavBackup,
   runTagEnrichmentNow,
   startHistoryModelSync,
+  testWebDavConnection,
+  uploadWebDavBackup,
+  updateBidirectionalSyncSettings,
+  updateWebDavSettings,
+  type BidirectionalSyncSettings,
   type HistoryModelSyncStatus,
   type TagEnrichmentStatus,
+  type WebDavSettings,
   updateVideo,
   type SyncRemoteFolder,
 } from "./lib/api";
@@ -156,7 +168,13 @@ const syncSpeedMode = ref<"stable" | "balanced" | "fast">("balanced");
 const syncIncludeTagEnrichment = ref(false);
 const tagEnrichmentStatus = ref<TagEnrichmentStatus | null>(null);
 const tagEnrichmentLoading = ref(false);
-const TAG_SYNC_ENABLED = false;
+const bidirectionalSyncDialogOpen = ref(false);
+const bidirectionalSyncSettings = ref<BidirectionalSyncSettings | null>(null);
+const bidirectionalSyncSaving = ref(false);
+const webdavDialogOpen = ref(false);
+const webdavSettings = ref<WebDavSettings | null>(null);
+const webdavBusy = ref(false);
+const TAG_SYNC_ENABLED = true;
 const autoInitRunning = ref(false);
 const AUTO_INIT_STATE_KEY = "bilishelf-auto-init-v3";
 const AUTO_INIT_LOCK_KEY = "bilishelf-auto-init-v3.lock";
@@ -820,6 +838,138 @@ async function runTagEnrichmentNowFromUi() {
   }
 }
 
+async function refreshBidirectionalSyncSettings() {
+  try {
+    bidirectionalSyncSettings.value = await fetchBidirectionalSyncSettings();
+  } catch (error) {
+    notifyError(t("toast.syncSettingsLoadFail"), error);
+  }
+}
+
+function openBidirectionalSyncSettingsDialog() {
+  bidirectionalSyncDialogOpen.value = true;
+  void refreshBidirectionalSyncSettings();
+}
+
+async function saveBidirectionalSyncSettings(payload: {
+  biliToLocalEnabled: boolean;
+}) {
+  if (bidirectionalSyncSaving.value) return;
+  bidirectionalSyncSaving.value = true;
+  try {
+    bidirectionalSyncSettings.value = await updateBidirectionalSyncSettings(payload);
+    notifySuccess(t("toast.syncSettingsSaved"));
+    bidirectionalSyncDialogOpen.value = false;
+  } catch (error) {
+    notifyError(t("toast.syncSettingsSaveFail"), error);
+  } finally {
+    bidirectionalSyncSaving.value = false;
+  }
+}
+
+async function refreshWebDavSettings() {
+  try {
+    webdavSettings.value = await fetchWebDavSettings();
+  } catch (error) {
+    notifyError(t("toast.webdavSettingsLoadFail"), error);
+  }
+}
+
+function openWebDavDialog() {
+  webdavDialogOpen.value = true;
+  void refreshWebDavSettings();
+}
+
+async function saveWebDavSettings(payload: {
+  enabled: boolean;
+  baseUrl: string;
+  username: string;
+  password?: string;
+  remotePath: string;
+}) {
+  if (webdavBusy.value) return;
+  webdavBusy.value = true;
+  try {
+    webdavSettings.value = await updateWebDavSettings(payload);
+    notifySuccess(t("toast.webdavSettingsSaved"));
+  } catch (error) {
+    notifyError(t("toast.webdavSettingsSaveFail"), error);
+  } finally {
+    webdavBusy.value = false;
+  }
+}
+
+async function testWebDavFromUi() {
+  if (webdavBusy.value) return;
+  webdavBusy.value = true;
+  try {
+    webdavSettings.value = await testWebDavConnection();
+    notifySuccess(t("toast.webdavTestDone"));
+  } catch (error) {
+    notifyError(t("toast.webdavTestFail"), error);
+  } finally {
+    webdavBusy.value = false;
+  }
+}
+
+async function uploadWebDavFromUi() {
+  if (webdavBusy.value || syncingImport.value || importingLibrary.value) return;
+  webdavBusy.value = true;
+  try {
+    const result = await uploadWebDavBackup();
+    webdavSettings.value = result;
+    notifySuccess(
+      t("toast.webdavUploadDone"),
+      t("toast.webdavUploadSummary", {
+        videos: result.summary.videos,
+        tags: result.summary.tags
+      })
+    );
+  } catch (error) {
+    notifyError(t("toast.webdavUploadFail"), error);
+  } finally {
+    webdavBusy.value = false;
+  }
+}
+
+async function downloadWebDavFromUi() {
+  if (webdavBusy.value || syncingImport.value || importingLibrary.value) return;
+  webdavBusy.value = true;
+  try {
+    const result = await downloadWebDavBackup();
+    downloadTextFile(result.fileName, result.content, result.mimeType);
+    notifySuccess(t("toast.webdavDownloadDone"));
+    await refreshWebDavSettings();
+  } catch (error) {
+    notifyError(t("toast.webdavDownloadFail"), error);
+  } finally {
+    webdavBusy.value = false;
+  }
+}
+
+async function restoreWebDavFromUi() {
+  if (webdavBusy.value || syncingImport.value || importingLibrary.value) return;
+  webdavBusy.value = true;
+  try {
+    const result = await restoreWebDavBackup();
+    webdavSettings.value = result.webdav;
+    await refreshFoldersVideosAndTags();
+    await refreshTrash();
+    notifySuccess(
+      t("toast.webdavRestoreDone"),
+      t("toast.webdavRestoreSummary", {
+        videos: result.summary.videosUpserted,
+        links: result.summary.folderLinksAdded,
+        tags: result.summary.tagsBound
+      })
+    );
+  } catch (error) {
+    notifyError(t("toast.webdavRestoreFail"), error);
+  } finally {
+    webdavBusy.value = false;
+  }
+}
+
 function startTagEnrichmentPolling() {
   if (tagEnrichmentPollTimer !== null) window.clearInterval(tagEnrichmentPollTimer);
   tagEnrichmentPollTimer = window.setInterval(() => {
@@ -876,6 +1026,18 @@ async function loadAutoInitFolderOptions(force = false) {
 function openAutoInitDialog() {
   autoInitDialogOpen.value = true;
   void loadAutoInitFolderOptions();
+}
+
+function maybePromptAutoInitSetupDialog() {
+  if (route.name !== "manager") return;
+  if (trashMode.value) return;
+  if (autoInitDialogOpen.value || autoInitFetchingFolders.value) return;
+  const state = readAutoInitState();
+  autoInitState.value = state;
+  const isFreshLibrary = total.value === 0 && folders.value.length === 0;
+  if (state.status === "idle" && state.folderIds.length === 0 && isFreshLibrary) {
+    openAutoInitDialog();
+  }
 }
 
 function toggleAutoInitFolder(remoteId: number, checked: boolean) {
@@ -1192,41 +1354,25 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
       return;
     }
   }
-  if (normalizedIds.length === 0 || state.status === "idle") {
-    try {
-      await loadAutoInitFolderOptions(true);
-    } catch {
+  if (normalizedIds.length === 0) {
+    if (force) {
+      openAutoInitDialog();
     }
-    const folderIds = autoInitFolders.value
-      .map((item) => Number(item.remoteId))
-      .filter((id) => Number.isFinite(id) && id > 0);
-    if (folderIds.length === 0) {
+    return;
+  }
+
+  if (state.status === "idle") {
+    if (force) {
       writeAutoInitState({
-        status: "failed",
-        folderIds: [],
-        folderIndex: 0,
+        status: "running",
+        folderIds: normalizedIds,
+        folderIndex: Math.max(0, Math.min(state.folderIndex, normalizedIds.length)),
         nextRetryAt: null,
-        targetVideosEstimate: 0,
-        lastError: "No syncable Bilibili favorite folders found. Ensure login is valid and retry."
+        lastError: ""
       });
+    } else {
       return;
     }
-    const targetVideosEstimate = autoInitFolders.value.reduce(
-      (sum, folder) => sum + Math.max(0, Number(folder.mediaCount || 0)),
-      0
-    );
-    const bootstrapped = writeAutoInitState({
-      status: "running",
-      folderIds,
-      folderIndex: 0,
-      riskStreak: 0,
-      nextRetryAt: null,
-      phase1Imported: 0,
-      phase1Scanned: 0,
-      targetVideosEstimate,
-      lastError: ""
-    });
-    normalizedIds = bootstrapped.folderIds.filter((id) => Number.isFinite(id) && id > 0);
   }
 
   if (
@@ -1355,6 +1501,11 @@ async function safeMaybeStartAutoInitSync(options: { force?: boolean } = {}) {
 
 async function resumeAutoInitFromUi() {
   if (autoInitRunning.value || syncingImport.value) return;
+  const state = readAutoInitState();
+  if (!state.folderIds.length) {
+    openAutoInitDialog();
+    return;
+  }
   void safeMaybeStartAutoInitSync({ force: true });
 }
 
@@ -1536,7 +1687,7 @@ watch(
       await applyViewMode(nextName === "trash");
       if (nextName === "manager") {
         startTagEnrichmentPolling();
-        void safeMaybeStartAutoInitSync();
+        maybePromptAutoInitSetupDialog();
       } else {
         stopTagEnrichmentPolling();
       }
@@ -1576,16 +1727,8 @@ watch(
 
 watch(
   () => autoInitCooldownRemainMs.value,
-  (remainMs) => {
-    if (route.name !== "manager") return;
-    if (autoInitState.value.status !== "cooldown") return;
-    if (remainMs > 0) return;
-    if (autoInitRunning.value || syncingImport.value) return;
-    if (autoInitRetryTimer !== null) return;
-    autoInitRetryTimer = window.setTimeout(() => {
-      autoInitRetryTimer = null;
-      void safeMaybeStartAutoInitSync({ force: true });
-    }, 280);
+  () => {
+    // Manual-confirm mode: cooldown end does not auto-resume.
   }
 );
 
@@ -1604,6 +1747,7 @@ onMounted(async () => {
   loading.value = true;
   try {
     await libraryStore.ensureBootstrapped();
+    await refreshBidirectionalSyncSettings();
     if (
       selectedFolderId.value !== null &&
       !folders.value.some((folder) => folder.id === selectedFolderId.value)
@@ -1620,7 +1764,7 @@ onMounted(async () => {
     }
     routeReady.value = true;
     if (route.name === "manager") {
-      void safeMaybeStartAutoInitSync();
+      maybePromptAutoInitSetupDialog();
     }
   } catch (error) {
     console.error("[manager] mount failed:", error);
@@ -1674,6 +1818,8 @@ onBeforeUnmount(() => {
         :exporting="exportingLibrary"
         :importing="importingLibrary"
         @open-tags="toolsOpen = true"
+        @open-sync-settings="openBidirectionalSyncSettingsDialog"
+        @open-webdav-settings="openWebDavDialog"
         @sync-import="openSyncImportDialog"
         @import-file="openImportFileDialog"
         @export-json="handleExport('json')"
@@ -1750,6 +1896,39 @@ onBeforeUnmount(() => {
             </span>
           </div>
           <Progress :model-value="autoInitTagProgress" />
+          <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="tagEnrichmentLoading"
+              @click="refreshTagEnrichmentState"
+            >
+              {{ t("sync.reloadTagEnrich") }}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="tagEnrichmentLoading || (tagEnrichmentStatus?.paused ?? true)"
+              @click="pauseTagEnrichmentFromUi"
+            >
+              {{ t("sync.pauseTagEnrich") }}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="tagEnrichmentLoading || !(tagEnrichmentStatus?.paused ?? false)"
+              @click="resumeTagEnrichmentFromUi"
+            >
+              {{ t("sync.resumeTagEnrich") }}
+            </Button>
+            <Button
+              size="sm"
+              :disabled="tagEnrichmentLoading || (tagEnrichmentStatus?.paused ?? false)"
+              @click="runTagEnrichmentNowFromUi"
+            >
+              {{ t("sync.runTagEnrichNow") }}
+            </Button>
+          </div>
         </div>
 
         <p
@@ -1886,6 +2065,30 @@ onBeforeUnmount(() => {
       @reload="loadAutoInitFolderOptions(true)"
       @toggle-folder="(remoteId, checked) => toggleAutoInitFolder(remoteId, checked)"
       @start="confirmAutoInitSetup"
+    />
+
+    <BidirectionalSyncSettingsDialog
+      :open="bidirectionalSyncDialogOpen"
+      :t="t"
+      :loading="bidirectionalSyncSaving"
+      :settings="bidirectionalSyncSettings"
+      @update:open="bidirectionalSyncDialogOpen = $event"
+      @reload="refreshBidirectionalSyncSettings"
+      @save="saveBidirectionalSyncSettings"
+    />
+
+    <WebDavBackupDialog
+      :open="webdavDialogOpen"
+      :t="t"
+      :loading="webdavBusy"
+      :settings="webdavSettings"
+      @update:open="webdavDialogOpen = $event"
+      @reload="refreshWebDavSettings"
+      @save="saveWebDavSettings"
+      @test="testWebDavFromUi"
+      @upload="uploadWebDavFromUi"
+      @download="downloadWebDavFromUi"
+      @restore="restoreWebDavFromUi"
     />
 
     <SyncImportDialog

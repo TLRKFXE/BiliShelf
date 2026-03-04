@@ -6,6 +6,7 @@ const EXTENSION_REQUEST_TIMEOUT_DEFAULT_MS = 30_000;
 const EXTENSION_REQUEST_TIMEOUT_SYNC_MS = 900_000;
 const EXTENSION_REQUEST_TIMEOUT_SYNC_FOLDERS_MS = 90_000;
 const EXTENSION_REQUEST_TIMEOUT_TAG_ENRICH_MS = 60_000;
+const EXTENSION_REQUEST_TIMEOUT_WEBDAV_MS = 180_000;
 
 type LocalApiRequest = {
   method: string;
@@ -75,6 +76,9 @@ function resolveExtensionRequestTimeout(path: string, method: string) {
   }
   if (path.startsWith("/sync/bilibili/tag-enrichment/")) {
     return EXTENSION_REQUEST_TIMEOUT_TAG_ENRICH_MS;
+  }
+  if (path.startsWith("/backup/webdav/")) {
+    return EXTENSION_REQUEST_TIMEOUT_WEBDAV_MS;
   }
   return EXTENSION_REQUEST_TIMEOUT_DEFAULT_MS;
 }
@@ -497,6 +501,27 @@ export type TagEnrichmentStatus = {
   lastError: string | null;
 };
 
+export type BidirectionalSyncSettings = {
+  biliToLocalEnabled: boolean;
+  localToBiliEnabled: boolean;
+  updatedAt: number;
+};
+
+export type WebDavSettings = {
+  enabled: boolean;
+  baseUrl: string;
+  username: string;
+  passwordSet: boolean;
+  remotePath: string;
+  lastTestAt: number | null;
+  lastTestOk: boolean;
+  lastError: string | null;
+  lastBackupAt: number | null;
+  lastBackupFile: string | null;
+  lastRestoreAt: number | null;
+  updatedAt: number;
+};
+
 export type ExportLibraryResult = {
   format: "json" | "csv";
   filename: string;
@@ -577,6 +602,86 @@ export async function resumeTagEnrichment() {
 export async function runTagEnrichmentNow() {
   return request<TagEnrichmentStatus>("/sync/bilibili/tag-enrichment/run", {
     method: "POST"
+  });
+}
+
+export async function fetchBidirectionalSyncSettings() {
+  return request<BidirectionalSyncSettings>("/sync/bilibili/bidirectional/settings");
+}
+
+export async function updateBidirectionalSyncSettings(payload: {
+  biliToLocalEnabled?: boolean;
+  localToBiliEnabled?: boolean;
+}) {
+  return request<BidirectionalSyncSettings>("/sync/bilibili/bidirectional/settings", {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function fetchWebDavSettings() {
+  return request<WebDavSettings>("/backup/webdav/settings");
+}
+
+export async function updateWebDavSettings(payload: {
+  enabled?: boolean;
+  baseUrl?: string;
+  username?: string;
+  password?: string;
+  remotePath?: string;
+}) {
+  return request<{ ok: true } & WebDavSettings>("/backup/webdav/settings", {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function testWebDavConnection() {
+  return request<{ ok: true } & WebDavSettings>("/backup/webdav/test", {
+    method: "POST"
+  });
+}
+
+export async function uploadWebDavBackup() {
+  return request<{
+    ok: true;
+    latestFileName: string;
+    snapshotFileName: string;
+    summary: { folders: number; videos: number; tags: number };
+  } & WebDavSettings>("/backup/webdav/upload", {
+    method: "POST"
+  });
+}
+
+export async function downloadWebDavBackup(payload?: { fileName?: string }) {
+  return request<{
+    ok: true;
+    fileName: string;
+    mimeType: string;
+    content: string;
+  }>("/backup/webdav/download", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {})
+  });
+}
+
+export async function restoreWebDavBackup(payload?: { fileName?: string }) {
+  return request<{
+    ok: true;
+    fileName: string;
+    summary: {
+      videosUpserted: number;
+      folderLinksAdded: number;
+      tagsBound: number;
+      foldersCreated: number;
+      tagsCreated: number;
+      rowsSkipped: number;
+    };
+    restoredAt: number;
+    webdav: WebDavSettings;
+  }>("/backup/webdav/restore", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {})
   });
 }
 

@@ -56,8 +56,44 @@ type TagEnrichmentMeta = {
   lastError: string | null;
 };
 
+type BidirectionalSyncMeta = {
+  biliToLocalEnabled: boolean;
+  localToBiliEnabled: boolean;
+  updatedAt: number;
+};
+
+type WebDavMeta = {
+  enabled: boolean;
+  baseUrl: string;
+  username: string;
+  password: string;
+  remotePath: string;
+  lastTestAt: number | null;
+  lastTestOk: boolean;
+  lastError: string | null;
+  lastBackupAt: number | null;
+  lastBackupFile: string | null;
+  lastRestoreAt: number | null;
+  updatedAt: number;
+};
+
+type Stage3ReconcileMeta = {
+  enabled: boolean;
+  intervalMinutes: number;
+  cursorAfterRemoteMediaId: number;
+  nextRunAt: number | null;
+  running: boolean;
+  lastRunAt: number | null;
+  lastError: string | null;
+  lastRemoteMediaId: number | null;
+  lastSummary: FavoritesSyncSummaryStatus;
+};
+
 type SyncMeta = {
   tagEnrichment: TagEnrichmentMeta;
+  bidirectionalSync: BidirectionalSyncMeta;
+  webdav: WebDavMeta;
+  stage3Reconcile: Stage3ReconcileMeta;
 };
 
 type LocalState = {
@@ -97,16 +133,21 @@ const MESSAGE_TYPE = "BILISHELF_LOCAL_API";
 const BILI_NAV_API = "https://api.bilibili.com/x/web-interface/nav";
 const BILI_FOLDERS_API = "https://api.bilibili.com/x/v3/fav/folder/created/list-all";
 const BILI_FOLDER_VIDEOS_API = "https://api.bilibili.com/x/v3/fav/resource/list";
+const BILI_VIEW_API = "https://api.bilibili.com/x/web-interface/view";
 const BILI_ARCHIVE_TAGS_API = "https://api.bilibili.com/x/tag/archive/tags";
 const BILI_ORIGIN = "https://www.bilibili.com";
 const BLOCKED_SYSTEM_TAGS = new Set(["uncategorized", "未分类"]);
 const DEFAULT_COVER = "https://i0.hdslb.com/bfs/archive/placeholder.jpg";
 const PAGE_FETCH_MESSAGE_TYPE = "BILISHELF_PAGE_FETCH_JSON";
 const TAG_ENRICH_ALARM = "bilishelf-tag-enrich";
-const TAG_ENRICH_BATCH_SIZE = 3;
+const STAGE3_RECONCILE_ALARM = "bilishelf-stage3-reconcile";
+const TAG_ENRICH_BATCH_SIZE = 2;
 const TAG_ENRICH_RETRY_DELAY_MINUTES = 1;
-const TAG_ENRICH_RISK_DELAY_MINUTES = 15;
-const TAG_SYNC_ENABLED = false;
+const TAG_ENRICH_RISK_DELAY_MINUTES = 20;
+const STAGE3_RECONCILE_DEFAULT_INTERVAL_MINUTES = 30;
+const STAGE3_RECONCILE_RETRY_DELAY_MINUTES = 5;
+const STAGE3_RECONCILE_RISK_DELAY_MINUTES = 20;
+const TAG_SYNC_ENABLED = true;
 const BILI_FETCH_TIMEOUT_MS = 18_000;
 const BILI_META_API_GAP_MS = 280;
 const BILI_META_API_GAP_JITTER_MS = 100;
@@ -116,6 +157,9 @@ const FAVORITES_COOLDOWN_EVERY_VIDEOS = 400;
 const FAVORITES_COOLDOWN_MS = 30_000;
 const FAVORITES_PAGE_GAP_MS = 650;
 const FAVORITES_PAGE_GAP_JITTER_MS = 120;
+const WEBDAV_REQUEST_TIMEOUT_MS = 45_000;
+const WEBDAV_LATEST_FILE_NAME = "bilishelf-latest.json";
+const WEBDAV_MAX_DOWNLOAD_SIZE = 30 * 1024 * 1024;
 
 type SyncFetchStage = "nav" | "folders" | "folderVideos";
 type FetchSource = "extension" | "page";
@@ -125,6 +169,12 @@ type TabBridgePayload = {
   status: number;
   payload?: unknown;
   error?: string;
+};
+
+type BiliExtensionRequestOptions = {
+  method?: "GET" | "POST";
+  headers?: Record<string, string>;
+  body?: BodyInit | null;
 };
 
 type FavoritesSyncSummaryStatus = {
@@ -173,6 +223,47 @@ const defaultTagEnrichmentMeta = (): TagEnrichmentMeta => ({
   lastError: null
 });
 
+const defaultBidirectionalSyncMeta = (): BidirectionalSyncMeta => ({
+  biliToLocalEnabled: false,
+  localToBiliEnabled: false,
+  updatedAt: now()
+});
+
+const defaultWebDavMeta = (): WebDavMeta => ({
+  enabled: false,
+  baseUrl: "",
+  username: "",
+  password: "",
+  remotePath: "bilishelf",
+  lastTestAt: null,
+  lastTestOk: false,
+  lastError: null,
+  lastBackupAt: null,
+  lastBackupFile: null,
+  lastRestoreAt: null,
+  updatedAt: now()
+});
+
+const defaultStage3ReconcileMeta = (): Stage3ReconcileMeta => ({
+  enabled: true,
+  intervalMinutes: STAGE3_RECONCILE_DEFAULT_INTERVAL_MINUTES,
+  cursorAfterRemoteMediaId: 0,
+  nextRunAt: null,
+  running: false,
+  lastRunAt: null,
+  lastError: null,
+  lastRemoteMediaId: null,
+  lastSummary: {
+    foldersDetected: 0,
+    foldersSynced: 0,
+    videosProcessed: 0,
+    videosUpserted: 0,
+    folderLinksAdded: 0,
+    tagsBound: 0,
+    errorCount: 0
+  }
+});
+
 const defaultState = (): LocalState => ({
   counters: {
     folder: 1,
@@ -187,7 +278,10 @@ const defaultState = (): LocalState => ({
   tags: [],
   videoTags: [],
   syncMeta: {
-    tagEnrichment: defaultTagEnrichmentMeta()
+    tagEnrichment: defaultTagEnrichmentMeta(),
+    bidirectionalSync: defaultBidirectionalSyncMeta(),
+    webdav: defaultWebDavMeta(),
+    stage3Reconcile: defaultStage3ReconcileMeta()
   }
 });
 
@@ -226,6 +320,7 @@ let nextBiliRequestAt = 0;
 let biliRequestThrottleQueue: Promise<void> = Promise.resolve();
 let favoritesSyncTask: Promise<void> | null = null;
 let favoritesSyncStatus: FavoritesSyncStatus = defaultFavoritesSyncStatus();
+let stage3ReconcileTask: Promise<void> | null = null;
 
 function now() {
   return Date.now();
@@ -354,6 +449,77 @@ async function readState() {
             lastBatchBound: toInt(raw.syncMeta?.tagEnrichment?.lastBatchBound, 0),
             lastRunAt: toIntOrNull(raw.syncMeta?.tagEnrichment?.lastRunAt),
             lastError: normalizeText(raw.syncMeta?.tagEnrichment?.lastError) || null
+          },
+          bidirectionalSync: {
+            biliToLocalEnabled: Boolean(raw.syncMeta?.bidirectionalSync?.biliToLocalEnabled),
+            localToBiliEnabled: false,
+            updatedAt: toInt(
+              raw.syncMeta?.bidirectionalSync?.updatedAt,
+              base.syncMeta.bidirectionalSync.updatedAt
+            )
+          },
+          webdav: {
+            enabled: Boolean(raw.syncMeta?.webdav?.enabled),
+            baseUrl: normalizeText(raw.syncMeta?.webdav?.baseUrl),
+            username: normalizeText(raw.syncMeta?.webdav?.username),
+            password: String(raw.syncMeta?.webdav?.password ?? ""),
+            remotePath: normalizeText(raw.syncMeta?.webdav?.remotePath) || "bilishelf",
+            lastTestAt: toIntOrNull(raw.syncMeta?.webdav?.lastTestAt),
+            lastTestOk: Boolean(raw.syncMeta?.webdav?.lastTestOk),
+            lastError: normalizeText(raw.syncMeta?.webdav?.lastError) || null,
+            lastBackupAt: toIntOrNull(raw.syncMeta?.webdav?.lastBackupAt),
+            lastBackupFile: normalizeText(raw.syncMeta?.webdav?.lastBackupFile) || null,
+            lastRestoreAt: toIntOrNull(raw.syncMeta?.webdav?.lastRestoreAt),
+            updatedAt: toInt(raw.syncMeta?.webdav?.updatedAt, base.syncMeta.webdav.updatedAt)
+          },
+          stage3Reconcile: {
+            enabled: raw.syncMeta?.stage3Reconcile?.enabled !== false,
+            intervalMinutes: Math.max(
+              5,
+              toInt(
+                raw.syncMeta?.stage3Reconcile?.intervalMinutes,
+                base.syncMeta.stage3Reconcile.intervalMinutes
+              )
+            ),
+            cursorAfterRemoteMediaId: Math.max(
+              0,
+              toInt(raw.syncMeta?.stage3Reconcile?.cursorAfterRemoteMediaId, 0)
+            ),
+            nextRunAt: toIntOrNull(raw.syncMeta?.stage3Reconcile?.nextRunAt),
+            running: false,
+            lastRunAt: toIntOrNull(raw.syncMeta?.stage3Reconcile?.lastRunAt),
+            lastError: normalizeText(raw.syncMeta?.stage3Reconcile?.lastError) || null,
+            lastRemoteMediaId: toIntOrNull(raw.syncMeta?.stage3Reconcile?.lastRemoteMediaId),
+            lastSummary: {
+              foldersDetected: Math.max(
+                0,
+                toInt(raw.syncMeta?.stage3Reconcile?.lastSummary?.foldersDetected, 0)
+              ),
+              foldersSynced: Math.max(
+                0,
+                toInt(raw.syncMeta?.stage3Reconcile?.lastSummary?.foldersSynced, 0)
+              ),
+              videosProcessed: Math.max(
+                0,
+                toInt(raw.syncMeta?.stage3Reconcile?.lastSummary?.videosProcessed, 0)
+              ),
+              videosUpserted: Math.max(
+                0,
+                toInt(raw.syncMeta?.stage3Reconcile?.lastSummary?.videosUpserted, 0)
+              ),
+              folderLinksAdded: Math.max(
+                0,
+                toInt(raw.syncMeta?.stage3Reconcile?.lastSummary?.folderLinksAdded, 0)
+              ),
+              tagsBound: Math.max(
+                0,
+                toInt(raw.syncMeta?.stage3Reconcile?.lastSummary?.tagsBound, 0)
+              ),
+              errorCount: Math.max(
+                0,
+                toInt(raw.syncMeta?.stage3Reconcile?.lastSummary?.errorCount, 0)
+              )
+            }
           }
         }
       };
@@ -724,7 +890,12 @@ async function throttleBiliRequest(stage: SyncFetchStage) {
   }
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  timeoutLabel = "Bilibili API request"
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -734,7 +905,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error(`Bilibili API request timeout (${timeoutMs}ms)`);
+      throw new Error(`${timeoutLabel} timeout (${timeoutMs}ms)`);
     }
     throw error;
   } finally {
@@ -1095,6 +1266,60 @@ function formatBiliRequestError(error: BiliRequestError) {
   return `[${stageLabel(error.stage)}][${error.source}] ${error.message}`;
 }
 
+function toBasicAuthHeader(username: string, password: string) {
+  const token = btoa(`${username}:${password}`);
+  return `Basic ${token}`;
+}
+
+function buildWebDavFileUrl(meta: WebDavMeta, fileName: string) {
+  const safeFileName = normalizeText(fileName);
+  if (!safeFileName) throw new Error("WebDAV file name is required");
+  const baseUrl = normalizeWebDavBaseUrl(meta.baseUrl);
+  const path = normalizeWebDavRemotePath(meta.remotePath);
+  const encodedPath = path
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const encodedFileName = encodeURIComponent(safeFileName);
+  if (!encodedPath) {
+    return `${baseUrl}/${encodedFileName}`;
+  }
+  return `${baseUrl}/${encodedPath}/${encodedFileName}`;
+}
+
+async function requestWebDav(
+  meta: WebDavMeta,
+  method: "GET" | "PUT" | "DELETE" | "HEAD",
+  fileName: string,
+  body: string | null = null
+) {
+  const baseUrl = normalizeWebDavBaseUrl(meta.baseUrl);
+  if (!baseUrl) throw new Error("WebDAV server URL is not configured");
+  const username = normalizeText(meta.username);
+  if (!username) throw new Error("WebDAV username is not configured");
+  if (!meta.password) throw new Error("WebDAV password is not configured");
+
+  const url = buildWebDavFileUrl(meta, fileName);
+  const headers: Record<string, string> = {
+    Authorization: toBasicAuthHeader(username, meta.password)
+  };
+  if (method === "PUT") {
+    headers["Content-Type"] = "application/json; charset=utf-8";
+  }
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method,
+      headers,
+      body: method === "PUT" ? body ?? "" : undefined
+    },
+    WEBDAV_REQUEST_TIMEOUT_MS,
+    "WebDAV request"
+  );
+  return response;
+}
+
 async function getBiliCookieHeader(forceRefresh = false) {
   const nowTs = Date.now();
   if (!forceRefresh && biliCookieHeaderCache && biliCookieHeaderCache.expiresAt > nowTs) {
@@ -1251,7 +1476,11 @@ async function fetchBiliJsonViaPageContext<T>(url: string, stage: SyncFetchStage
   return payload.data;
 }
 
-async function fetchBiliJsonByExtension<T>(url: string, stage: SyncFetchStage): Promise<T> {
+async function fetchBiliJsonByExtension<T>(
+  url: string,
+  stage: SyncFetchStage,
+  options: BiliExtensionRequestOptions = {}
+): Promise<T> {
   const maxAttempts = 3;
   let lastError: BiliRequestError | null = null;
   let manualCookieHeader = await getBiliCookieHeader();
@@ -1265,6 +1494,7 @@ async function fetchBiliJsonByExtension<T>(url: string, stage: SyncFetchStage): 
     });
   }
   let allowManualCookieHeader = true;
+  const method = options.method ?? "GET";
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -1273,6 +1503,11 @@ async function fetchBiliJsonByExtension<T>(url: string, stage: SyncFetchStage): 
         Referer: `${BILI_ORIGIN}/`,
         Origin: BILI_ORIGIN
       };
+      if (options.headers) {
+        for (const [key, value] of Object.entries(options.headers)) {
+          headers[key] = value;
+        }
+      }
       if (allowManualCookieHeader && manualCookieHeader) {
         headers.Cookie = manualCookieHeader;
       }
@@ -1280,8 +1515,10 @@ async function fetchBiliJsonByExtension<T>(url: string, stage: SyncFetchStage): 
       const response = await fetchWithTimeout(
         url,
         {
+        method,
         credentials: "include",
-        headers
+        headers,
+        body: options.body ?? undefined
         },
         BILI_FETCH_TIMEOUT_MS
       );
@@ -1448,6 +1685,55 @@ async function fetchRemoteFoldersFromBilibili(forceRefresh = false) {
   return items;
 }
 
+function toAid(value: unknown) {
+  const parsed = toInt(value, 0);
+  return parsed > 0 ? parsed : 0;
+}
+
+function upsertVideoFromRemoteDetail(state: LocalState, detail: Record<string, unknown>) {
+  const bvid = normalizeText(detail?.bvid);
+  if (!bvid) return null;
+  const timestamp = now();
+  const existing = state.videos.find((video) => normalizeKey(video.bvid) === normalizeKey(bvid));
+  const publishAtRaw = toInt(detail?.pubdate, 0);
+  const publishAt = publishAtRaw > 0 ? publishAtRaw * 1000 : null;
+  const owner = (detail?.owner || {}) as { name?: unknown; mid?: unknown };
+  const uploader = normalizeText(owner.name) || "Unknown uploader";
+  const uploaderMid = toInt(owner.mid, 0);
+  const video: VideoRecord = existing || {
+    id: state.counters.video++,
+    bvid,
+    title: normalizeText(detail?.title) || bvid,
+    coverUrl: normalizeCoverUrl(detail?.pic),
+    uploader,
+    uploaderSpaceUrl: uploaderMid > 0 ? `${BILI_ORIGIN}/space/${uploaderMid}` : null,
+    description: normalizeText(detail?.desc),
+    publishAt,
+    bvidUrl: normalizeBiliVideoUrl("", bvid),
+    isInvalid: false,
+    deletedAt: null,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  video.bvid = bvid;
+  video.title = normalizeText(detail?.title) || bvid;
+  video.coverUrl = normalizeCoverUrl(detail?.pic);
+  video.uploader = uploader;
+  video.uploaderSpaceUrl = uploaderMid > 0 ? `${BILI_ORIGIN}/space/${uploaderMid}` : null;
+  video.description = normalizeText(detail?.desc);
+  video.publishAt = publishAt;
+  video.bvidUrl = normalizeBiliVideoUrl("", bvid);
+  video.isInvalid = false;
+  video.deletedAt = null;
+  video.updatedAt = timestamp;
+
+  if (!existing) {
+    state.videos.push(video);
+  }
+  return video;
+}
+
 function extractMediaTagNames(media: Record<string, unknown>) {
   const names: string[] = [];
   const fromPayload = Array.isArray(media.tags) ? media.tags : [];
@@ -1533,12 +1819,160 @@ function getVideoIdSetWithSystemTags(state: LocalState) {
 
 function ensureTagEnrichmentMeta(state: LocalState) {
   if (!state.syncMeta) {
-    state.syncMeta = { tagEnrichment: defaultTagEnrichmentMeta() };
+    state.syncMeta = {
+      tagEnrichment: defaultTagEnrichmentMeta(),
+      bidirectionalSync: defaultBidirectionalSyncMeta(),
+      webdav: defaultWebDavMeta(),
+      stage3Reconcile: defaultStage3ReconcileMeta()
+    };
   }
   if (!state.syncMeta.tagEnrichment) {
     state.syncMeta.tagEnrichment = defaultTagEnrichmentMeta();
   }
+  if (!state.syncMeta.webdav) {
+    state.syncMeta.webdav = defaultWebDavMeta();
+  }
+  if (!state.syncMeta.stage3Reconcile) {
+    state.syncMeta.stage3Reconcile = defaultStage3ReconcileMeta();
+  }
   return state.syncMeta.tagEnrichment;
+}
+
+function ensureBidirectionalSyncMeta(state: LocalState) {
+  if (!state.syncMeta) {
+    state.syncMeta = {
+      tagEnrichment: defaultTagEnrichmentMeta(),
+      bidirectionalSync: defaultBidirectionalSyncMeta(),
+      webdav: defaultWebDavMeta(),
+      stage3Reconcile: defaultStage3ReconcileMeta()
+    };
+  }
+  if (!state.syncMeta.bidirectionalSync) {
+    state.syncMeta.bidirectionalSync = defaultBidirectionalSyncMeta();
+  }
+  if (!state.syncMeta.webdav) {
+    state.syncMeta.webdav = defaultWebDavMeta();
+  }
+  if (!state.syncMeta.stage3Reconcile) {
+    state.syncMeta.stage3Reconcile = defaultStage3ReconcileMeta();
+  }
+  // Local->Bilibili write-back has been retired; keep it hard-disabled in persisted state.
+  state.syncMeta.bidirectionalSync.localToBiliEnabled = false;
+  return state.syncMeta.bidirectionalSync;
+}
+
+function normalizeWebDavBaseUrl(rawUrl: unknown) {
+  const text = normalizeText(rawUrl);
+  if (!text) return "";
+  let parsed: URL;
+  try {
+    parsed = new URL(text);
+  } catch {
+    throw new Error("WebDAV server URL is invalid");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("WebDAV server URL must start with http:// or https://");
+  }
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function normalizeWebDavRemotePath(rawPath: unknown) {
+  const text = normalizeText(rawPath).replace(/\\/g, "/");
+  const cleaned = text
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join("/");
+  return cleaned || "bilishelf";
+}
+
+function ensureWebDavMeta(state: LocalState) {
+  if (!state.syncMeta) {
+    state.syncMeta = {
+      tagEnrichment: defaultTagEnrichmentMeta(),
+      bidirectionalSync: defaultBidirectionalSyncMeta(),
+      webdav: defaultWebDavMeta(),
+      stage3Reconcile: defaultStage3ReconcileMeta()
+    };
+  }
+  if (!state.syncMeta.webdav) {
+    state.syncMeta.webdav = defaultWebDavMeta();
+  }
+  const meta = state.syncMeta.webdav;
+  meta.baseUrl = normalizeText(meta.baseUrl);
+  meta.username = normalizeText(meta.username);
+  meta.password = String(meta.password ?? "");
+  meta.remotePath = normalizeWebDavRemotePath(meta.remotePath);
+  if (meta.enabled === undefined || meta.enabled === null) {
+    meta.enabled = false;
+  }
+  return meta;
+}
+
+function getWebDavSettings(meta: WebDavMeta) {
+  return {
+    enabled: meta.enabled,
+    baseUrl: meta.baseUrl,
+    username: meta.username,
+    passwordSet: Boolean(meta.password),
+    remotePath: meta.remotePath,
+    lastTestAt: meta.lastTestAt,
+    lastTestOk: meta.lastTestOk,
+    lastError: meta.lastError,
+    lastBackupAt: meta.lastBackupAt,
+    lastBackupFile: meta.lastBackupFile,
+    lastRestoreAt: meta.lastRestoreAt,
+    updatedAt: meta.updatedAt
+  };
+}
+
+function ensureStage3ReconcileMeta(state: LocalState) {
+  if (!state.syncMeta) {
+    state.syncMeta = {
+      tagEnrichment: defaultTagEnrichmentMeta(),
+      bidirectionalSync: defaultBidirectionalSyncMeta(),
+      webdav: defaultWebDavMeta(),
+      stage3Reconcile: defaultStage3ReconcileMeta()
+    };
+  }
+  if (!state.syncMeta.webdav) {
+    state.syncMeta.webdav = defaultWebDavMeta();
+  }
+  if (!state.syncMeta.stage3Reconcile) {
+    state.syncMeta.stage3Reconcile = defaultStage3ReconcileMeta();
+  }
+  const meta = state.syncMeta.stage3Reconcile;
+  meta.intervalMinutes = Math.max(5, toInt(meta.intervalMinutes, STAGE3_RECONCILE_DEFAULT_INTERVAL_MINUTES));
+  if (meta.enabled === undefined || meta.enabled === null) {
+    meta.enabled = true;
+  }
+  if (!meta.lastSummary) {
+    meta.lastSummary = {
+      foldersDetected: 0,
+      foldersSynced: 0,
+      videosProcessed: 0,
+      videosUpserted: 0,
+      folderLinksAdded: 0,
+      tagsBound: 0,
+      errorCount: 0
+    };
+  }
+  return meta;
+}
+
+function getStage3ReconcileStatus(state: LocalState) {
+  const meta = ensureStage3ReconcileMeta(state);
+  return {
+    enabled: meta.enabled,
+    intervalMinutes: meta.intervalMinutes,
+    cursorAfterRemoteMediaId: meta.cursorAfterRemoteMediaId,
+    nextRunAt: meta.nextRunAt,
+    running: meta.running || Boolean(stage3ReconcileTask),
+    lastRunAt: meta.lastRunAt,
+    lastError: meta.lastError,
+    lastRemoteMediaId: meta.lastRemoteMediaId,
+    lastSummary: { ...meta.lastSummary }
+  };
 }
 
 function collectMissingSystemTagCandidates(
@@ -1657,7 +2091,7 @@ async function runTagEnrichmentBatch(trigger: "sync" | "alarm" | "startup") {
         break;
       }
     }
-    await sleep(850 + Math.floor(Math.random() * 260));
+    await sleep(1600 + Math.floor(Math.random() * 900));
   }
 
   const result = await withState((state) => {
@@ -1740,6 +2174,145 @@ function getTagEnrichmentStatus(state: LocalState) {
   };
 }
 
+function scheduleStage3Reconcile(minutes: number) {
+  if (!chrome.alarms?.create) return;
+  const delay = Math.max(1, Math.ceil(minutes));
+  chrome.alarms.create(STAGE3_RECONCILE_ALARM, {
+    delayInMinutes: delay
+  });
+}
+
+function collectMappedRemoteMediaIds(state: LocalState) {
+  return Array.from(
+    new Set(
+      state.folders
+        .filter((folder) => folder.deletedAt === null)
+        .map((folder) => toInt(folder.remoteMediaId, 0))
+        .filter((remoteMediaId) => remoteMediaId > 0)
+    )
+  ).sort((a, b) => a - b);
+}
+
+function pickNextRemoteMediaIdForStage3(meta: Stage3ReconcileMeta, mappedRemoteMediaIds: number[]) {
+  if (mappedRemoteMediaIds.length === 0) return 0;
+  const cursor = Math.max(0, toInt(meta.cursorAfterRemoteMediaId, 0));
+  const next = mappedRemoteMediaIds.find((id) => id > cursor) ?? mappedRemoteMediaIds[0];
+  meta.cursorAfterRemoteMediaId = next;
+  return next;
+}
+
+async function runStage3Reconcile(trigger: "manual" | "alarm" | "startup") {
+  const decision = await withState(async (state) => {
+    const meta = ensureStage3ReconcileMeta(state);
+    meta.running = true;
+
+    if (!meta.enabled && trigger !== "manual") {
+      meta.running = false;
+      meta.nextRunAt = null;
+      return {
+        delayMinutes: null as number | null
+      };
+    }
+
+    if (favoritesSyncTask) {
+      meta.running = false;
+      const delayMinutes = STAGE3_RECONCILE_RETRY_DELAY_MINUTES;
+      meta.lastError = "Skipped: primary sync is running";
+      meta.nextRunAt = now() + delayMinutes * 60 * 1000;
+      return {
+        delayMinutes
+      };
+    }
+
+    const mappedRemoteMediaIds = collectMappedRemoteMediaIds(state);
+    if (mappedRemoteMediaIds.length === 0) {
+      meta.running = false;
+      meta.lastRunAt = now();
+      meta.lastError = null;
+      meta.lastRemoteMediaId = null;
+      meta.lastSummary = emptyFavoritesSyncSummary();
+      if (meta.enabled) {
+        meta.nextRunAt = now() + meta.intervalMinutes * 60 * 1000;
+        return {
+          delayMinutes: meta.intervalMinutes
+        };
+      }
+      meta.nextRunAt = null;
+      return {
+        delayMinutes: null
+      };
+    }
+
+    const selectedRemoteMediaId = pickNextRemoteMediaIdForStage3(meta, mappedRemoteMediaIds);
+    if (selectedRemoteMediaId <= 0) {
+      meta.running = false;
+      const delayMinutes = meta.intervalMinutes;
+      meta.nextRunAt = now() + delayMinutes * 60 * 1000;
+      return {
+        delayMinutes
+      };
+    }
+
+    try {
+      const result = await syncFromBilibiliToState(state, {
+        selectedRemoteFolderIds: [selectedRemoteMediaId]
+      });
+      const baseDelay = meta.intervalMinutes;
+      const delayMinutes = result.riskBlocked ? STAGE3_RECONCILE_RISK_DELAY_MINUTES : baseDelay;
+      meta.running = false;
+      meta.lastRunAt = now();
+      meta.lastRemoteMediaId = selectedRemoteMediaId;
+      meta.lastSummary = result.summary;
+      meta.lastError = result.riskBlocked
+        ? "Risk-control blocked (412) during stage3 reconcile"
+        : result.errors[0]?.message || null;
+      meta.nextRunAt = meta.enabled ? now() + delayMinutes * 60 * 1000 : null;
+      return {
+        delayMinutes: meta.enabled ? delayMinutes : null
+      };
+    } catch (error) {
+      const message = isBiliRequestError(error)
+        ? formatBiliRequestError(error)
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      const isRisk = isBiliRequestError(error)
+        ? error.status === 412 || isRiskControlError(message)
+        : isRiskControlError(message);
+      const delayMinutes = isRisk
+        ? STAGE3_RECONCILE_RISK_DELAY_MINUTES
+        : STAGE3_RECONCILE_RETRY_DELAY_MINUTES;
+      meta.running = false;
+      meta.lastRunAt = now();
+      meta.lastRemoteMediaId = selectedRemoteMediaId;
+      meta.lastError = message;
+      meta.nextRunAt = meta.enabled ? now() + delayMinutes * 60 * 1000 : null;
+      return {
+        delayMinutes: meta.enabled ? delayMinutes : null
+      };
+    }
+  }, true);
+
+  if (decision.delayMinutes !== null) {
+    scheduleStage3Reconcile(decision.delayMinutes);
+  } else if (chrome.alarms?.clear) {
+    chrome.alarms.clear(STAGE3_RECONCILE_ALARM);
+  }
+}
+
+function triggerStage3Reconcile(trigger: "manual" | "alarm" | "startup") {
+  if (stage3ReconcileTask) return stage3ReconcileTask;
+  stage3ReconcileTask = runStage3Reconcile(trigger)
+    .catch((error) => {
+      console.warn("[stage3-reconcile] failed:", error);
+      scheduleStage3Reconcile(STAGE3_RECONCILE_RETRY_DELAY_MINUTES);
+    })
+    .finally(() => {
+      stage3ReconcileTask = null;
+    });
+  return stage3ReconcileTask;
+}
+
 function ensureFolderByNameForImport(state: LocalState, rawName: unknown) {
   const name = normalizeText(rawName);
   if (!name) return null;
@@ -1800,6 +2373,133 @@ function ensureLocalFolderByRemoteId(
   };
   state.folders.push(created);
   return created;
+}
+
+function isFavoriteFolderFlagged(raw: Record<string, unknown>) {
+  const candidates = [
+    raw.fav_state,
+    raw.favState,
+    raw.is_fav,
+    raw.favored,
+    raw.state
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "boolean") return candidate;
+    if (typeof candidate === "number") return candidate > 0;
+    if (typeof candidate === "string") {
+      const normalized = candidate.trim().toLowerCase();
+      if (normalized === "true") return true;
+      if (normalized === "false") return false;
+      const parsed = Number(normalized);
+      if (Number.isFinite(parsed)) return parsed > 0;
+    }
+  }
+  return false;
+}
+
+async function pullSingleFavoriteVideoFromBiliToLocal(
+  state: LocalState,
+  options: { bvid?: unknown; aid?: unknown }
+) {
+  const requestedBvid = normalizeOutputBvid(normalizeText(options.bvid));
+  const requestedAid = toAid(options.aid);
+  if (!requestedBvid && requestedAid <= 0) {
+    throw new Error("bvid or aid is required for favorite action sync");
+  }
+
+  const detail = await fetchBiliJson<Record<string, unknown>>(
+    requestedBvid
+      ? `${BILI_VIEW_API}?bvid=${encodeURIComponent(requestedBvid)}`
+      : `${BILI_VIEW_API}?aid=${requestedAid}`,
+    "folderVideos"
+  );
+  const video = upsertVideoFromRemoteDetail(state, detail);
+  if (!video) {
+    throw new Error("Failed to parse video detail from Bilibili");
+  }
+
+  const resolvedAid = toAid(detail?.aid) || requestedAid;
+  const targetFolderIdSet = new Set<number>();
+  const reconciledRemoteFolderIdSet = new Set<number>(
+    state.folders
+      .filter((folder) => folder.deletedAt === null && toInt(folder.remoteMediaId, 0) > 0)
+      .map((folder) => folder.id)
+  );
+  if (resolvedAid > 0) {
+    const nav = await fetchBiliJson<{ isLogin?: boolean; mid?: number }>(BILI_NAV_API, "nav");
+    const mid = toInt(nav.mid ?? 0, 0);
+    if (!nav.isLogin || mid <= 0) {
+      throw new Error("Please login to Bilibili in current browser first");
+    }
+    const folderResp = await fetchBiliJson<{ list?: Array<Record<string, unknown>> }>(
+      `${BILI_FOLDERS_API}?up_mid=${mid}&type=2&rid=${resolvedAid}`,
+      "folders"
+    );
+    const rows = folderResp.list ?? [];
+    if (rows.length > 0) {
+      const cachedRemoteFolders = await fetchRemoteFoldersFromBilibili();
+      const remoteFolderMap = new Map(cachedRemoteFolders.map((item) => [item.remoteId, item]));
+      for (const row of rows) {
+        const remoteId = pickRemoteFolderId(row);
+        if (remoteId <= 0) continue;
+        const remoteFolder =
+          remoteFolderMap.get(remoteId) ??
+          ({
+            remoteId,
+            title: normalizeText(row.title) || `Bilibili Favorite ${remoteId}`,
+            mediaCount: toInt(row.media_count ?? row.mediaCount, 0)
+          } as RemoteFolder);
+        const localFolder = ensureLocalFolderByRemoteId(state, remoteFolder);
+        reconciledRemoteFolderIdSet.add(localFolder.id);
+        if (isFavoriteFolderFlagged(row)) {
+          targetFolderIdSet.add(localFolder.id);
+        }
+      }
+    }
+  }
+
+  const timestamp = now();
+  let folderLinksAdded = 0;
+  for (const folderId of targetFolderIdSet) {
+    const existingLink = state.folderItems.find(
+      (item) => item.folderId === folderId && item.videoId === video.id
+    );
+    if (!existingLink) {
+      state.folderItems.push({
+        id: state.counters.folderItem++,
+        folderId,
+        videoId: video.id,
+        addedAt: timestamp
+      });
+      folderLinksAdded += 1;
+      continue;
+    }
+    if (timestamp > existingLink.addedAt) {
+      existingLink.addedAt = timestamp;
+    }
+  }
+  let folderLinksRemoved = 0;
+  if (reconciledRemoteFolderIdSet.size > 0) {
+    state.folderItems = state.folderItems.filter((item) => {
+      if (item.videoId !== video.id) return true;
+      if (!reconciledRemoteFolderIdSet.has(item.folderId)) return true;
+      if (targetFolderIdSet.has(item.folderId)) return true;
+      folderLinksRemoved += 1;
+      return false;
+    });
+    if (folderLinksRemoved > 0) {
+      markOrphanVideosDeleted(state);
+    }
+  }
+  video.updatedAt = now();
+
+  return {
+    videoId: video.id,
+    bvid: video.bvid,
+    folderLinksAdded,
+    folderLinksRemoved,
+    mappedFolders: targetFolderIdSet.size
+  };
 }
 
 type SyncSummary = {
@@ -2130,6 +2830,21 @@ function updateFavoritesSyncStatus(patch: Partial<FavoritesSyncStatus>) {
   };
 }
 
+function isWriteRequestBlockedByFavoritesSync(method: string, path: string) {
+  if (!favoritesSyncTask) return false;
+  if (method === "GET") return false;
+  // Keep sync control and probe endpoints callable while sync is running.
+  if (path.startsWith("/sync/bilibili/history-model/")) return false;
+  if (path === "/sync/bilibili/history-model/status") return false;
+  if (path === "/sync/bilibili/tag-enrichment/status") return false;
+  if (path === "/sync/bilibili/bidirectional/settings") return false;
+  if (path === "/backup/webdav/settings") return false;
+  if (path === "/backup/webdav/test") return false;
+  if (path === "/backup/webdav/upload") return false;
+  if (path === "/backup/webdav/download") return false;
+  return true;
+}
+
 function startFavoritesSyncTask(params: {
   selectedRemoteFolderIds: number[];
   resumePageByFolder?: Record<string, number>;
@@ -2199,6 +2914,10 @@ function startFavoritesSyncTask(params: {
         summary: result.summary,
         errors: result.errors
       });
+      if (TAG_SYNC_ENABLED && result.summary.videosProcessed > 0) {
+        scheduleTagEnrichment(1);
+        void triggerTagEnrichment("sync");
+      }
     })
     .catch((error) => {
       const message = isBiliRequestError(error)
@@ -2261,6 +2980,163 @@ function buildExportPayload(state: LocalState) {
   };
 }
 
+function buildJsonExportResult(state: LocalState) {
+  const summary = {
+    folders: state.folders.length,
+    videos: state.videos.length,
+    tags: state.tags.length
+  };
+  const {
+    exportedAt,
+    stamp,
+    latestAddedAtByVideo
+  } = buildExportPayload(state);
+
+  const exportVideos = state.videos.map((video) => ({
+    ...video,
+    publishAtText: formatTimestamp(video.publishAt),
+    favoriteAt: latestAddedAtByVideo.get(video.id) ?? null,
+    favoriteAtText: formatTimestamp(latestAddedAtByVideo.get(video.id) ?? null)
+  }));
+  const exportFolderItems = state.folderItems.map((item) => ({
+    ...item,
+    addedAtText: formatTimestamp(item.addedAt)
+  }));
+  const content = JSON.stringify(
+    {
+      meta: {
+        version: "v1",
+        exportedAt,
+        exportedAtText: formatTimestamp(exportedAt),
+        source: "bilishelf-extension-local"
+      },
+      folders: state.folders,
+      videos: exportVideos,
+      folderItems: exportFolderItems,
+      tags: state.tags,
+      videoTags: state.videoTags
+    },
+    null,
+    2
+  );
+
+  return {
+    format: "json" as const,
+    filename: `bilishelf-export-${stamp}.json`,
+    mimeType: "application/json;charset=utf-8",
+    content,
+    summary,
+    stamp
+  };
+}
+
+function applyImportRowsToState(
+  state: LocalState,
+  rows: ImportVideoRow[],
+  skippedRows: number
+) {
+  const summary = {
+    videosUpserted: 0,
+    folderLinksAdded: 0,
+    tagsBound: 0,
+    foldersCreated: 0,
+    tagsCreated: 0,
+    rowsSkipped: skippedRows
+  };
+
+  for (const row of rows) {
+    const timestamp = now();
+    const existed = state.videos.find(
+      (video) => normalizeKey(video.bvid) === normalizeKey(row.bvid)
+    );
+    const video: VideoRecord = existed || {
+      id: state.counters.video++,
+      bvid: row.bvid,
+      title: row.title,
+      coverUrl: normalizeCoverUrl(row.coverUrl),
+      uploader: row.uploader,
+      uploaderSpaceUrl: normalizeBiliSpaceUrl(row.uploaderSpaceUrl),
+      description: row.description,
+      publishAt: row.publishAt,
+      bvidUrl: row.bvidUrl,
+      isInvalid: row.isInvalid,
+      deletedAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    video.bvid = row.bvid;
+    video.title = row.title;
+    video.coverUrl = normalizeCoverUrl(row.coverUrl);
+    video.uploader = row.uploader || "Unknown uploader";
+    video.uploaderSpaceUrl = normalizeBiliSpaceUrl(row.uploaderSpaceUrl);
+    video.description = row.description;
+    video.publishAt = row.publishAt;
+    video.bvidUrl = row.bvidUrl;
+    video.isInvalid = row.isInvalid;
+    video.deletedAt = null;
+    video.updatedAt = timestamp;
+
+    if (!existed) state.videos.push(video);
+    summary.videosUpserted += 1;
+
+    const folderNames = row.folders.length > 0 ? row.folders : ["Imported"];
+    for (const folderName of folderNames) {
+      const ensured = ensureFolderByNameForImport(state, folderName);
+      if (!ensured) continue;
+      if (ensured.created) summary.foldersCreated += 1;
+
+      const addedAt = row.addedAt > 0 ? row.addedAt : timestamp;
+      const existingLink = state.folderItems.find(
+        (item) => item.folderId === ensured.folder.id && item.videoId === video.id
+      );
+      if (!existingLink) {
+        state.folderItems.push({
+          id: state.counters.folderItem++,
+          folderId: ensured.folder.id,
+          videoId: video.id,
+          addedAt
+        });
+        summary.folderLinksAdded += 1;
+      } else if (addedAt > existingLink.addedAt) {
+        existingLink.addedAt = addedAt;
+      }
+    }
+
+    for (const tagName of row.customTags) {
+      const existedTag = state.tags.some(
+        (candidate) =>
+          candidate.archivedAt === null &&
+          candidate.type === "custom" &&
+          normalizeKey(candidate.name) === normalizeKey(tagName)
+      );
+      const tag = ensureTag(state, tagName, "custom");
+      if (!tag) continue;
+      if (!existedTag) summary.tagsCreated += 1;
+      const before = state.videoTags.length;
+      ensureVideoTag(state, video.id, tag.id);
+      if (state.videoTags.length > before) summary.tagsBound += 1;
+    }
+    for (const tagName of row.systemTags) {
+      if (BLOCKED_SYSTEM_TAGS.has(normalizeText(tagName).toLowerCase())) continue;
+      const existedTag = state.tags.some(
+        (candidate) =>
+          candidate.archivedAt === null &&
+          candidate.type === "system" &&
+          normalizeKey(candidate.name) === normalizeKey(tagName)
+      );
+      const tag = ensureTag(state, tagName, "system");
+      if (!tag) continue;
+      if (!existedTag) summary.tagsCreated += 1;
+      const before = state.videoTags.length;
+      ensureVideoTag(state, video.id, tag.id);
+      if (state.videoTags.length > before) summary.tagsBound += 1;
+    }
+  }
+
+  return summary;
+}
+
 function csvEscape(value: unknown) {
   const text = String(value ?? "");
   if (text.includes('"') || text.includes(",") || text.includes("\n")) {
@@ -2276,6 +3152,20 @@ function handleReadOnlyApi(
 ): ApiResult | null {
   if (path === "/health") {
     return ok({ ok: true });
+  }
+
+  if (path === "/sync/bilibili/bidirectional/settings") {
+    const settings = state.syncMeta?.bidirectionalSync;
+    return ok({
+      biliToLocalEnabled: Boolean(settings?.biliToLocalEnabled),
+      localToBiliEnabled: false,
+      updatedAt: toInt(settings?.updatedAt, 0)
+    });
+  }
+
+  if (path === "/backup/webdav/settings") {
+    const settings = ensureWebDavMeta(state);
+    return ok(getWebDavSettings(settings));
   }
 
   if (path === "/folders") {
@@ -2423,6 +3313,13 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
     });
   }
 
+  if (isWriteRequestBlockedByFavoritesSync(method, path)) {
+    return fail(
+      423,
+      "Favorites sync is running. Wait for completion (or stop sync) before modifying local folders/videos."
+    );
+  }
+
   if (method === "GET") {
     const snapshot = await readState();
     const fastReadResult = handleReadOnlyApi(snapshot, path, params);
@@ -2492,6 +3389,234 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           ok: true,
           ...getTagEnrichmentStatus(state)
         });
+      }
+
+      if (method === "GET" && path === "/sync/bilibili/bidirectional/settings") {
+        const meta = ensureBidirectionalSyncMeta(state);
+        return ok({
+          biliToLocalEnabled: meta.biliToLocalEnabled,
+          localToBiliEnabled: false,
+          updatedAt: meta.updatedAt
+        });
+      }
+
+      if (method === "PATCH" && path === "/sync/bilibili/bidirectional/settings") {
+        const meta = ensureBidirectionalSyncMeta(state);
+        if (Object.prototype.hasOwnProperty.call(body, "biliToLocalEnabled")) {
+          meta.biliToLocalEnabled = Boolean(body.biliToLocalEnabled);
+        }
+        meta.localToBiliEnabled = false;
+        meta.updatedAt = now();
+        return ok({
+          biliToLocalEnabled: meta.biliToLocalEnabled,
+          localToBiliEnabled: false,
+          updatedAt: meta.updatedAt
+        });
+      }
+
+      if (method === "PATCH" && path === "/backup/webdav/settings") {
+        const meta = ensureWebDavMeta(state);
+
+        if (Object.prototype.hasOwnProperty.call(body, "enabled")) {
+          meta.enabled = Boolean(body.enabled);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "baseUrl")) {
+          meta.baseUrl = normalizeWebDavBaseUrl(body.baseUrl);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "username")) {
+          meta.username = normalizeText(body.username);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "password")) {
+          meta.password = String(body.password ?? "");
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "remotePath")) {
+          meta.remotePath = normalizeWebDavRemotePath(body.remotePath);
+        }
+        if (meta.enabled && !meta.baseUrl) {
+          return fail(400, "WebDAV server URL is required when enabling WebDAV");
+        }
+        if (meta.enabled && !meta.username) {
+          return fail(400, "WebDAV username is required when enabling WebDAV");
+        }
+        if (meta.enabled && !meta.password) {
+          return fail(400, "WebDAV password is required when enabling WebDAV");
+        }
+        meta.updatedAt = now();
+        return ok({
+          ok: true,
+          ...getWebDavSettings(meta)
+        });
+      }
+
+      if (method === "POST" && path === "/backup/webdav/test") {
+        const meta = ensureWebDavMeta(state);
+        try {
+          if (!meta.baseUrl) {
+            throw new Error("WebDAV server URL is not configured");
+          }
+          if (!meta.username) {
+            throw new Error("WebDAV username is not configured");
+          }
+          if (!meta.password) {
+            throw new Error("WebDAV password is not configured");
+          }
+          const probeName = `.bilishelf-probe-${Date.now()}.txt`;
+          const putResponse = await requestWebDav(
+            meta,
+            "PUT",
+            probeName,
+            `bilishelf-probe ${new Date().toISOString()}`
+          );
+          if (![200, 201, 204].includes(putResponse.status)) {
+            throw new Error(`WebDAV write probe failed (${putResponse.status})`);
+          }
+          const deleteResponse = await requestWebDav(meta, "DELETE", probeName);
+          if (![200, 202, 204, 404].includes(deleteResponse.status)) {
+            throw new Error(`WebDAV cleanup failed (${deleteResponse.status})`);
+          }
+          meta.lastTestAt = now();
+          meta.lastTestOk = true;
+          meta.lastError = null;
+          return ok({
+            ok: true,
+            ...getWebDavSettings(meta)
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "WebDAV connectivity test failed";
+          meta.lastTestAt = now();
+          meta.lastTestOk = false;
+          meta.lastError = message;
+          return fail(400, message);
+        }
+      }
+
+      if (method === "POST" && path === "/backup/webdav/upload") {
+        const meta = ensureWebDavMeta(state);
+        try {
+          if (!meta.enabled) {
+            throw new Error("WebDAV backup is disabled");
+          }
+          const jsonBackup = buildJsonExportResult(state);
+          const latestFileName = WEBDAV_LATEST_FILE_NAME;
+          const snapshotFileName = `bilishelf-${jsonBackup.stamp}.json`;
+          const latestPut = await requestWebDav(meta, "PUT", latestFileName, jsonBackup.content);
+          if (![200, 201, 204].includes(latestPut.status)) {
+            throw new Error(`WebDAV upload failed (${latestPut.status})`);
+          }
+          const snapshotPut = await requestWebDav(meta, "PUT", snapshotFileName, jsonBackup.content);
+          if (![200, 201, 204].includes(snapshotPut.status)) {
+            throw new Error(`WebDAV snapshot upload failed (${snapshotPut.status})`);
+          }
+          meta.lastBackupAt = now();
+          meta.lastBackupFile = latestFileName;
+          meta.lastError = null;
+          return ok({
+            ok: true,
+            latestFileName,
+            snapshotFileName,
+            summary: jsonBackup.summary,
+            ...getWebDavSettings(meta)
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "WebDAV backup failed";
+          meta.lastError = message;
+          return fail(400, message);
+        }
+      }
+
+      if (method === "POST" && path === "/backup/webdav/download") {
+        const meta = ensureWebDavMeta(state);
+        try {
+          const fileName = normalizeText(body.fileName) || WEBDAV_LATEST_FILE_NAME;
+          const response = await requestWebDav(meta, "GET", fileName);
+          if (response.status === 404) {
+            throw new Error(`Remote backup file not found: ${fileName}`);
+          }
+          if (!response.ok) {
+            throw new Error(`WebDAV download failed (${response.status})`);
+          }
+          const text = await response.text();
+          if (!text || text.trim().length < 2) {
+            throw new Error("Remote backup file is empty");
+          }
+          if (text.length > WEBDAV_MAX_DOWNLOAD_SIZE) {
+            throw new Error("Remote backup file is too large");
+          }
+          meta.lastError = null;
+          return ok({
+            ok: true,
+            fileName,
+            mimeType: "application/json;charset=utf-8",
+            content: text
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "WebDAV download failed";
+          meta.lastError = message;
+          return fail(400, message);
+        }
+      }
+
+      if (method === "POST" && path === "/backup/webdav/restore") {
+        if (favoritesSyncTask) {
+          return fail(423, "Favorites sync is running. Please retry restore after sync finishes.");
+        }
+        const meta = ensureWebDavMeta(state);
+        try {
+          const fileName = normalizeText(body.fileName) || WEBDAV_LATEST_FILE_NAME;
+          const response = await requestWebDav(meta, "GET", fileName);
+          if (response.status === 404) {
+            throw new Error(`Remote backup file not found: ${fileName}`);
+          }
+          if (!response.ok) {
+            throw new Error(`WebDAV restore download failed (${response.status})`);
+          }
+          const content = await response.text();
+          if (!content || content.trim().length < 2) {
+            throw new Error("Remote backup file is empty");
+          }
+          const parsed = parseImportRows("json", content);
+          const summary = applyImportRowsToState(state, parsed.rows, parsed.skipped);
+          meta.lastRestoreAt = now();
+          meta.lastError = null;
+          return ok({
+            ok: true,
+            fileName,
+            summary,
+            restoredAt: now(),
+            webdav: getWebDavSettings(meta)
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "WebDAV restore failed";
+          meta.lastError = message;
+          return fail(400, message);
+        }
+      }
+
+      if (method === "POST" && path === "/sync/bilibili/video/pull") {
+        const meta = ensureBidirectionalSyncMeta(state);
+        if (!meta.biliToLocalEnabled) {
+          return fail(403, "Bilibili->local action sync is disabled");
+        }
+        try {
+          const result = await pullSingleFavoriteVideoFromBiliToLocal(state, {
+            bvid: body.bvid,
+            aid: body.aid
+          });
+          return ok({
+            ok: true,
+            ...result
+          });
+        } catch (error) {
+          const message = isBiliRequestError(error)
+            ? formatBiliRequestError(error)
+            : error instanceof Error
+              ? error.message
+              : "Action sync failed";
+          if (isBiliRequestError(error) && error.status === 412) {
+            return fail(412, message);
+          }
+          return fail(500, message);
+        }
       }
 
       if (method === "POST" && path === "/sync/bilibili") {
@@ -2567,104 +3692,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
 
         try {
           const parsed = parseImportRows(format as "json" | "csv", content);
-          const summary = {
-            videosUpserted: 0,
-            folderLinksAdded: 0,
-            tagsBound: 0,
-            foldersCreated: 0,
-            tagsCreated: 0,
-            rowsSkipped: parsed.skipped
-          };
-
-          for (const row of parsed.rows) {
-            const timestamp = now();
-            const existed = state.videos.find(
-              (video) => normalizeKey(video.bvid) === normalizeKey(row.bvid)
-            );
-            const video: VideoRecord = existed || {
-              id: state.counters.video++,
-              bvid: row.bvid,
-              title: row.title,
-              coverUrl: normalizeCoverUrl(row.coverUrl),
-              uploader: row.uploader,
-              uploaderSpaceUrl: normalizeBiliSpaceUrl(row.uploaderSpaceUrl),
-              description: row.description,
-              publishAt: row.publishAt,
-              bvidUrl: row.bvidUrl,
-              isInvalid: row.isInvalid,
-              deletedAt: null,
-              createdAt: timestamp,
-              updatedAt: timestamp
-            };
-
-            video.bvid = row.bvid;
-            video.title = row.title;
-            video.coverUrl = normalizeCoverUrl(row.coverUrl);
-            video.uploader = row.uploader || "Unknown uploader";
-            video.uploaderSpaceUrl = normalizeBiliSpaceUrl(row.uploaderSpaceUrl);
-            video.description = row.description;
-            video.publishAt = row.publishAt;
-            video.bvidUrl = row.bvidUrl;
-            video.isInvalid = row.isInvalid;
-            video.deletedAt = null;
-            video.updatedAt = timestamp;
-
-            if (!existed) state.videos.push(video);
-            summary.videosUpserted += 1;
-
-            const folderNames = row.folders.length > 0 ? row.folders : ["Imported"];
-            for (const folderName of folderNames) {
-              const ensured = ensureFolderByNameForImport(state, folderName);
-              if (!ensured) continue;
-              if (ensured.created) summary.foldersCreated += 1;
-
-              const addedAt = row.addedAt > 0 ? row.addedAt : timestamp;
-              const existingLink = state.folderItems.find(
-                (item) => item.folderId === ensured.folder.id && item.videoId === video.id
-              );
-              if (!existingLink) {
-                state.folderItems.push({
-                  id: state.counters.folderItem++,
-                  folderId: ensured.folder.id,
-                  videoId: video.id,
-                  addedAt
-                });
-                summary.folderLinksAdded += 1;
-              } else if (addedAt > existingLink.addedAt) {
-                existingLink.addedAt = addedAt;
-              }
-            }
-
-            for (const tagName of row.customTags) {
-              const existedTag = state.tags.some(
-                (candidate) =>
-                  candidate.archivedAt === null &&
-                  candidate.type === "custom" &&
-                  normalizeKey(candidate.name) === normalizeKey(tagName)
-              );
-              const tag = ensureTag(state, tagName, "custom");
-              if (!tag) continue;
-              if (!existedTag) summary.tagsCreated += 1;
-              const before = state.videoTags.length;
-              ensureVideoTag(state, video.id, tag.id);
-              if (state.videoTags.length > before) summary.tagsBound += 1;
-            }
-            for (const tagName of row.systemTags) {
-              if (BLOCKED_SYSTEM_TAGS.has(normalizeText(tagName).toLowerCase())) continue;
-              const existedTag = state.tags.some(
-                (candidate) =>
-                  candidate.archivedAt === null &&
-                  candidate.type === "system" &&
-                  normalizeKey(candidate.name) === normalizeKey(tagName)
-              );
-              const tag = ensureTag(state, tagName, "system");
-              if (!tag) continue;
-              if (!existedTag) summary.tagsCreated += 1;
-              const before = state.videoTags.length;
-              ensureVideoTag(state, video.id, tag.id);
-              if (state.videoTags.length > before) summary.tagsBound += 1;
-            }
-          }
+          const summary = applyImportRowsToState(state, parsed.rows, parsed.skipped);
 
           return ok({
             ok: true,
@@ -2687,41 +3715,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           buildExportPayload(state);
 
         if (format === "json") {
-          const exportVideos = state.videos.map((video) => ({
-            ...video,
-            publishAtText: formatTimestamp(video.publishAt),
-            favoriteAt: latestAddedAtByVideo.get(video.id) ?? null,
-            favoriteAtText: formatTimestamp(latestAddedAtByVideo.get(video.id) ?? null)
-          }));
-          const exportFolderItems = state.folderItems.map((item) => ({
-            ...item,
-            addedAtText: formatTimestamp(item.addedAt)
-          }));
-          const content = JSON.stringify(
-            {
-              meta: {
-                version: "v1",
-                exportedAt,
-                exportedAtText: formatTimestamp(exportedAt),
-                source: "bilishelf-extension-local"
-              },
-              folders: state.folders,
-              videos: exportVideos,
-              folderItems: exportFolderItems,
-              tags: state.tags,
-              videoTags: state.videoTags
-            },
-            null,
-            2
-          );
-
-          return ok({
-            format: "json",
-            filename: `bilishelf-export-${stamp}.json`,
-            mimeType: "application/json;charset=utf-8",
-            content,
-            summary
-          });
+          return ok(buildJsonExportResult(state));
         }
 
         const header = [
@@ -3451,10 +4445,14 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
 }
 
 export default defineBackground(() => {
-  if (TAG_SYNC_ENABLED && chrome.alarms?.onAlarm) {
+  if (chrome.alarms?.onAlarm) {
     chrome.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name !== TAG_ENRICH_ALARM) return;
-      void triggerTagEnrichment("alarm");
+      if (alarm.name === TAG_ENRICH_ALARM) {
+        if (TAG_SYNC_ENABLED) {
+          void triggerTagEnrichment("alarm");
+        }
+        return;
+      }
     });
   }
 

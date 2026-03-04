@@ -29,6 +29,6 @@ export default defineConfig({
         }
       }
     },
-    host_permissions: ["https://*.bilibili.com/*"]
+    host_permissions: ["https://*.bilibili.com/*", "https://*/*", "http://*/*"]
   }
 });

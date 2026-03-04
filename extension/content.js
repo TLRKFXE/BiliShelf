@@ -1,3 +1,12 @@
+﻿import {
+  containsFavoriteActionKeyword,
+  extractFavoriteFolderIdFromUrl,
+  extractBvidFromAny,
+  isActionSyncPageUrl,
+  isCollectorUiUrl,
+  normalizeBvidToken,
+} from "./utils/bili-action-sync.js";
+
 (function () {
   const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
   const BILI_VIEW_API = "https://api.bilibili.com/x/web-interface/view";
@@ -17,6 +26,9 @@
   const THEME_DARK = "dark";
   const LOCALE_ZH = "zh-CN";
   const LOCALE_EN = "en-US";
+  const LOCAL_API_TIMEOUT_MS = 45_000;
+  const BIDIRECTIONAL_SETTINGS_CACHE_MS = 30_000;
+  const BILI_SYNC_PULL_DEBOUNCE_MS = 1800;
 
   const I18N = {
     "title.collector": {
@@ -91,6 +103,18 @@
       [LOCALE_EN]: "Video info is incomplete"
     },
     "toast.saved": { [LOCALE_ZH]: "已保存到本地 BiliShelf", [LOCALE_EN]: "Saved to local BiliShelf" },
+    "toast.savedWithBiliSync": {
+      [LOCALE_ZH]: "已同步写回 B站收藏夹 {count} 个",
+      [LOCALE_EN]: "Also synced to {count} Bilibili favorite folders"
+    },
+    "toast.savedWithBiliSyncWarning": {
+      [LOCALE_ZH]: "本地已保存，但写回 B站失败",
+      [LOCALE_EN]: "Saved locally, but Bilibili sync-back failed"
+    },
+    "toast.biliPullSynced": {
+      [LOCALE_ZH]: "检测到B站收藏动作，已同步到本地",
+      [LOCALE_EN]: "Detected Bilibili favorite action and synced locally"
+    },
     "toast.saveFail": { [LOCALE_ZH]: "保存失败", [LOCALE_EN]: "Save failed" },
     "status.readingCurrentPage": { [LOCALE_ZH]: "正在读取当前页面...", [LOCALE_EN]: "Reading current page..." },
     "error.unknown": { [LOCALE_ZH]: "未知错误", [LOCALE_EN]: "Unknown error" }
@@ -158,6 +182,15 @@
   let selectedFolderIds = new Set();
   let currentVideo = null;
   let activeThemePreference = THEME_AUTO;
+  let bidirectionalSettingsCache = {
+    value: null,
+    expiresAt: 0
+  };
+  let nativeFavoritePullTimer = 0;
+  let pendingNativeFavoriteBvid = "";
+  let pendingNativeFavoriteFolderId = 0;
+  let pendingForceFolderReconcile = false;
+  let nativeFavoriteActionListenerBound = false;
 
   const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -225,13 +258,6 @@
           .filter(Boolean)
       )
     ];
-  }
-
-  function normalizeBvidToken(raw) {
-    const value = String(raw || "").trim();
-    if (!value) return "";
-    const match = value.match(/(BV[0-9A-Za-z]+)/i);
-    return match?.[1] ? match[1].toUpperCase() : "";
   }
 
   function pickBasePayload() {
@@ -387,6 +413,19 @@
 
   function requestLocalApi(method, path, body) {
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (handler) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        handler();
+      };
+      const timer = window.setTimeout(() => {
+        finish(() =>
+          reject(new Error(`Local API request timeout (${method} ${path})`))
+        );
+      }, LOCAL_API_TIMEOUT_MS);
+
       chrome.runtime.sendMessage(
         {
           type: LOCAL_API_MESSAGE,
@@ -399,23 +438,25 @@
         (response) => {
           const runtimeError = chrome.runtime.lastError;
           if (runtimeError) {
-            reject(new Error(runtimeError.message || "Local API unavailable"));
+            finish(() =>
+              reject(new Error(runtimeError.message || "Local API unavailable"))
+            );
             return;
           }
 
           if (!response) {
-            reject(new Error("No response from local API"));
+            finish(() => reject(new Error("No response from local API")));
             return;
           }
 
           if (response.ok) {
-            resolve(response.data);
+            finish(() => resolve(response.data));
             return;
           }
 
           const error = new Error(response.error || t("error.unknown"));
           error.statusCode = response.status || 500;
-          reject(error);
+          finish(() => reject(error));
         }
       );
     });
@@ -428,6 +469,218 @@
 
   async function createFolder(payload) {
     return requestLocalApi("POST", "/folders", payload);
+  }
+
+  function normalizeBidirectionalSettings(raw) {
+    return {
+      biliToLocalEnabled: Boolean(raw?.biliToLocalEnabled),
+      localToBiliEnabled: Boolean(raw?.localToBiliEnabled),
+      updatedAt: Number(raw?.updatedAt || 0)
+    };
+  }
+
+  async function fetchBidirectionalSettings(force = false) {
+    const nowTs = Date.now();
+    if (
+      !force &&
+      bidirectionalSettingsCache.value &&
+      bidirectionalSettingsCache.expiresAt > nowTs
+    ) {
+      return bidirectionalSettingsCache.value;
+    }
+    try {
+      const data = await requestLocalApi("GET", "/sync/bilibili/bidirectional/settings");
+      const normalized = normalizeBidirectionalSettings(data);
+      bidirectionalSettingsCache = {
+        value: normalized,
+        expiresAt: nowTs + BIDIRECTIONAL_SETTINGS_CACHE_MS
+      };
+      return normalized;
+    } catch {
+      const fallback = normalizeBidirectionalSettings(null);
+      bidirectionalSettingsCache = {
+        value: fallback,
+        expiresAt: nowTs + 6_000
+      };
+      return fallback;
+    }
+  }
+
+  function hasFavoriteKeyword(text) {
+    return containsFavoriteActionKeyword(text);
+  }
+
+  function isLikelyNativeFavoriteActionTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (root && root.contains(target)) return false;
+    const interactive = target.closest("button,a,[role='button'],div");
+    if (!interactive) return false;
+    const text = [
+      interactive.getAttribute("aria-label"),
+      interactive.getAttribute("title"),
+      interactive.id,
+      interactive.className,
+      interactive.textContent
+    ]
+      .map((value) => String(value || ""))
+      .join(" ");
+    return hasFavoriteKeyword(text);
+  }
+
+  function collectBvidCandidatesFromElement(element, bucket) {
+    if (!(element instanceof Element)) return;
+    const attrs = ["data-bvid", "data-bv", "data-bv-id", "data-video-bvid", "href"];
+    for (const attr of attrs) {
+      bucket.push(element.getAttribute(attr));
+    }
+    if (element instanceof HTMLAnchorElement) {
+      bucket.push(element.href);
+    }
+    const data = element.dataset || {};
+    for (const [key, value] of Object.entries(data)) {
+      if (!key.toLowerCase().includes("bv")) continue;
+      bucket.push(value);
+    }
+  }
+
+  function extractBvidFromFavoriteActionTarget(target) {
+    if (!(target instanceof Element)) return "";
+    const candidates = [];
+    let current = target;
+    for (let depth = 0; depth < 7 && current; depth += 1) {
+      collectBvidCandidatesFromElement(current, candidates);
+      const nearbyAnchor = current.querySelector?.('a[href*="/video/"]');
+      if (nearbyAnchor) {
+        collectBvidCandidatesFromElement(nearbyAnchor, candidates);
+      }
+      current = current.parentElement;
+    }
+    const nearestAnchor = target.closest?.('a[href*="/video/"]');
+    if (nearestAnchor) {
+      collectBvidCandidatesFromElement(nearestAnchor, candidates);
+    }
+    for (const candidate of candidates) {
+      const bvid = extractBvidFromAny(candidate);
+      if (bvid) return bvid;
+    }
+    return "";
+  }
+
+  async function startFavoriteFolderReconcileFromBiliAction(remoteFolderId) {
+    if (!Number.isFinite(remoteFolderId) || remoteFolderId <= 0) return;
+    try {
+      await requestLocalApi("POST", "/sync/bilibili/history-model/start", {
+        selectedRemoteFolderIds: [Math.trunc(remoteFolderId)]
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("error.unknown");
+      const lower = String(message).toLowerCase();
+      if (lower.includes("already running")) return;
+      if (lower.includes("favorites sync is running")) return;
+      throw error;
+    }
+  }
+
+  async function pullCurrentVideoFromBiliAction(
+    preferredBvid = "",
+    preferredFolderId = 0,
+    forceFolderReconcile = false
+  ) {
+    const settings = await fetchBidirectionalSettings();
+    if (!settings.biliToLocalEnabled) return;
+
+    const base = pickBasePayload();
+    const bvid = normalizeBvidToken(preferredBvid || currentVideo?.bvid || base.bvid || "");
+    const aid = Number(currentVideo?.aid || 0);
+    if (!bvid && !(Number.isFinite(aid) && aid > 0)) {
+      if (Number.isFinite(preferredFolderId) && preferredFolderId > 0) {
+        try {
+          await startFavoriteFolderReconcileFromBiliAction(preferredFolderId);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : t("error.unknown");
+          showToast(message, "err");
+        }
+      }
+      return;
+    }
+
+    try {
+      const result = await requestLocalApi("POST", "/sync/bilibili/video/pull", {
+        bvid: bvid || undefined,
+        aid: Number.isFinite(aid) && aid > 0 ? aid : undefined
+      });
+      if (
+        Number(result?.folderLinksAdded || 0) > 0 ||
+        Number(result?.folderLinksRemoved || 0) > 0
+      ) {
+        showToast(t("toast.biliPullSynced"), "info");
+      }
+      if (forceFolderReconcile && Number.isFinite(preferredFolderId) && preferredFolderId > 0) {
+        await startFavoriteFolderReconcileFromBiliAction(preferredFolderId);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("error.unknown");
+      if (String(message).toLowerCase().includes("disabled")) return;
+      if (String(message).toLowerCase().includes("favorites sync is running")) return;
+      showToast(message, "err");
+    }
+  }
+
+  function schedulePullCurrentVideoFromBiliAction(
+    candidateBvid = "",
+    candidateFolderId = 0,
+    forceFolderReconcile = false
+  ) {
+    const normalizedCandidate = normalizeBvidToken(candidateBvid);
+    if (normalizedCandidate) {
+      pendingNativeFavoriteBvid = normalizedCandidate;
+    }
+    const normalizedFolderId = Number.isFinite(candidateFolderId)
+      ? Math.trunc(candidateFolderId)
+      : 0;
+    if (normalizedFolderId > 0) {
+      pendingNativeFavoriteFolderId = normalizedFolderId;
+    }
+    if (forceFolderReconcile) {
+      pendingForceFolderReconcile = true;
+    }
+    if (nativeFavoritePullTimer) {
+      window.clearTimeout(nativeFavoritePullTimer);
+      nativeFavoritePullTimer = 0;
+    }
+    nativeFavoritePullTimer = window.setTimeout(() => {
+      nativeFavoritePullTimer = 0;
+      const bvid = pendingNativeFavoriteBvid;
+      const folderId = pendingNativeFavoriteFolderId;
+      const forceReconcile = pendingForceFolderReconcile;
+      pendingNativeFavoriteBvid = "";
+      pendingNativeFavoriteFolderId = 0;
+      pendingForceFolderReconcile = false;
+      void pullCurrentVideoFromBiliAction(bvid, folderId, forceReconcile);
+    }, BILI_SYNC_PULL_DEBOUNCE_MS);
+  }
+
+  function bindNativeFavoriteActionListener() {
+    if (nativeFavoriteActionListenerBound) return;
+    nativeFavoriteActionListenerBound = true;
+    document.addEventListener(
+      "click",
+      (event) => {
+        if (!isLikelyNativeFavoriteActionTarget(event.target)) return;
+        const candidateBvid = extractBvidFromFavoriteActionTarget(event.target);
+        const candidateFolderId = extractFavoriteFolderIdFromUrl(location.href);
+        const forceFolderReconcile = candidateFolderId > 0;
+        void fetchBidirectionalSettings().then((settings) => {
+          if (!settings.biliToLocalEnabled) return;
+          schedulePullCurrentVideoFromBiliAction(
+            candidateBvid,
+            candidateFolderId,
+            forceFolderReconcile
+          );
+        });
+      },
+      true
+    );
   }
 
   function showToast(message, type = "ok") {
@@ -601,6 +854,10 @@
 
     currentVideo = {
       bvid: (base.bvid || detail?.bvid || "").trim(),
+      aid:
+        typeof detail?.aid === "number" && Number.isFinite(detail.aid)
+          ? Math.trunc(detail.aid)
+          : null,
       bvidUrl: ensureAbsoluteUrl(
         base.bvidUrl,
         `https://www.bilibili.com/video/${base.bvid}`
@@ -712,7 +969,7 @@
         systemTags: currentVideo.systemTags || [],
         isInvalid: false
       };
-      await requestLocalApi("POST", "/videos", payload);
+      const result = await requestLocalApi("POST", "/videos", payload);
 
       setStatus(t("toast.saved"), "ok");
       await loadFolders();
@@ -1646,9 +1903,18 @@
 
   async function bootstrap() {
     activeLocale = await resolveLocale();
+    if (!isActionSyncPageUrl(location.href)) return;
+    bindNativeFavoriteActionListener();
+    void fetchBidirectionalSettings(true);
+    if (!isCollectorUiUrl(location.href)) return;
     injectUi();
     setupThemeSync();
   }
 
   void bootstrap();
 })();
+
+
+
+
+

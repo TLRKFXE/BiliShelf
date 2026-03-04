@@ -35,6 +35,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "open-tags": [];
+  "open-sync-settings": [];
+  "open-webdav-settings": [];
   "toggle-trash": [];
   "toggle-locale": [];
   "toggle-theme": [];
@@ -117,6 +119,22 @@ function submitExport(format: "json" | "csv") {
         @click="emit('open-tags')"
       >
         {{ props.t("header.manageTags") }}
+      </Button>
+      <Button
+        v-if="!props.trashMode"
+        size="sm"
+        variant="outline"
+        @click="emit('open-sync-settings')"
+      >
+        {{ props.t("header.syncSettings") }}
+      </Button>
+      <Button
+        v-if="!props.trashMode"
+        size="sm"
+        variant="outline"
+        @click="emit('open-webdav-settings')"
+      >
+        {{ props.t("header.webdavSettings") }}
       </Button>
       <Button
         size="sm"
