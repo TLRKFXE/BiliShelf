@@ -3482,7 +3482,11 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
             ...getWebDavSettings(meta)
           });
         } catch (error) {
-          const message = error instanceof Error ? error.message : "WebDAV connectivity test failed";
+          const baseMessage = error instanceof Error ? error.message : "WebDAV connectivity test failed";
+          const has401 = /(?:\(|\s)401\)?/.test(baseMessage);
+          const message = has401
+            ? `${baseMessage}. Check WebDAV username/password (or app password), then save and retest.`
+            : baseMessage;
           meta.lastTestAt = now();
           meta.lastTestOk = false;
           meta.lastError = message;

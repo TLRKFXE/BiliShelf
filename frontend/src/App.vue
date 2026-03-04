@@ -899,10 +899,19 @@ async function saveWebDavSettings(payload: {
   }
 }
 
-async function testWebDavFromUi() {
+async function testWebDavFromUi(payload?: {
+  enabled: boolean;
+  baseUrl: string;
+  username: string;
+  password?: string;
+  remotePath: string;
+}) {
   if (webdavBusy.value) return;
   webdavBusy.value = true;
   try {
+    if (payload) {
+      webdavSettings.value = await updateWebDavSettings(payload);
+    }
     webdavSettings.value = await testWebDavConnection();
     notifySuccess(t("toast.webdavTestDone"));
   } catch (error) {

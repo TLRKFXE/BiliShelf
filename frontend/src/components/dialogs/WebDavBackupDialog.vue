@@ -34,7 +34,7 @@ const emit = defineEmits<{
   "update:open": [value: boolean];
   save: [payload: { enabled: boolean; baseUrl: string; username: string; password?: string; remotePath: string }];
   reload: [];
-  test: [];
+  test: [payload: { enabled: boolean; baseUrl: string; username: string; password?: string; remotePath: string }];
   upload: [];
   restore: [];
   download: [];
@@ -60,15 +60,24 @@ watch(
 
 const canSave = computed(() => !props.loading);
 
-function handleSave() {
-  if (!canSave.value) return;
-  emit("save", {
+function buildPayload() {
+  return {
     enabled: localEnabled.value,
     baseUrl: localBaseUrl.value,
     username: localUsername.value,
     password: localPassword.value || undefined,
     remotePath: localRemotePath.value,
-  });
+  };
+}
+
+function handleSave() {
+  if (!canSave.value) return;
+  emit("save", buildPayload());
+}
+
+function handleTest() {
+  if (!canSave.value) return;
+  emit("test", buildPayload());
 }
 </script>
 
@@ -150,7 +159,7 @@ function handleSave() {
             <RefreshCcw class="h-3.5 w-3.5" />
             {{ t("webdav.reload") }}
           </Button>
-          <Button variant="outline" :disabled="loading" @click="emit('test')">
+          <Button variant="outline" :disabled="loading" @click="handleTest">
             <RotateCw class="h-3.5 w-3.5" />
             {{ t("webdav.test") }}
           </Button>
