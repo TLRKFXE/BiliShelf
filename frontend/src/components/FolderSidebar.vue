@@ -1,5 +1,17 @@
 <script setup lang="ts">
-import { FolderOpen, FolderPlus, GripVertical, LibraryBig, Pencil, Trash2 } from "lucide-vue-next";
+import {
+  ArrowDownAZ,
+  CalendarClock,
+  FolderOpen,
+  FolderPlus,
+  GripVertical,
+  LibraryBig,
+  ListOrdered,
+  Pencil,
+  Search,
+  Trash2,
+  Video,
+} from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import type { Folder } from "../types";
 import { Button } from "./ui/button";
@@ -39,6 +51,7 @@ const editingName = ref("");
 const editingDescription = ref("");
 const draggingFolderId = ref<number | null>(null);
 const dragOverFolderId = ref<number | null>(null);
+
 const SIDEBAR_TEXT: Record<
   | "folders"
   | "searchPlaceholder"
@@ -66,35 +79,35 @@ const SIDEBAR_TEXT: Record<
 > = {
   folders: { "zh-CN": "收藏夹", "en-US": "Folders" },
   searchPlaceholder: {
-    "zh-CN": "搜索收藏夹名称/简介",
-    "en-US": "Search folder name/description"
+    "zh-CN": "搜索收藏夹名称或简介",
+    "en-US": "Search folder name or description"
   },
-  sortPlaceholder: { "zh-CN": "收藏夹排序", "en-US": "Sort folders" },
+  sortPlaceholder: { "zh-CN": "排序方式", "en-US": "Sort by" },
   sortManual: { "zh-CN": "手动排序（拖拽）", "en-US": "Manual (Drag)" },
   sortUpdatedAt: { "zh-CN": "最近更新", "en-US": "Recently Updated" },
-  sortName: { "zh-CN": "名称", "en-US": "Name" },
-  sortCount: { "zh-CN": "视频数量", "en-US": "Video Count" },
+  sortName: { "zh-CN": "按名称", "en-US": "By Name" },
+  sortCount: { "zh-CN": "按视频数量", "en-US": "By Video Count" },
   dragHint: {
-    "zh-CN": "仅在手动模式且搜索为空时可拖拽排序。",
-    "en-US": "Drag sorting is available only in Manual mode with empty search."
+    "zh-CN": "仅在“手动排序”且搜索为空时支持拖拽调整顺序。",
+    "en-US": "Drag sorting works only in Manual mode with empty search."
   },
   createFolder: { "zh-CN": "新建收藏夹", "en-US": "New Folder" },
   allVideos: { "zh-CN": "全部视频", "en-US": "All Videos" },
-  folderName: { "zh-CN": "收藏夹名称", "en-US": "Folder name" },
-  folderDescription: { "zh-CN": "收藏夹简介", "en-US": "Folder description" },
+  folderName: { "zh-CN": "收藏夹名称", "en-US": "Folder Name" },
+  folderDescription: { "zh-CN": "收藏夹简介", "en-US": "Folder Description" },
   cancel: { "zh-CN": "取消", "en-US": "Cancel" },
   save: { "zh-CN": "保存", "en-US": "Save" },
   noDescription: { "zh-CN": "暂无简介", "en-US": "No description" },
   videosCount: { "zh-CN": "{count} 个视频", "en-US": "{count} videos" },
-  newFolderTitle: { "zh-CN": "新建收藏夹", "en-US": "Create Folder" },
+  newFolderTitle: { "zh-CN": "创建收藏夹", "en-US": "Create Folder" },
   name: { "zh-CN": "名称", "en-US": "Name" },
   description: { "zh-CN": "简介", "en-US": "Description" },
   namePlaceholder: {
-    "zh-CN": "快来给你的收藏夹命名吧",
-    "en-US": "Name your folder"
+    "zh-CN": "请输入收藏夹名称",
+    "en-US": "Enter folder name"
   },
   descriptionPlaceholder: {
-    "zh-CN": "可以简单描述下你的收藏夹",
+    "zh-CN": "可填写该收藏夹用途说明",
     "en-US": "Describe this folder"
   },
   create: { "zh-CN": "创建", "en-US": "Create" }
@@ -219,21 +232,50 @@ function handleDragEnd() {
 <template>
   <aside class="panel-surface h-full p-5">
     <div class="mb-5 flex items-center gap-2">
-      <LibraryBig class="h-4 w-4 text-primary" />
-      <h2 class="text-sm font-semibold">{{ t("folders") }}</h2>
+      <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/12 text-primary">
+        <LibraryBig class="h-4 w-4" />
+      </span>
+      <h2 class="text-sm font-semibold tracking-wide">{{ t("folders") }}</h2>
     </div>
 
     <div class="space-y-2">
-      <Input v-model="searchKeyword" :placeholder="t('searchPlaceholder')" />
+      <div class="relative">
+        <Search class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          v-model="searchKeyword"
+          :placeholder="t('searchPlaceholder')"
+          class="pl-9"
+        />
+      </div>
       <Select :key="`folder-sort-${props.locale}`" v-model="sortBy">
         <SelectTrigger class="w-full">
           <SelectValue :placeholder="t('sortPlaceholder')" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="manual">{{ t("sortManual") }}</SelectItem>
-          <SelectItem value="updatedAt">{{ t("sortUpdatedAt") }}</SelectItem>
-          <SelectItem value="name">{{ t("sortName") }}</SelectItem>
-          <SelectItem value="count">{{ t("sortCount") }}</SelectItem>
+          <SelectItem value="manual">
+            <div class="flex items-center gap-2">
+              <ListOrdered class="h-3.5 w-3.5" />
+              {{ t("sortManual") }}
+            </div>
+          </SelectItem>
+          <SelectItem value="updatedAt">
+            <div class="flex items-center gap-2">
+              <CalendarClock class="h-3.5 w-3.5" />
+              {{ t("sortUpdatedAt") }}
+            </div>
+          </SelectItem>
+          <SelectItem value="name">
+            <div class="flex items-center gap-2">
+              <ArrowDownAZ class="h-3.5 w-3.5" />
+              {{ t("sortName") }}
+            </div>
+          </SelectItem>
+          <SelectItem value="count">
+            <div class="flex items-center gap-2">
+              <Video class="h-3.5 w-3.5" />
+              {{ t("sortCount") }}
+            </div>
+          </SelectItem>
         </SelectContent>
       </Select>
       <p v-if="!canDragSort" class="text-[11px] text-muted-foreground">
@@ -244,7 +286,7 @@ function handleDragEnd() {
     <div class="mt-4 space-y-2.5">
       <button
         type="button"
-        class="interactive-lift flex w-full items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-foreground transition hover:bg-accent"
+        class="interactive-lift flex w-full items-center gap-2 rounded-xl border border-border/70 bg-accent/35 px-3 py-2.5 text-left text-sm font-medium text-foreground"
         @click="createDialogOpen = true"
       >
         <span class="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/15 text-primary">
@@ -255,8 +297,8 @@ function handleDragEnd() {
 
       <button
         type="button"
-        class="interactive-lift w-full rounded-md border px-3 py-2.5 text-left text-sm transition"
-        :class="props.activeFolderId === null ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-accent'"
+        class="interactive-lift w-full rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition"
+        :class="props.activeFolderId === null ? 'border-primary/45 bg-primary/10 text-primary' : 'border-border/80 bg-card/80 hover:bg-accent/45'"
         @click="emit('select', null)"
       >
         {{ t("allVideos") }}
@@ -265,10 +307,10 @@ function handleDragEnd() {
       <div
         v-for="folder in displayedFolders"
         :key="folder.id"
-        class="interactive-lift rounded-lg border p-2.5"
+        class="interactive-lift rounded-xl border p-2.5"
         :class="[
-          props.activeFolderId === folder.id ? 'border-primary/40 bg-primary/5' : 'border-border bg-background',
-          dragOverFolderId === folder.id ? 'ring-2 ring-primary/40' : ''
+          props.activeFolderId === folder.id ? 'border-primary/45 bg-primary/10' : 'border-border/80 bg-card/85',
+          dragOverFolderId === folder.id ? 'ring-2 ring-primary/45' : ''
         ]"
         :draggable="canDragSort"
         @dragstart="handleDragStart(folder.id)"
@@ -292,7 +334,7 @@ function handleDragEnd() {
             <div class="flex items-start justify-between gap-2">
               <div class="flex min-w-0 items-center gap-2">
                 <FolderOpen class="h-4 w-4 shrink-0 text-muted-foreground" />
-                <p class="line-clamp-1 text-sm font-medium">{{ folder.name }}</p>
+                <p class="line-clamp-1 text-sm font-semibold">{{ folder.name }}</p>
               </div>
               <GripVertical v-if="canDragSort" class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             </div>

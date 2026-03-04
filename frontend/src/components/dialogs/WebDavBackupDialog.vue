@@ -1,5 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import {
+  CloudDownload,
+  CloudUpload,
+  FolderArchive,
+  RefreshCcw,
+  RotateCw,
+  ServerCog,
+  ShieldCheck,
+  Unplug,
+} from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -57,7 +67,7 @@ function handleSave() {
     baseUrl: localBaseUrl.value,
     username: localUsername.value,
     password: localPassword.value || undefined,
-    remotePath: localRemotePath.value
+    remotePath: localRemotePath.value,
   });
 }
 </script>
@@ -66,7 +76,12 @@ function handleSave() {
   <Dialog :open="open" @update:open="emit('update:open', $event)">
     <DialogContent class="max-w-2xl">
       <DialogHeader>
-        <DialogTitle>{{ t("webdav.title") }}</DialogTitle>
+        <DialogTitle class="flex items-center gap-2">
+          <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
+            <ServerCog class="h-4.5 w-4.5" />
+          </span>
+          {{ t("webdav.title") }}
+        </DialogTitle>
         <DialogDescription>{{ t("webdav.desc") }}</DialogDescription>
       </DialogHeader>
 
@@ -118,25 +133,37 @@ function handleSave() {
           <p>{{ t("webdav.statusTest", { time: settings?.lastTestAt ? new Date(settings.lastTestAt).toLocaleString() : "-" }) }}</p>
           <p>{{ t("webdav.statusBackup", { time: settings?.lastBackupAt ? new Date(settings.lastBackupAt).toLocaleString() : "-" }) }}</p>
           <p>{{ t("webdav.statusRestore", { time: settings?.lastRestoreAt ? new Date(settings.lastRestoreAt).toLocaleString() : "-" }) }}</p>
-          <p v-if="settings?.lastError" class="mt-1 text-amber-600 dark:text-amber-400">{{ settings.lastError }}</p>
+          <p v-if="settings?.lastError" class="mt-1 flex items-start gap-1 text-amber-600 dark:text-amber-400">
+            <Unplug class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{{ settings.lastError }}</span>
+          </p>
+          <p v-else class="mt-1 flex items-start gap-1">
+            <ShieldCheck class="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+            <span>{{ t("webdav.desc") }}</span>
+          </p>
         </div>
       </section>
 
       <DialogFooter class="flex flex-wrap justify-between gap-2">
         <div class="flex flex-wrap gap-2">
           <Button variant="outline" :disabled="loading" @click="emit('reload')">
+            <RefreshCcw class="h-3.5 w-3.5" />
             {{ t("webdav.reload") }}
           </Button>
           <Button variant="outline" :disabled="loading" @click="emit('test')">
+            <RotateCw class="h-3.5 w-3.5" />
             {{ t("webdav.test") }}
           </Button>
           <Button variant="outline" :disabled="loading" @click="emit('upload')">
+            <CloudUpload class="h-3.5 w-3.5" />
             {{ t("webdav.upload") }}
           </Button>
           <Button variant="outline" :disabled="loading" @click="emit('download')">
+            <CloudDownload class="h-3.5 w-3.5" />
             {{ t("webdav.download") }}
           </Button>
           <Button variant="outline" :disabled="loading" @click="emit('restore')">
+            <FolderArchive class="h-3.5 w-3.5" />
             {{ t("webdav.restore") }}
           </Button>
         </div>

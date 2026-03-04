@@ -12,7 +12,16 @@ import {
 } from "@/components/ui/select";
 import type { Locale } from "@/stores/app-ui";
 import type { Folder, Tag, Video } from "@/types";
-import { CalendarDays } from "lucide-vue-next";
+import {
+  CalendarDays,
+  ChevronsLeftRight,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Filter,
+  MoveRight,
+  Trash2,
+} from "lucide-vue-next";
 import { ref, watch } from "vue";
 
 type SearchFieldToken =
@@ -158,8 +167,8 @@ function submitVideoPageJump() {
   />
 
   <section class="panel-surface p-4">
-    <div class="flex items-center justify-between gap-3.5">
-      <div class="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+    <div class="flex flex-wrap items-center justify-between gap-3.5">
+      <div class="flex flex-wrap items-center gap-2 overflow-x-auto pb-1">
         <div class="relative min-w-[190px]">
           <Input
             :model-value="formatDateForDisplay(fromDate)"
@@ -211,19 +220,21 @@ function submitVideoPageJump() {
             <CalendarDays class="h-4 w-4" />
           </button>
         </div>
-        <Button size="sm" @click="emit('applyDateFilter')"
-          >{{ t("search.applyDateFilter") }}</Button
-        >
-        <Button size="sm" variant="outline" @click="emit('clearDateFilter')"
-          >{{ t("common.clear") }}</Button
-        >
+        <Button size="sm" @click="emit('applyDateFilter')">
+          <Filter class="h-3.5 w-3.5" />
+          {{ t("search.applyDateFilter") }}
+        </Button>
+        <Button size="sm" variant="outline" @click="emit('clearDateFilter')">
+          {{ t("common.clear") }}
+        </Button>
       </div>
       <Button
         size="sm"
         variant="default"
-        class="ml-auto min-w-[136px] font-semibold"
+        class="ml-auto min-w-[148px] font-semibold"
         @click="emit('toggleBatchPanel')"
       >
+        <ChevronsLeftRight class="h-3.5 w-3.5" />
         {{ batchPanelOpen ? t("batch.close") : t("batch.open") }}
       </Button>
     </div>
@@ -272,6 +283,7 @@ function submitVideoPageJump() {
           :disabled="videoPage <= 1 || loading"
           @click="emit('prevVideoPage')"
         >
+          <ChevronLeft class="h-3.5 w-3.5" />
           {{ t("common.prev") }}
         </Button>
         <Button
@@ -281,6 +293,7 @@ function submitVideoPageJump() {
           @click="emit('nextVideoPage')"
         >
           {{ t("common.next") }}
+          <ChevronRight class="h-3.5 w-3.5" />
         </Button>
         <Input
           :model-value="videoPageJump"
@@ -360,15 +373,17 @@ function submitVideoPageJump() {
             :class="batchSecondaryButtonClasses"
             @click="emit('batchCopy')"
           >
+            <Copy class="h-3.5 w-3.5" />
             {{ t("batch.copyTo") }}
           </Button>
           <Button
             size="sm"
             variant="secondary"
             :class="batchSecondaryButtonClasses"
-            @click="emit('batchMove')"
             :disabled="!canMoveFromCurrentFolder"
+            @click="emit('batchMove')"
           >
+            <MoveRight class="h-3.5 w-3.5" />
             {{ t("batch.moveTo") }}
           </Button>
           <Button
@@ -376,6 +391,7 @@ function submitVideoPageJump() {
             variant="destructive"
             @click="emit('batchDelete')"
           >
+            <Trash2 class="h-3.5 w-3.5" />
             {{ t("batch.deleteTrash") }}
           </Button>
         </div>

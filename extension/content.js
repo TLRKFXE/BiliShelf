@@ -1359,7 +1359,7 @@
         inset: 0;
         pointer-events: none;
         z-index: 999998;
-        font-family: Inter, "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+        font-family: "Noto Sans SC", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", system-ui, -apple-system, sans-serif;
       }
       #bl-floating-root.bl-fullscreen-hidden {
         display: none !important;
@@ -1370,58 +1370,71 @@
         position: fixed;
         z-index: 999999;
         pointer-events: auto;
-        width: 56px;
-        height: 56px;
-        border-radius: 999px;
-        border: 1px solid rgba(140, 165, 255, .45);
+        width: 44px;
+        height: 40px;
+        border-radius: 12px;
+        border: 1px solid rgba(120, 156, 255, .58);
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: grab;
         user-select: none;
         touch-action: none;
-        transition: transform .22s ease, box-shadow .2s ease, background .2s ease;
+        transition: transform .18s ease, box-shadow .18s ease, background .18s ease, border-color .18s ease;
       }
       #bl-floating-btn[data-theme="light"] {
-        background: linear-gradient(145deg, #5f7dff 0%, #3e5dfd 100%);
+        background: linear-gradient(145deg, #79a3ff 0%, #3e5dfe 100%);
         color: #fff;
-        box-shadow: 0 14px 30px rgba(63, 92, 255, .46);
+        box-shadow: 0 10px 24px rgba(62, 93, 254, .38);
       }
       #bl-floating-btn[data-theme="dark"] {
-        background: linear-gradient(145deg, #88a2ff 0%, #6888ff 100%);
-        color: #0b1225;
-        box-shadow: 0 14px 30px rgba(90, 130, 255, .42);
+        background: linear-gradient(145deg, #9ab6ff 0%, #7194ff 100%);
+        color: #081229;
+        box-shadow: 0 10px 24px rgba(113, 148, 255, .33);
       }
-      #bl-floating-btn:hover { transform: translateY(-2px); }
-      #bl-floating-btn:active { cursor: grabbing; transform: scale(.97); }
-      #bl-floating-btn svg { width: 24px; height: 24px; }
+      #bl-floating-btn:hover { transform: translateY(-1px); }
+      #bl-floating-btn:active { cursor: grabbing; transform: scale(.98); }
+      #bl-floating-btn svg { width: 18px; height: 18px; }
 
       #bl-floating-panel {
         pointer-events: auto;
         position: fixed;
-        width: min(440px, calc(100vw - 24px));
-        max-height: min(84vh, 740px);
+        width: min(420px, calc(100vw - 20px));
+        max-height: min(86vh, 760px);
         overflow: auto;
-        border-radius: 18px;
+        border-radius: 16px;
         border: 1px solid;
         padding: 14px;
         box-sizing: border-box;
-        backdrop-filter: blur(14px);
-        -webkit-backdrop-filter: blur(14px);
-        box-shadow: 0 30px 54px rgba(8, 14, 30, .22);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        box-shadow: 0 24px 52px rgba(8, 14, 30, .24);
       }
       #bl-floating-panel[data-theme="light"] {
-        border-color: rgba(208, 220, 248, .9);
-        background: linear-gradient(165deg, rgba(255,255,255,.95), rgba(244,248,255,.92));
+        border-color: rgba(201, 216, 246, .98);
+        background: linear-gradient(165deg, rgba(255,255,255,.995), rgba(247,250,255,.99));
         color: #17213b;
       }
       #bl-floating-panel[data-theme="dark"] {
-        border-color: rgba(66, 82, 126, .85);
-        background: linear-gradient(165deg, rgba(16,24,44,.95), rgba(12,18,36,.92));
+        border-color: rgba(82, 103, 154, .95);
+        background: linear-gradient(165deg, rgba(16,26,49,.992), rgba(13,22,43,.988));
         color: #e2e8f0;
       }
 
       .bl-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+      .bl-title-row { display: flex; align-items: center; gap: 8px; }
+      .bl-brand-mark {
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+        background: linear-gradient(145deg, #79a3ff 0%, #3e5dfe 100%);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        box-shadow: 0 8px 16px rgba(62, 93, 254, .34);
+      }
+      .bl-brand-mark svg { width: 13px; height: 13px; }
       .bl-title-wrap { display: flex; flex-direction: column; gap: 2px; }
       .bl-title { margin: 0; font-size: 18px; font-weight: 700; }
       .bl-subtitle { font-size: 12px; }
@@ -1431,21 +1444,22 @@
       #bl-floating-panel[data-theme="dark"] .bl-subtitle { color: #94a3c0; }
 
       .bl-btn {
-        border: 0;
+        border: 1px solid transparent;
         border-radius: 10px;
-        padding: 8px 12px;
+        padding: 7px 11px;
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
+        line-height: 1.15;
         cursor: pointer;
-        transition: all .16s ease;
+        transition: all .14s ease;
       }
       .bl-btn:disabled { opacity: .56; cursor: not-allowed; }
-      .bl-btn-primary { background: linear-gradient(135deg, #5d7cff 0%, #3f5cff 100%); color: #fff; }
-      .bl-btn-secondary { background: #e8eefb; color: #2d426f; }
+      .bl-btn-primary { background: linear-gradient(135deg, #5f7eff 0%, #3e5dfe 100%); color: #fff; border-color: rgba(62, 93, 254, .55); }
+      .bl-btn-secondary { background: #eaf0ff; color: #2d436f; border-color: #d4dff5; }
       .bl-btn-outline { background: transparent; border: 1px solid; }
-      #bl-floating-panel[data-theme="dark"] .bl-btn-secondary { background: #22385d; color: #d6e6ff; }
-      #bl-floating-panel[data-theme="light"] .bl-btn-outline { border-color: #d3ddf2; color: #334766; }
-      #bl-floating-panel[data-theme="dark"] .bl-btn-outline { border-color: #415378; color: #d2dcf1; }
+      #bl-floating-panel[data-theme="dark"] .bl-btn-secondary { background: #20355c; color: #d8e7ff; border-color: #304a7d; }
+      #bl-floating-panel[data-theme="light"] .bl-btn-outline { border-color: #d2dcf2; color: #32486a; }
+      #bl-floating-panel[data-theme="dark"] .bl-btn-outline { border-color: #42557d; color: #d1ddf3; }
 
       .bl-video-card {
         margin-top: 12px;
@@ -1456,8 +1470,8 @@
         gap: 10px;
         padding: 10px;
       }
-      #bl-floating-panel[data-theme="light"] .bl-video-card { border-color: rgba(212, 223, 246, .95); background: rgba(255, 255, 255, .62); }
-      #bl-floating-panel[data-theme="dark"] .bl-video-card { border-color: rgba(60, 76, 114, .92); background: rgba(15, 24, 46, .72); }
+      #bl-floating-panel[data-theme="light"] .bl-video-card { border-color: rgba(206, 220, 248, .98); background: rgba(255, 255, 255, .92); }
+      #bl-floating-panel[data-theme="dark"] .bl-video-card { border-color: rgba(67, 86, 130, .96); background: rgba(17, 27, 50, .9); }
       .bl-video-cover { width: 116px; height: 65px; border-radius: 10px; object-fit: cover; background: #d9e0ef; }
       .bl-video-title { margin: 0; font-size: 13px; line-height: 1.35; font-weight: 650; }
       .bl-video-meta { margin-top: 6px; font-size: 12px; }
@@ -1465,8 +1479,8 @@
       #bl-floating-panel[data-theme="dark"] .bl-video-meta { color: #98a8c5; }
 
       .bl-card { margin-top: 12px; border: 1px solid; border-radius: 14px; padding: 10px; }
-      #bl-floating-panel[data-theme="light"] .bl-card { border-color: rgba(214, 225, 248, .95); background: rgba(255, 255, 255, .66); }
-      #bl-floating-panel[data-theme="dark"] .bl-card { border-color: rgba(60, 76, 114, .92); background: rgba(13, 21, 40, .76); }
+      #bl-floating-panel[data-theme="light"] .bl-card { border-color: rgba(210, 223, 249, .96); background: rgba(255, 255, 255, .94); }
+      #bl-floating-panel[data-theme="dark"] .bl-card { border-color: rgba(66, 84, 127, .95); background: rgba(14, 23, 44, .9); }
       .bl-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
       .bl-label { font-size: 12px; font-weight: 600; }
 
@@ -1483,7 +1497,7 @@
       #bl-floating-panel[data-theme="dark"] .bl-input { border-color: #405075; background: #101b34; color: #edf2ff; }
       .bl-input:focus { outline: none; border-color: #6b86ff; box-shadow: 0 0 0 3px rgba(90, 122, 255, .18); }
 
-      .bl-folder-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+      .bl-folder-toolbar { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
       .bl-folder-toolbar .bl-input { margin: 0; }
       .bl-folder-toolbar .bl-btn { white-space: nowrap; }
 
@@ -1500,8 +1514,8 @@
         border-radius: 10px;
         padding: 6px;
       }
-      #bl-floating-panel[data-theme="light"] .bl-folder-list { border-color: #dde5f5; background: rgba(255, 255, 255, .82); }
-      #bl-floating-panel[data-theme="dark"] .bl-folder-list { border-color: #3e4f74; background: rgba(13, 21, 40, .8); }
+      #bl-floating-panel[data-theme="light"] .bl-folder-list { border-color: #d9e3f6; background: rgba(255, 255, 255, .94); }
+      #bl-floating-panel[data-theme="dark"] .bl-folder-list { border-color: #455984; background: rgba(12, 21, 41, .92); }
       .bl-folder-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px; border-radius: 8px; }
       #bl-floating-panel[data-theme="light"] .bl-folder-item:hover { background: rgba(107, 134, 255, .1); }
       #bl-floating-panel[data-theme="dark"] .bl-folder-item:hover { background: rgba(108, 139, 255, .16); }
@@ -1545,7 +1559,7 @@
         gap: 9px;
         box-shadow: 0 14px 28px rgba(17, 24, 39, .22);
         animation: bl-toast-in .18s ease;
-        backdrop-filter: blur(12px);
+        backdrop-filter: none;
       }
       .Vue-Toastification__icon {
         margin-top: 1px;
@@ -1717,7 +1731,19 @@
       <div id="bl-floating-panel" class="bl-hidden" data-theme="light">
         <div class="bl-header">
           <div class="bl-title-wrap">
-            <h2 class="bl-title">${t("title.collector")}</h2>
+            <h2 class="bl-title">
+              <span class="bl-title-row">
+                <span class="bl-brand-mark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M12 4.5L19 8.5V15.5L12 19.5L5 15.5V8.5L12 4.5Z" fill="white"></path>
+                    <path d="M12 8L16 10.3V13.7L12 16L8 13.7V10.3L12 8Z" fill="#4C66FF"></path>
+                    <path d="M12 4.5V19.5" stroke="#4C66FF" stroke-width="1.5" stroke-linecap="round"></path>
+                    <path d="M5 8.5L19 15.5" stroke="#4C66FF" stroke-width="1.5" stroke-linecap="round"></path>
+                  </svg>
+                </span>
+                <span>${t("title.collector")}</span>
+              </span>
+            </h2>
             <p class="bl-subtitle">${t("subtitle.collector")}</p>
           </div>
           <button id="bl-close-btn" class="bl-btn bl-btn-outline" type="button">${t("button.close")}</button>
@@ -1800,11 +1826,11 @@
 
     floatingBtn = createNodeFromHtml(`
       <button id="bl-floating-btn" data-theme="light" title="${t("title.collector")}" aria-label="${t("title.collector")}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="8.25"></circle>
-          <path d="m10 8.75 5.5 3.25-5.5 3.25z" fill="currentColor" stroke="none"></path>
-          <path d="M6.2 5.4h.01"></path>
-          <path d="M17.8 18.6h.01"></path>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 4.5L19 8.5V15.5L12 19.5L5 15.5V8.5L12 4.5Z" fill="currentColor"></path>
+          <path d="M12 8L16 10.3V13.7L12 16L8 13.7V10.3L12 8Z" fill="#4C66FF"></path>
+          <path d="M12 4.5V19.5" stroke="#4C66FF" stroke-width="1.5" stroke-linecap="round"></path>
+          <path d="M5 8.5L19 15.5" stroke="#4C66FF" stroke-width="1.5" stroke-linecap="round"></path>
         </svg>
       </button>
     `);

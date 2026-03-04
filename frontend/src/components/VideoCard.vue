@@ -11,7 +11,7 @@ type Locale = "zh-CN" | "en-US";
 
 const props = withDefaults(
   defineProps<{
-  video: Video;
+    video: Video;
     locale?: Locale;
   }>(),
   {
@@ -94,18 +94,18 @@ function resolveVideoUrl(video: Video) {
 </script>
 
 <template>
-  <Card class="flex h-full flex-col overflow-hidden border bg-card shadow-sm transition-all duration-200 ease-out hover:shadow-lg">
-    <a :href="resolveVideoUrl(video)" target="_blank" rel="noreferrer" class="block aspect-video w-full overflow-hidden bg-muted">
+  <Card class="flex h-full flex-col overflow-hidden border bg-card/95 shadow-sm">
+    <a :href="resolveVideoUrl(video)" target="_blank" rel="noreferrer" class="group/thumb block aspect-video w-full overflow-hidden bg-muted">
       <img
         :src="sanitizeCoverUrl(video.coverUrl)"
         :alt="video.title"
         referrerpolicy="no-referrer"
-        class="h-full w-full object-cover"
+        class="h-full w-full object-cover transition-transform duration-300 group-hover/thumb:scale-[1.03]"
         @error="handleImageError"
       />
     </a>
 
-    <div class="flex h-[156px] flex-1 flex-col gap-2 p-3.5">
+    <div class="flex h-[166px] flex-1 flex-col gap-2.5 p-3.5">
       <div class="space-y-1.5">
         <h3 class="line-clamp-2 text-sm font-semibold leading-5">{{ video.title }}</h3>
         <p class="line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground">{{ video.description || t("noDescription") }}</p>

@@ -1048,31 +1048,44 @@ function toggleAutoInitFolder(remoteId: number, checked: boolean) {
   autoInitSelectedFolderIds.value = [...new Set([...autoInitSelectedFolderIds.value, remoteId])];
 }
 
+function estimateTargetVideosByFolders(folderIds: number[], candidates: SyncRemoteFolder[]) {
+  const selectedSet = new Set(folderIds);
+  return candidates
+    .filter((folder) => selectedSet.has(folder.remoteId))
+    .reduce((sum, folder) => sum + Math.max(0, Number(folder.mediaCount || 0)), 0);
+}
+
+function startUnifiedFavoritesSync(folderIds: number[], targetVideosEstimate: number) {
+  const normalizedIds = [...new Set(folderIds.filter((id) => Number.isFinite(id) && id > 0))];
+  writeAutoInitState({
+    status: "running",
+    folderIds: normalizedIds,
+    folderIndex: 0,
+    nextRetryAt: null,
+    riskStreak: 0,
+    phase1Imported: 0,
+    phase1Scanned: 0,
+    targetVideosEstimate: Math.max(0, Math.trunc(targetVideosEstimate)),
+    lastError: ""
+  });
+  autoInitDialogOpen.value = false;
+  syncDialogOpen.value = false;
+  void safeMaybeStartAutoInitSync({ force: true });
+}
+
 async function confirmAutoInitSetup() {
   if (autoInitSubmitting.value) return;
   if (autoInitSelectedFolderIds.value.length === 0) {
     notifyError(t("toast.autoInitPickFolder"));
     return;
   }
-  const selectedSet = new Set(autoInitSelectedFolderIds.value);
-  const targetVideosEstimate = autoInitFolders.value
-    .filter((folder) => selectedSet.has(folder.remoteId))
-    .reduce((sum, folder) => sum + Math.max(0, Number(folder.mediaCount || 0)), 0);
+  const targetVideosEstimate = estimateTargetVideosByFolders(
+    autoInitSelectedFolderIds.value,
+    autoInitFolders.value
+  );
   autoInitSubmitting.value = true;
   try {
-    writeAutoInitState({
-      status: "running",
-      folderIds: [...autoInitSelectedFolderIds.value],
-      folderIndex: 0,
-      nextRetryAt: null,
-      riskStreak: 0,
-      phase1Imported: 0,
-      phase1Scanned: 0,
-      targetVideosEstimate,
-      lastError: ""
-    });
-    autoInitDialogOpen.value = false;
-    void safeMaybeStartAutoInitSync({ force: true });
+    startUnifiedFavoritesSync(autoInitSelectedFolderIds.value, targetVideosEstimate);
   } finally {
     autoInitSubmitting.value = false;
   }
@@ -1092,19 +1105,16 @@ function toggleSyncFolder(remoteId: number, checked: boolean) {
 }
 
 async function submitSyncImport() {
-  if (syncingImport.value || exportingLibrary.value) return;
+  if (syncingImport.value || exportingLibrary.value || autoInitRunning.value) return;
   if (syncSelectedFolderIds.value.length === 0) {
     notifyError(t("toast.autoInitPickFolder"));
     return;
   }
-
-  const result = await runFavoritesSyncLikeHistory(syncSelectedFolderIds.value, {
-    notify: true,
-    closeDialogOnSuccess: true
-  });
-  if (result.noProgress && result.errors.length === 0) {
-    notifyError(t("toast.syncFail"), t("toast.syncNoProgress"));
-  }
+  const targetVideosEstimate = estimateTargetVideosByFolders(
+    syncSelectedFolderIds.value,
+    syncFolders.value
+  );
+  startUnifiedFavoritesSync(syncSelectedFolderIds.value, targetVideosEstimate);
 }
 
 type FolderSyncRunResult = {
@@ -1792,7 +1802,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main
-    class="mx-auto grid min-h-screen w-full max-w-[1840px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[320px_1fr] lg:px-6 lg:py-8"
+    class="mx-auto grid min-h-screen w-full max-w-[1840px] grid-cols-1 gap-5 px-4 py-5 lg:grid-cols-[320px_1fr] lg:px-6 lg:py-7"
   >
     <FolderSidebar
       :folders="folders"
@@ -1805,7 +1815,7 @@ onBeforeUnmount(() => {
       @reorder="handleReorderFolders"
     />
 
-    <section class="min-w-0 space-y-5">
+    <section class="min-w-0 space-y-4">
       <ManagerHeader
         :t="t"
         :trash-mode="trashMode"

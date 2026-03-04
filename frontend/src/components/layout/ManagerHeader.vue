@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import {
-  CirclePlay,
+  DatabaseBackup,
   Download,
+  Languages,
   Moon,
   RefreshCcw,
   Sun,
+  Tags,
+  Trash2,
   Upload,
+  Waypoints,
 } from "lucide-vue-next";
+import BiliShelfMark from "@/components/icons/BiliShelfMark.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,40 +68,52 @@ function submitExport(format: "json" | "csv") {
 </script>
 
 <template>
-  <header class="panel-surface p-5">
-    <div class="flex flex-wrap items-start justify-between gap-3.5">
-      <div>
-        <h1 class="flex items-center gap-2 text-2xl font-bold tracking-tight">
-          <span
-            class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary"
+  <header class="hero-surface p-5 md:p-6">
+    <div class="grid gap-4 xl:grid-cols-[1fr_auto]">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <div class="inline-flex h-10 w-10 items-center justify-center">
+            <BiliShelfMark class="h-10 w-10" />
+          </div>
+          <div class="min-w-0">
+            <h1 class="line-clamp-1 text-xl font-extrabold tracking-tight md:text-2xl">
+              {{ props.t("header.title") }}
+            </h1>
+            <p class="line-clamp-1 text-sm text-muted-foreground">
+              {{ props.t("header.subtitle") }}
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{{ props.currentViewLabel }}</Badge>
+          <Badge
+            v-if="!props.trashMode"
+            variant="outline"
+            class="max-w-[420px] truncate border-border/80 bg-card/75"
           >
-            <CirclePlay class="h-5 w-5" />
+            {{ props.currentScopeLabel }}
+          </Badge>
+          <span class="action-chip">
+            <Waypoints class="h-3.5 w-3.5" />
+            {{ props.t("header.credit") }}
           </span>
-          {{ props.t("header.title") }}
-        </h1>
-        <p class="mt-1 text-sm text-muted-foreground">
-          {{ props.t("header.subtitle") }}
-        </p>
-        <p class="mt-1 text-xs text-muted-foreground/80">
-          {{ props.t("header.credit") }}
-        </p>
+        </div>
       </div>
-      <div class="ml-auto flex flex-wrap items-start justify-end gap-2">
-        <Badge variant="secondary">{{ props.currentViewLabel }}</Badge>
-        <Badge
-          v-if="!props.trashMode"
-          variant="outline"
-          class="max-w-[260px] truncate"
-        >
-          {{ props.currentScopeLabel }}
-        </Badge>
+
+      <div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
         <Button size="sm" variant="outline" @click="emit('toggle-locale')">
+          <Languages class="h-3.5 w-3.5" />
           {{ props.localeToggleText }}
         </Button>
         <Button
-          size="icon-sm"
+          size="icon"
           variant="outline"
-          class="relative overflow-hidden"
+          :title="
+            props.isDark
+              ? props.t('theme.switchToLight')
+              : props.t('theme.switchToDark')
+          "
           :aria-label="
             props.isDark
               ? props.t('theme.switchToLight')
@@ -104,57 +121,56 @@ function submitExport(format: "json" | "csv") {
           "
           @click="emit('toggle-theme')"
         >
-          <Transition name="theme-icon" mode="out-in">
-            <Sun v-if="props.isDark" key="sun" class="h-4 w-4" />
-            <Moon v-else key="moon" class="h-4 w-4" />
-          </Transition>
+          <Sun v-if="props.isDark" class="h-3.5 w-3.5" />
+          <Moon v-else class="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
-    <div class="mt-3 flex flex-wrap items-center justify-end gap-2">
+
+    <div class="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
       <Button
         v-if="!props.trashMode"
         size="sm"
         variant="outline"
+        class="justify-start"
         @click="emit('open-tags')"
       >
+        <Tags class="h-3.5 w-3.5" />
         {{ props.t("header.manageTags") }}
       </Button>
       <Button
         v-if="!props.trashMode"
         size="sm"
         variant="outline"
+        class="justify-start"
         @click="emit('open-sync-settings')"
       >
+        <RefreshCcw class="h-3.5 w-3.5" />
         {{ props.t("header.syncSettings") }}
-      </Button>
-      <Button
-        v-if="!props.trashMode"
-        size="sm"
-        variant="outline"
-        @click="emit('open-webdav-settings')"
-      >
-        {{ props.t("header.webdavSettings") }}
       </Button>
       <Button
         size="sm"
         :variant="props.trashMode ? 'default' : 'outline'"
+        class="justify-start"
         @click="emit('toggle-trash')"
       >
+        <Trash2 class="h-3.5 w-3.5" />
         {{
           props.trashMode
             ? props.t("header.backManager")
             : props.t("header.openTrash")
         }}
       </Button>
+    </div>
+
+    <div class="mt-3 flex flex-wrap items-center gap-2">
       <Button
         v-if="!props.trashMode"
         size="sm"
-        variant="outline"
         :disabled="props.syncing || props.exporting || props.importing"
         @click="emit('sync-import')"
       >
-        <RefreshCcw class="mr-1.5 h-3.5 w-3.5" />
+        <RefreshCcw class="h-3.5 w-3.5" />
         {{
           props.syncing
             ? props.t("header.syncing")
@@ -168,7 +184,7 @@ function submitExport(format: "json" | "csv") {
         :disabled="props.syncing || props.exporting || props.importing"
         @click="openExportDialog"
       >
-        <Download class="mr-1.5 h-3.5 w-3.5" />
+        <Download class="h-3.5 w-3.5" />
         {{ props.t("header.exportBackup") }}
       </Button>
       <Button
@@ -178,13 +194,29 @@ function submitExport(format: "json" | "csv") {
         :disabled="props.syncing || props.exporting || props.importing"
         @click="emit('import-file')"
       >
-        <Upload class="mr-1.5 h-3.5 w-3.5" />
+        <Upload class="h-3.5 w-3.5" />
         {{ props.t("header.importData") }}
       </Button>
+      <Button
+        v-if="!props.trashMode"
+        size="sm"
+        variant="outline"
+        :disabled="props.syncing || props.exporting || props.importing"
+        @click="emit('open-webdav-settings')"
+      >
+        <DatabaseBackup class="h-3.5 w-3.5" />
+        {{ props.t("webdav.title") }}
+      </Button>
     </div>
-    <div v-if="props.progressValue > 0" class="mt-3">
+
+    <div v-if="props.progressValue > 0" class="mt-4 space-y-1">
+      <div class="flex justify-between text-xs text-muted-foreground">
+        <span>{{ props.t("header.syncing") }}</span>
+        <span>{{ Math.round(props.progressValue) }}%</span>
+      </div>
       <Progress :model-value="props.progressValue" />
     </div>
+
     <Dialog :open="exportDialogOpen" @update:open="exportDialogOpen = $event">
       <DialogContent class="max-w-md">
         <DialogHeader>
@@ -216,20 +248,3 @@ function submitExport(format: "json" | "csv") {
     </Dialog>
   </header>
 </template>
-
-<style scoped>
-.theme-icon-enter-active,
-.theme-icon-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.theme-icon-enter-from {
-  opacity: 0;
-  transform: rotate(-70deg) scale(0.6);
-}
-
-.theme-icon-leave-to {
-  opacity: 0;
-  transform: rotate(70deg) scale(0.6);
-}
-</style>

@@ -1,5 +1,5 @@
 :root {
-  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: "Noto Sans SC", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
 body,
@@ -19,8 +19,28 @@ body[data-theme="light"] {
 
 .popup-header h1 {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 18px;
   font-weight: 700;
+}
+
+.popup-brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #79a3ff 0%, #3e5dfe 100%);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(62, 93, 254, .34);
+}
+
+.popup-brand-mark svg {
+  width: 13px;
+  height: 13px;
 }
 
 body[data-theme="light"] .popup-header h1 {

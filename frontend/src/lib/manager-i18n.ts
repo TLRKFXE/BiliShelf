@@ -15,7 +15,7 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "Switch to dark mode",
   },
   "header.subtitle": {
-    "zh-CN": "一个替代bilibili收藏夹管理方案的浏览器插件。",
+    "zh-CN": "一个用于替代 B 站原生收藏管理的浏览器扩展。",
     "en-US":
       "A browser extension alternative to bilibili's collection manager.",
   },
@@ -28,11 +28,11 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "Manage Custom Tags",
   },
   "header.syncSettings": {
-    "zh-CN": "同步设置",
-    "en-US": "Sync Settings",
+    "zh-CN": "监听设置",
+    "en-US": "Listener Settings",
   },
   "header.webdavSettings": {
-    "zh-CN": "WebDAV备份",
+    "zh-CN": "WebDAV 备份",
     "en-US": "WebDAV Backup",
   },
   "header.syncImport": { "zh-CN": "同步导入", "en-US": "Sync Import" },
@@ -140,7 +140,8 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
       "Import runs in chunks automatically with wait intervals between rounds until this folder is done.",
   },
   "sync.includeTagEnrichmentHint": {
-    "zh-CN": "抓取并实时补齐 B 站标签（更完整但更慢）。建议关闭，主同步后将后台慢慢补齐。",
+    "zh-CN":
+      "抓取并实时补齐 B 站标签（更完整但更慢）。建议关闭，主同步后将后台慢慢补齐。",
     "en-US":
       "Fetch and enrich Bilibili tags during sync (more complete but slower). Recommended to keep off; tags will be enriched in background after main sync.",
   },
@@ -167,7 +168,7 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "No syncable folders found.",
   },
   "sync.remoteVideoCount": {
-    "zh-CN": "B站收藏 {count} 条",
+    "zh-CN": "B 站收藏 {count} 条",
     "en-US": "{count} videos on Bilibili",
   },
   "sync.startImport": { "zh-CN": "开始同步", "en-US": "Start sync" },
@@ -191,7 +192,7 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   },
   "autoInit.warning": {
     "zh-CN":
-      "建议先勾选你最常用的收藏夹。收藏量极大的夹子可稍后再加，能降低风控概率并提升首轮速度。",
+      "建议先勾选你最常用的收藏夹。收藏量极大的收藏夹可稍后再加，能降低风控概率并提升首轮速度。",
     "en-US":
       "Start with frequently used folders first. Very large folders can be added later to reduce risk-control and improve first-run speed.",
   },
@@ -204,7 +205,7 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "No syncable folders found.",
   },
   "autoInit.remoteVideoCount": {
-    "zh-CN": "B站收藏 {count} 条",
+    "zh-CN": "B 站收藏 {count} 条",
     "en-US": "{count} videos on Bilibili",
   },
   "autoInit.later": {
@@ -265,7 +266,8 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   },
   "autoInit.phase2Summary": {
     "zh-CN": "待补 {missing}，上轮处理 {processed}，补全 {bound}",
-    "en-US": "Missing {missing}, last batch processed {processed}, bound {bound}",
+    "en-US":
+      "Missing {missing}, last batch processed {processed}, bound {bound}",
   },
   "sync.tagEnrichTitle": {
     "zh-CN": "阶段2：后台标签补全",
@@ -276,7 +278,8 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "Refresh status",
   },
   "sync.tagEnrichStatus": {
-    "zh-CN": "待补标签视频 {missing} 条，上轮处理 {processed} 条，补全标签 {bound} 个",
+    "zh-CN":
+      "待补标签视频 {missing} 条，上轮处理 {processed} 条，补全标签 {bound} 个",
     "en-US":
       "{missing} videos still missing tags; last batch processed {processed}, bound {bound} tags",
   },
@@ -289,7 +292,7 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "Resume enrichment",
   },
   "sync.runTagEnrichNow": {
-    "zh-CN": "立即跑一批",
+    "zh-CN": "立即补全",
     "en-US": "Run one batch now",
   },
   "sync.settings.title": {
@@ -331,7 +334,8 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   },
   "webdav.desc": {
     "zh-CN": "配置远端 WebDAV 后，可测试连通性并执行上传备份、下载和一键恢复。",
-    "en-US": "Configure WebDAV, then test connectivity and perform backup upload, download, and restore.",
+    "en-US":
+      "Configure WebDAV, then test connectivity and perform backup upload, download, and restore.",
   },
   "webdav.enableTitle": {
     "zh-CN": "启用 WebDAV 备份",
@@ -419,6 +423,14 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "新建自定义标签",
     "en-US": "New custom tag",
   },
+  "tools.tagUsage": {
+    "zh-CN": "已关联 {count} 条",
+    "en-US": "Linked {count}",
+  },
+  "tools.totalTags": {
+    "zh-CN": "标签总数 {count}",
+    "en-US": "Total tags {count}",
+  },
   "tools.noCustomTag": {
     "zh-CN": "暂无自定义标签。",
     "en-US": "No custom tags yet.",
@@ -460,7 +472,10 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "Manually complete or fix metadata for old videos.",
     "en-US": "Manually complete or fix metadata for old videos.",
   },
-  "detail.saveManual": { "zh-CN": "Save Manual Changes", "en-US": "Save Manual Changes" },
+  "detail.saveManual": {
+    "zh-CN": "Save Manual Changes",
+    "en-US": "Save Manual Changes",
+  },
   "detail.saving": { "zh-CN": "Saving...", "en-US": "Saving..." },
   "folder.allVideos": { "zh-CN": "全部视频", "en-US": "All Videos" },
   "folder.unknown": { "zh-CN": "未知收藏夹", "en-US": "Unknown Folder" },
@@ -731,15 +746,15 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "Failed to trigger tag enrichment",
   },
   "toast.syncSettingsSaved": {
-    "zh-CN": "同步设置已保存",
+    "zh-CN": "监听设置已保存",
     "en-US": "Sync settings saved",
   },
   "toast.syncSettingsSaveFail": {
-    "zh-CN": "保存同步设置失败",
+    "zh-CN": "保存监听设置失败",
     "en-US": "Failed to save sync settings",
   },
   "toast.syncSettingsLoadFail": {
-    "zh-CN": "加载同步设置失败",
+    "zh-CN": "加载监听设置失败",
     "en-US": "Failed to load sync settings",
   },
   "toast.webdavSettingsSaved": {
@@ -788,7 +803,8 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   },
   "toast.webdavRestoreSummary": {
     "zh-CN": "写入视频 {videos} 条，收藏关系 {links} 条，标签绑定 {tags} 条",
-    "en-US": "Imported {videos} videos, {links} folder links, and {tags} tag links",
+    "en-US":
+      "Imported {videos} videos, {links} folder links, and {tags} tag links",
   },
   "toast.webdavRestoreFail": {
     "zh-CN": "WebDAV 恢复失败",
@@ -804,14 +820,16 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   },
   "toast.autoInitCoolingDesc": {
     "zh-CN": "检测到风控（412），将稍后自动继续。",
-    "en-US": "Risk-control detected (412). Initialization will auto-resume later.",
+    "en-US":
+      "Risk-control detected (412). Initialization will auto-resume later.",
   },
   "toast.autoInitDone": {
     "zh-CN": "初始化同步完成",
     "en-US": "Initialization sync completed",
   },
   "toast.autoInitDoneDesc": {
-    "zh-CN": "已完成第一阶段同步，累计写入视频 {videos} 条，标签将继续后台补全。",
+    "zh-CN":
+      "已完成第一阶段同步，累计写入视频 {videos} 条，标签将继续后台补全。",
     "en-US":
       "Phase 1 sync finished with {videos} videos imported. Tag enrichment will continue in background.",
   },
@@ -821,7 +839,8 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   },
   "toast.autoInitLockHeld": {
     "zh-CN": "初始化任务正在其它管理页运行，请关闭重复页面后重试。",
-    "en-US": "Initialization is running in another manager tab. Close duplicate tabs and retry.",
+    "en-US":
+      "Initialization is running in another manager tab. Close duplicate tabs and retry.",
   },
   "toast.autoInitNeedResume": {
     "zh-CN": "当前收藏夹未同步完成，已保留断点",
@@ -951,20 +970,35 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
 };
 
 const MANAGER_I18N_ZH_OVERRIDES: Record<string, string> = {
+  "header.subtitle": "一个用于替代 B 站原生收藏管理的浏览器扩展。",
+  "header.webdavSettings": "WebDAV 备份",
+  "sync.remoteVideoCount": "B 站收藏 {count} 条",
+  "autoInit.remoteVideoCount": "B 站收藏 {count} 条",
+  "sync.settings.title": "B 站动作监听",
+  "sync.settings.desc":
+    "仅监听 B 站收藏动作，并将增删、移动、复制等变更对账到本地。",
+  "sync.settings.biliToLocalTitle": "B 站 -> 插件：同步收藏动作",
+  "sync.settings.biliToLocalDesc":
+    "检测到 B 站原生收藏动作后，自动按远端收藏夹状态对账到本地。",
+  "sync.settings.localToBiliTitle": "插件 -> B 站：同步收藏动作",
+  "sync.settings.localToBiliDesc":
+    "在插件中收藏时，尝试同步写回已绑定远端 media_id 的 B 站收藏夹。",
+  "webdav.desc":
+    "配置 WebDAV 后，可进行连通测试、上传备份、下载备份与远端恢复。",
   "detail.title": "视频详情",
-  "detail.bv": "BV号",
+  "detail.bv": "BV 号",
   "detail.videoTitle": "标题",
   "detail.uploader": "UP主",
   "detail.description": "简介",
   "detail.publishAt": "发布时间",
-  "detail.uploaderSpace": "UP主空间链接",
+  "detail.uploaderSpace": "UP 主空间链接",
   "detail.customTags": "自定义标签",
   "detail.bilibiliTags": "B站标签",
   "detail.customTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.systemTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.folders": "所属收藏夹",
-  "detail.openOnBilibili": "在B站打开",
-  "detail.openUploaderSpace": "打开UP空间",
+  "detail.openOnBilibili": "在 B 站打开",
+  "detail.openUploaderSpace": "打开 UP 主空间",
   "detail.manualComplete": "手动补全信息",
   "detail.manualEditHint": "可手动补全/修正老视频信息，便于后续检索统计。",
   "detail.saveManual": "保存修改",
@@ -1021,6 +1055,7 @@ const MANAGER_I18N_ZH_OVERRIDES: Record<string, string> = {
   "confirm.deleteFolder.title": "删除收藏夹？",
   "confirm.deleteFolder.desc": "该操作会将收藏夹及其视频移入回收站。",
   "confirm.deleteTag.title": "删除标签？",
+  "confirm.deleteTag.desc": "确认删除标签“{name}”？",
   "confirm.deleteVideoGlobal.title": "删除视频？",
   "confirm.deleteVideoGlobal.desc": "该视频将移入回收站。",
   "confirm.deleteVideoFolderOnly.title": "从当前收藏夹移除？",

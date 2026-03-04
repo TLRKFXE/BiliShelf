@@ -3,52 +3,62 @@
 @tailwind utilities;
 
 :root {
-  --background: 220 33% 98%;
-  --foreground: 222 47% 11%;
+  --background: 210 44% 98%;
+  --foreground: 216 38% 14%;
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card-foreground: 216 38% 14%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --primary: 226 88% 59%;
+  --popover-foreground: 216 38% 14%;
+  --primary: 210 95% 46%;
   --primary-foreground: 210 40% 98%;
-  --secondary: 220 14% 95%;
-  --secondary-foreground: 222 47% 13%;
-  --muted: 220 14% 95%;
-  --muted-foreground: 215 16% 46%;
-  --accent: 227 100% 97%;
-  --accent-foreground: 226 82% 46%;
+  --secondary: 208 42% 94%;
+  --secondary-foreground: 217 32% 20%;
+  --muted: 208 38% 95%;
+  --muted-foreground: 216 19% 40%;
+  --accent: 198 100% 96%;
+  --accent-foreground: 208 90% 35%;
   --destructive: 0 73% 52%;
   --destructive-foreground: 0 0% 98%;
-  --border: 214 31% 90%;
-  --input: 214 31% 90%;
-  --ring: 226 88% 59%;
-  --radius: 0.875rem;
+  --border: 212 33% 86%;
+  --input: 212 33% 86%;
+  --ring: 208 100% 45%;
+  --radius: 1rem;
+  --hero-a: 207 100% 54%;
+  --hero-b: 184 88% 43%;
+  --surface-shadow: 216 50% 12%;
 }
 
 .dark {
-  --background: 222 47% 8%;
+  --background: 219 44% 8%;
   --foreground: 210 40% 98%;
-  --card: 222 38% 12%;
+  --card: 220 31% 12%;
   --card-foreground: 210 40% 98%;
-  --popover: 222 38% 12%;
+  --popover: 220 31% 12%;
   --popover-foreground: 210 40% 98%;
-  --primary: 221 83% 65%;
+  --primary: 199 100% 62%;
   --primary-foreground: 222 47% 11%;
-  --secondary: 217 33% 17%;
+  --secondary: 217 28% 18%;
   --secondary-foreground: 210 40% 96%;
-  --muted: 217 33% 17%;
+  --muted: 217 28% 18%;
   --muted-foreground: 215 20% 68%;
-  --accent: 217 33% 17%;
-  --accent-foreground: 210 40% 96%;
+  --accent: 204 52% 22%;
+  --accent-foreground: 197 94% 72%;
   --destructive: 0 63% 44%;
   --destructive-foreground: 210 40% 98%;
-  --border: 217 33% 23%;
-  --input: 217 33% 23%;
-  --ring: 224 76% 62%;
+  --border: 217 28% 24%;
+  --input: 217 28% 24%;
+  --ring: 198 100% 62%;
+  --hero-a: 207 88% 46%;
+  --hero-b: 183 81% 37%;
+  --surface-shadow: 220 45% 4%;
 }
 
 * {
   @apply border-border;
+}
+
+*::selection {
+  background-color: hsl(var(--primary) / 0.22);
 }
 
 .theme-transition body,
@@ -58,23 +68,46 @@
 .theme-transition .text-muted-foreground,
 .theme-transition .border-border {
   transition:
-    background-color 0.14s ease,
-    border-color 0.14s ease,
-    color 0.14s ease;
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
 }
 
 body {
   @apply bg-background text-foreground min-h-screen;
-  font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "Noto Sans SC", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
   background-image:
-    radial-gradient(circle at 0% 0%, rgba(123, 163, 255, 0.2), transparent 42%),
-    radial-gradient(circle at 100% 100%, rgba(124, 211, 255, 0.2), transparent 45%);
+    radial-gradient(circle at 10% 0%, hsl(var(--hero-a) / 0.18), transparent 38%),
+    radial-gradient(circle at 100% 100%, hsl(var(--hero-b) / 0.16), transparent 44%),
+    linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+  letter-spacing: 0.01em;
+  text-rendering: geometricPrecision;
 }
 
 .dark body {
   background-image:
-    radial-gradient(circle at 0% 0%, rgba(66, 99, 235, 0.28), transparent 42%),
-    radial-gradient(circle at 100% 100%, rgba(32, 159, 255, 0.2), transparent 46%);
+    radial-gradient(circle at 12% 0%, hsl(var(--hero-a) / 0.2), transparent 38%),
+    radial-gradient(circle at 100% 100%, hsl(var(--hero-b) / 0.16), transparent 44%),
+    linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image: linear-gradient(
+      120deg,
+      transparent 0%,
+      hsl(var(--foreground) / 0.02) 44%,
+      transparent 88%
+    ),
+    radial-gradient(
+      circle at 24% 20%,
+      hsl(var(--primary) / 0.05) 0%,
+      transparent 44%
+    );
 }
 
 .date-input {
@@ -105,6 +138,22 @@ body {
   @apply min-h-screen;
 }
 
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: hsl(var(--primary) / 0.24);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 details > summary {
   list-style: none;
 }
@@ -115,8 +164,10 @@ details > summary::-webkit-details-marker {
 
 @layer components {
   .panel-surface {
-    @apply rounded-xl border bg-card;
-    box-shadow: 0 14px 34px -22px hsl(var(--foreground) / 0.42);
+    @apply rounded-2xl border bg-card;
+    box-shadow:
+      0 20px 48px -30px hsl(var(--surface-shadow) / 0.48),
+      inset 0 1px 0 hsl(0 0% 100% / 0.45);
     transition:
       box-shadow 220ms ease,
       transform 220ms ease,
@@ -125,8 +176,8 @@ details > summary::-webkit-details-marker {
   }
 
   .panel-surface-soft {
-    @apply rounded-lg border bg-background/60;
-    box-shadow: 0 10px 26px -24px hsl(var(--foreground) / 0.4);
+    @apply rounded-xl border bg-background/[0.97] backdrop-blur-[2px];
+    box-shadow: 0 12px 30px -24px hsl(var(--surface-shadow) / 0.35);
     transition:
       box-shadow 220ms ease,
       border-color 220ms ease,
@@ -140,8 +191,26 @@ details > summary::-webkit-details-marker {
   }
 
   .interactive-lift:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 14px 34px -24px hsl(var(--foreground) / 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 18px 36px -22px hsl(var(--surface-shadow) / 0.45);
+  }
+
+  .hero-surface {
+    background:
+      linear-gradient(
+        135deg,
+        hsl(var(--hero-a) / 0.14) 0%,
+        hsl(var(--hero-b) / 0.1) 58%,
+        hsl(var(--card)) 100%
+      );
+    @apply rounded-2xl border border-border/80;
+    box-shadow:
+      0 22px 52px -34px hsl(var(--surface-shadow) / 0.46),
+      inset 0 1px 0 hsl(0 0% 100% / 0.42);
+  }
+
+  .action-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/80 px-2.5 py-1 text-xs text-muted-foreground;
   }
 }
 

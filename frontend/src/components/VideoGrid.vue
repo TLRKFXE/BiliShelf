@@ -1,8 +1,7 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { Check, FileText, Trash2 } from "lucide-vue-next";
-import { reactive } from "vue";
+import { ref } from "vue";
 import type { Video } from "../types";
-import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Skeleton } from "./ui/skeleton";
 import VideoCard from "./VideoCard.vue";
@@ -31,6 +30,8 @@ const emit = defineEmits<{
   clearSelection: [];
 }>();
 
+const hoveredVideoId = ref<number | null>(null);
+
 function toggleSelection(id: number) {
   emit("setSelection", { id, checked: !props.selectedIds.includes(id) });
 }
@@ -39,43 +40,45 @@ function fireQuickAction(id: number, action: QuickAction) {
   emit("quickAction", { id, action });
 }
 
+function handleDetailClick(event: MouseEvent, id: number) {
+  event.preventDefault();
+  event.stopPropagation();
+  emit("detail", id);
+}
+
+function handleDeleteClick(event: MouseEvent, id: number) {
+  event.preventDefault();
+  event.stopPropagation();
+  fireQuickAction(id, "delete");
+}
+
 function isSelected(id: number) {
   return props.selectedIds.includes(id);
 }
 
-const cardTransforms = reactive<Record<number, string>>({});
+function handleCardPointerEnter(id: number) {
+  hoveredVideoId.value = id;
+}
+
+function handleCardPointerLeave(id: number) {
+  if (hoveredVideoId.value === id) {
+    hoveredVideoId.value = null;
+  }
+}
+
+function canShowCardActions(id: number) {
+  return props.batchMode || isSelected(id) || hoveredVideoId.value === id;
+}
+
 const GRID_TEXT: Record<"empty", Record<Locale, string>> = {
   empty: {
-    "zh-CN": "暂无匹配结果，试试换个关键词。",
-    "en-US": "No result. Try another keyword."
+    "zh-CN": "未找到匹配结果，请尝试调整关键词或筛选条件。",
+    "en-US": "No results found. Try another keyword or filter."
   }
 };
 
 function t(key: keyof typeof GRID_TEXT) {
   return GRID_TEXT[key][props.locale];
-}
-
-function handleCardMouseEnter(id: number) {
-  cardTransforms[id] =
-    "perspective(1200px) rotateX(0deg) rotateY(0deg) translateY(-4px) scale(1.006)";
-}
-
-function handleCardMouseMove(event: MouseEvent, id: number) {
-  const element = event.currentTarget as HTMLElement | null;
-  if (!element) return;
-
-  const rect = element.getBoundingClientRect();
-  const x = (event.clientX - rect.left) / rect.width;
-  const y = (event.clientY - rect.top) / rect.height;
-  const rotateY = (x - 0.5) * 14;
-  const rotateX = (0.5 - y) * 12;
-  cardTransforms[id] =
-    `perspective(1200px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) translateY(-6px) scale(1.012)`;
-}
-
-function handleCardMouseLeave(id: number) {
-  cardTransforms[id] =
-    "perspective(1200px) rotateX(0deg) rotateY(0deg) translateY(0) scale(1)";
 }
 </script>
 
@@ -100,11 +103,9 @@ function handleCardMouseLeave(id: number) {
       <div
         v-for="video in videos"
         :key="video.id"
-        class="group relative h-full transform-gpu rounded-xl shadow-[0_10px_26px_-18px_hsl(var(--foreground)/0.55)] transition-[transform,box-shadow] duration-200 hover:shadow-[0_22px_46px_-24px_hsl(var(--foreground)/0.6)] will-change-transform [transform-style:preserve-3d]"
-        :style="{ transform: cardTransforms[video.id] || 'perspective(1200px) rotateX(0deg) rotateY(0deg) translateY(0) scale(1)' }"
-        @mouseenter="handleCardMouseEnter(video.id)"
-        @mousemove="handleCardMouseMove($event, video.id)"
-        @mouseleave="handleCardMouseLeave(video.id)"
+        class="group relative h-full rounded-xl shadow-[0_12px_30px_-18px_hsl(var(--surface-shadow)/0.6)] transition-[transform,box-shadow] duration-200 hover:-translate-y-[2px] hover:shadow-[0_24px_46px_-24px_hsl(var(--surface-shadow)/0.65)]"
+        @pointerenter="handleCardPointerEnter(video.id)"
+        @pointerleave="handleCardPointerLeave(video.id)"
       >
         <button
           v-if="props.batchMode"
@@ -114,36 +115,54 @@ function handleCardMouseLeave(id: number) {
         />
         <div
           v-if="isSelected(video.id)"
-          class="pointer-events-none absolute inset-0 z-[5] rounded-xl bg-black/15"
+          class="pointer-events-none absolute inset-0 z-[5] rounded-xl bg-primary/15"
         />
 
         <div
-          class="absolute left-3 top-3 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border shadow-sm backdrop-blur"
-          :class="
-            [
-              isSelected(video.id)
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-white/70 bg-black/45 text-white hover:bg-black/60',
-              props.batchMode || isSelected(video.id)
-                ? 'opacity-100 pointer-events-auto'
-                : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
-            ]
-          "
+          class="absolute left-3 top-3 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border/85 bg-background/[0.96] text-foreground shadow-sm backdrop-blur-[1px] transition-all"
+          :class="[
+            isSelected(video.id)
+              ? 'border-primary bg-primary text-primary-foreground shadow-[0_10px_24px_-14px_hsl(var(--primary)/0.9)]'
+              : '',
+            canShowCardActions(video.id)
+              ? 'visible opacity-100 pointer-events-auto'
+              : 'invisible opacity-0 pointer-events-none'
+          ]"
+          @pointerdown.stop
+          @mousedown.stop
           @click.stop="toggleSelection(video.id)"
         >
           <Check class="h-4 w-4" :class="isSelected(video.id) ? 'opacity-100' : 'opacity-0'" />
         </div>
 
         <div
-          class="absolute right-3 top-3 z-20 flex gap-1 rounded-md border bg-background/95 p-1 opacity-0 shadow-sm transition-all duration-200 group-hover:opacity-100 group-hover:pointer-events-auto"
-          :class="isSelected(video.id) ? 'pointer-events-auto opacity-100' : 'pointer-events-none'"
+          class="absolute right-3 top-3 z-30 flex gap-1 rounded-xl border border-border/85 bg-background/[0.98] p-1.5 shadow-md backdrop-blur-[1px] transition-all duration-200"
+          :class="
+            canShowCardActions(video.id)
+              ? 'visible opacity-100 pointer-events-auto'
+              : 'invisible opacity-0 pointer-events-none'
+          "
+          @pointerdown.stop
+          @mousedown.stop
         >
-          <Button size="icon-sm" variant="outline" @click="fireQuickAction(video.id, 'detail')">
+          <button
+            type="button"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/90 bg-background text-foreground transition-colors hover:bg-accent/75 hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            @pointerdown.stop
+            @mousedown.stop
+            @click="handleDetailClick($event, video.id)"
+          >
             <FileText class="h-3.5 w-3.5" />
-          </Button>
-          <Button size="icon-sm" variant="destructive" @click="fireQuickAction(video.id, 'delete')">
+          </button>
+          <button
+            type="button"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-500/65 bg-red-500 text-white transition-colors hover:bg-red-500/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+            @pointerdown.stop
+            @mousedown.stop
+            @click="handleDeleteClick($event, video.id)"
+          >
             <Trash2 class="h-3.5 w-3.5" />
-          </Button>
+          </button>
         </div>
 
         <VideoCard :video="video" :locale="props.locale" />

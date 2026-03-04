@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { PencilLine } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,7 +27,12 @@ const emit = defineEmits<{
   <Dialog :open="open" @update:open="emit('update:open', $event)">
     <DialogContent class="max-w-md">
       <DialogHeader>
-        <DialogTitle>{{ t("dialog.renameTag.title") }}</DialogTitle>
+        <DialogTitle class="flex items-center gap-2">
+          <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
+            <PencilLine class="h-4.5 w-4.5" />
+          </span>
+          {{ t("dialog.renameTag.title") }}
+        </DialogTitle>
         <DialogDescription>{{ t("dialog.renameTag.description") }}</DialogDescription>
       </DialogHeader>
       <div class="mt-2 space-y-3">
@@ -36,7 +42,7 @@ const emit = defineEmits<{
           @update:model-value="emit('update:value', String($event))"
           @keyup.enter="emit('submit')"
         />
-        <div class="flex justify-end gap-2">
+        <div class="flex flex-wrap justify-end gap-2">
           <Button variant="outline" @click="emit('update:open', false)">
             {{ t("common.cancel") }}
           </Button>

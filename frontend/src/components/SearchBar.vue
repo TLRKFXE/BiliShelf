@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Search } from "lucide-vue-next";
+import { Filter, Search, Tag, UserRound } from "lucide-vue-next";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import type { Tag } from "../types";
+import type { Tag as TagItem } from "../types";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -25,7 +25,7 @@ const FIELD_SNIPPET_ALIASES: Record<FieldToken, string[]> = {
 const props = withDefaults(
   defineProps<{
     keyword: string;
-    tags: Tag[];
+    tags: TagItem[];
     locale?: Locale;
   }>(),
   {
@@ -58,16 +58,16 @@ const SEARCH_TEXT: Record<
   Record<Locale, string>
 > = {
   searchPlaceholder: {
-    "zh-CN": "默认检索标题/标签；可追加tag UP主:XXX 简介:XXX；",
+    "zh-CN": "默认搜索标题与标签，可追加：UP主:、简介:、自定义标签:",
     "en-US":
-      "Searches title/tags by default, then append uploader:XXX description:XXX",
+      "Search title/tags by default. Add tokens: uploader:, description:, customTag:",
   },
   search: { "zh-CN": "搜索", "en-US": "Search" },
   reset: { "zh-CN": "清空", "en-US": "Reset" },
-  fieldTokens: { "zh-CN": "字段标签", "en-US": "Field Tokens" },
+  fieldTokens: { "zh-CN": "快速筛选字段", "en-US": "Quick Filter Tokens" },
   customTags: { "zh-CN": "自定义标签", "en-US": "Custom Tags" },
   emptyCustomTag: {
-    "zh-CN": "暂无自定义标签。",
+    "zh-CN": "暂无自定义标签",
     "en-US": "No custom tags yet.",
   },
   title: { "zh-CN": "标题", "en-US": "Title" },
@@ -226,7 +226,7 @@ function toggleCustomTag(name: string) {
     return;
   }
 
-  const snippet = props.locale === "zh-CN" ? "自定义tag:" : "customTag:";
+  const snippet = props.locale === "zh-CN" ? "自定义标签:" : "customTag:";
   const nextToken = `${snippet}${token}`;
   emit("update:keyword", source ? `${source} ${nextToken}` : nextToken);
 }
@@ -247,14 +247,17 @@ function hasCustomTagToken(name: string) {
 
 <template>
   <section class="panel-surface p-5">
-    <div class="flex flex-col gap-3.5 lg:flex-row lg:items-center">
-      <Input
-        :model-value="keyword"
-        :placeholder="t('searchPlaceholder')"
-        class="h-11"
-        @update:model-value="emit('update:keyword', String($event))"
-        @keyup.enter="emit('search')"
-      />
+    <div class="flex flex-col gap-3.5 xl:flex-row xl:items-center">
+      <div class="relative min-w-0 flex-1">
+        <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          :model-value="keyword"
+          :placeholder="t('searchPlaceholder')"
+          class="h-11 pl-10"
+          @update:model-value="emit('update:keyword', String($event))"
+          @keyup.enter="emit('search')"
+        />
+      </div>
       <div class="flex items-center gap-2.5">
         <Button class="h-11" @click="emit('search')">
           <Search class="h-4 w-4" />
@@ -267,7 +270,8 @@ function hasCustomTagToken(name: string) {
     </div>
 
     <div class="mt-5 space-y-2.5">
-      <p class="text-xs font-medium text-muted-foreground">
+      <p class="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <Filter class="h-3.5 w-3.5" />
         {{ t("fieldTokens") }}
       </p>
       <div class="flex flex-wrap gap-2">
@@ -278,6 +282,8 @@ function hasCustomTagToken(name: string) {
           @click="emit('appendFieldToken', field.key)"
         >
           <Badge :variant="hasFieldToken(field.key) ? 'default' : 'secondary'">
+            <UserRound v-if="field.key === 'uploader'" class="h-3 w-3" />
+            <Tag v-else class="h-3 w-3" />
             {{ field.label }}
           </Badge>
         </button>
@@ -285,11 +291,12 @@ function hasCustomTagToken(name: string) {
     </div>
 
     <div class="mt-5 space-y-2.5">
-      <p class="text-xs font-medium text-muted-foreground">
+      <p class="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <Tag class="h-3.5 w-3.5" />
         {{ t("customTags") }}
       </p>
       <div
-        class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between"
+        class="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between"
       >
         <div ref="customTagViewportRef" class="min-w-0 flex-1 overflow-hidden">
           <div class="flex flex-nowrap items-center gap-2">
@@ -316,7 +323,7 @@ function hasCustomTagToken(name: string) {
 
         <div
           v-if="customTagTotalPages > 1"
-          class="flex shrink-0 items-center justify-end gap-2 lg:min-w-[210px] lg:pt-0"
+          class="flex shrink-0 items-center justify-end gap-2 xl:min-w-[220px] xl:pt-0"
         >
           <Button
             size="sm"
@@ -327,8 +334,7 @@ function hasCustomTagToken(name: string) {
             {{ t("prev") }}
           </Button>
           <span class="text-xs text-muted-foreground"
-            >{{ t("page") }} {{ customTagPage }} /
-            {{ customTagTotalPages }}</span
+            >{{ t("page") }} {{ customTagPage }} / {{ customTagTotalPages }}</span
           >
           <Button
             size="sm"
