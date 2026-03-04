@@ -17,31 +17,13 @@ const props = defineProps<{
   fetchingFolders: boolean;
   folders: SyncRemoteFolder[];
   selectedFolderIds: number[];
-  chunkSize: number;
-  includeTagEnrichment: boolean;
-  resumePage: number;
-  tagEnrichmentStatus?: {
-    paused: boolean;
-    running: boolean;
-    totalMissing: number;
-    lastBatchProcessed: number;
-    lastBatchBound: number;
-    lastError: string | null;
-  } | null;
-  tagEnrichmentLoading: boolean;
 }>();
 
 const emit = defineEmits<{
   "update:open": [value: boolean];
   "toggle-folder": [remoteId: number, checked: boolean];
-  "update:chunk-size": [value: number];
-  "update:include-tag-enrichment": [value: boolean];
-  "refresh-tag-enrichment": [];
-  "pause-tag-enrichment": [];
-  "resume-tag-enrichment": [];
-  "run-tag-enrichment": [];
   reload: [];
-  submit: [];
+  start: [];
 }>();
 </script>
 
@@ -49,15 +31,15 @@ const emit = defineEmits<{
   <Dialog :open="open" @update:open="emit('update:open', $event)">
     <DialogContent class="max-h-[85vh] max-w-3xl overflow-auto">
       <DialogHeader>
-        <DialogTitle>{{ t("sync.dialogTitle") }}</DialogTitle>
-        <DialogDescription>{{ t("sync.dialogDesc") }}</DialogDescription>
+        <DialogTitle>{{ t("autoInit.dialogTitle") }}</DialogTitle>
+        <DialogDescription>{{ t("autoInit.dialogDesc") }}</DialogDescription>
       </DialogHeader>
 
       <section class="panel-surface space-y-4 p-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <p class="text-sm text-muted-foreground">
             {{
-              t("sync.folderCount", {
+              t("autoInit.folderCount", {
                 selected: selectedFolderIds.length,
                 total: folders.length,
               })
@@ -69,28 +51,22 @@ const emit = defineEmits<{
             :disabled="fetchingFolders || loading"
             @click="emit('reload')"
           >
-            {{ t("sync.reloadFolders") }}
+            {{ t("autoInit.reloadFolders") }}
           </Button>
         </div>
 
-        <p class="text-xs text-muted-foreground">
-          {{ t("sync.tagEnrichDisabledHint") }}
+        <p class="text-xs text-amber-600 dark:text-amber-400 whitespace-pre-wrap">
+          {{ t("autoInit.warning") }}
         </p>
 
         <div
-          class="panel-surface-soft max-h-[320px] space-y-2 overflow-auto rounded-lg border p-3"
+          class="panel-surface-soft max-h-[360px] space-y-2 overflow-auto rounded-lg border p-3"
         >
-          <div
-            v-if="fetchingFolders"
-            class="text-sm text-muted-foreground"
-          >
-            {{ t("sync.loadingFolders") }}
+          <div v-if="fetchingFolders" class="text-sm text-muted-foreground">
+            {{ t("autoInit.loadingFolders") }}
           </div>
-          <div
-            v-else-if="folders.length === 0"
-            class="text-sm text-muted-foreground"
-          >
-            {{ t("sync.emptyFolders") }}
+          <div v-else-if="folders.length === 0" class="text-sm text-muted-foreground">
+            {{ t("autoInit.emptyFolders") }}
           </div>
           <label
             v-for="folder in folders"
@@ -109,11 +85,7 @@ const emit = defineEmits<{
               <div class="min-w-0">
                 <p class="truncate text-sm font-medium">{{ folder.title }}</p>
                 <p class="text-xs text-muted-foreground">
-                  {{
-                    t("sync.remoteVideoCount", {
-                      count: folder.mediaCount,
-                    })
-                  }}
+                  {{ t("autoInit.remoteVideoCount", { count: folder.mediaCount }) }}
                 </p>
               </div>
             </div>
@@ -126,7 +98,7 @@ const emit = defineEmits<{
             :disabled="loading"
             @click="emit('update:open', false)"
           >
-            {{ t("common.cancel") }}
+            {{ t("autoInit.later") }}
           </Button>
           <Button
             :disabled="
@@ -134,9 +106,9 @@ const emit = defineEmits<{
               fetchingFolders ||
               selectedFolderIds.length === 0
             "
-            @click="emit('submit')"
+            @click="emit('start')"
           >
-            {{ t("sync.startImport") }}
+            {{ t("autoInit.start") }}
           </Button>
         </div>
       </section>

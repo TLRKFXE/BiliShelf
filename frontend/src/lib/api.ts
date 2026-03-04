@@ -2,6 +2,10 @@ import type { CreateVideoPayload, Folder, Pagination, Tag, Video, VideoFilter } 
 
 const API_BASE = "/api";
 const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
+const EXTENSION_REQUEST_TIMEOUT_DEFAULT_MS = 30_000;
+const EXTENSION_REQUEST_TIMEOUT_SYNC_MS = 900_000;
+const EXTENSION_REQUEST_TIMEOUT_SYNC_FOLDERS_MS = 90_000;
+const EXTENSION_REQUEST_TIMEOUT_TAG_ENRICH_MS = 60_000;
 
 type LocalApiRequest = {
   method: string;
@@ -62,6 +66,19 @@ function parseRequestBody(init?: RequestInit): unknown {
   return init.body;
 }
 
+function resolveExtensionRequestTimeout(path: string, method: string) {
+  if (path === "/sync/bilibili" && method === "POST") {
+    return EXTENSION_REQUEST_TIMEOUT_SYNC_MS;
+  }
+  if (path === "/sync/bilibili/folders" && method === "POST") {
+    return EXTENSION_REQUEST_TIMEOUT_SYNC_FOLDERS_MS;
+  }
+  if (path.startsWith("/sync/bilibili/tag-enrichment/")) {
+    return EXTENSION_REQUEST_TIMEOUT_TAG_ENRICH_MS;
+  }
+  return EXTENSION_REQUEST_TIMEOUT_DEFAULT_MS;
+}
+
 function requestThroughExtension<T>(path: string, init?: RequestInit): Promise<T> {
   const runtime = getRuntime();
   if (!runtime) {
@@ -78,18 +95,42 @@ function requestThroughExtension<T>(path: string, init?: RequestInit): Promise<T
     type: LOCAL_API_MESSAGE,
     request: payload
   };
+  const timeoutMs = resolveExtensionRequestTimeout(path, payload.method);
 
   return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (handler: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      handler();
+    };
+    const timer = window.setTimeout(() => {
+      finish(() =>
+        reject(new Error(`Extension API request timeout (${payload.method} ${path})`))
+      );
+    }, timeoutMs);
+
     const callback = (response?: unknown) => {
-      const result = (response ?? {}) as LocalApiResponse<T>;
-      if (result.ok) {
-        resolve(result.data as T);
+      const runtimeLastError =
+        (globalThis as { chrome?: { runtime?: { lastError?: { message?: string } } } }).chrome
+          ?.runtime?.lastError?.message;
+      if (runtimeLastError) {
+        finish(() => reject(new Error(runtimeLastError)));
         return;
       }
 
-      reject(
-        new Error(
-          result.error || `Request failed: ${result.status ?? 500}`
+      const result = (response ?? {}) as LocalApiResponse<T>;
+      if (result.ok) {
+        finish(() => resolve(result.data as T));
+        return;
+      }
+
+      finish(() =>
+        reject(
+          new Error(
+            result.error || `Request failed: ${result.status ?? 500}`
+          )
         )
       );
     };
@@ -99,10 +140,10 @@ function requestThroughExtension<T>(path: string, init?: RequestInit): Promise<T
       if (maybePromise && typeof (maybePromise as Promise<unknown>).then === "function") {
         (maybePromise as Promise<unknown>)
           .then((response) => callback(response))
-          .catch((error) => reject(error));
+          .catch((error) => finish(() => reject(error)));
       }
     } catch (error) {
-      reject(error);
+      finish(() => reject(error));
     }
   });
 }
@@ -420,6 +461,42 @@ export type SyncRemoteFolder = {
   mediaCount: number;
 };
 
+export type HistoryModelSyncStatus = {
+  running: boolean;
+  startedAt: number | null;
+  finishedAt: number | null;
+  total: number;
+  current: number;
+  folderTitle: string;
+  folderIndex: number;
+  folderTotal: number;
+  message: string;
+  lastError: string | null;
+  riskBlocked: boolean;
+  resumePageByFolder?: Record<string, number>;
+  summary: {
+    foldersDetected: number;
+    foldersSynced: number;
+    videosProcessed: number;
+    videosUpserted: number;
+    folderLinksAdded: number;
+    tagsBound: number;
+    errorCount: number;
+  };
+  errors: Array<{ folder: string; message: string }>;
+};
+
+export type TagEnrichmentStatus = {
+  paused: boolean;
+  running: boolean;
+  cursorAfterVideoId: number;
+  totalMissing: number;
+  lastBatchProcessed: number;
+  lastBatchBound: number;
+  lastRunAt: number | null;
+  lastError: string | null;
+};
+
 export type ExportLibraryResult = {
   format: "json" | "csv";
   filename: string;
@@ -457,10 +534,49 @@ export async function syncFromBilibili(payload: SyncFromBilibiliPayload = {}) {
   });
 }
 
-export async function fetchBilibiliSyncFolders(payload?: { cookie?: string }) {
+export async function fetchBilibiliSyncFolders(payload?: { cookie?: string; forceRefresh?: boolean }) {
   return request<{ ok: true; items: SyncRemoteFolder[]; total: number }>("/sync/bilibili/folders", {
     method: "POST",
     body: JSON.stringify(payload ?? {})
+  });
+}
+
+export async function startHistoryModelSync(payload?: {
+  selectedRemoteFolderIds?: number[];
+  resumePageByFolder?: Record<string, number>;
+}) {
+  return request<{ ok: true; started: boolean; status: HistoryModelSyncStatus }>(
+    "/sync/bilibili/history-model/start",
+    {
+      method: "POST",
+      body: JSON.stringify(payload ?? {})
+    }
+  );
+}
+
+export async function fetchHistoryModelSyncStatus() {
+  return request<HistoryModelSyncStatus>("/sync/bilibili/history-model/status");
+}
+
+export async function fetchTagEnrichmentStatus() {
+  return request<TagEnrichmentStatus>("/sync/bilibili/tag-enrichment/status");
+}
+
+export async function pauseTagEnrichment() {
+  return request<TagEnrichmentStatus>("/sync/bilibili/tag-enrichment/pause", {
+    method: "POST"
+  });
+}
+
+export async function resumeTagEnrichment() {
+  return request<TagEnrichmentStatus>("/sync/bilibili/tag-enrichment/resume", {
+    method: "POST"
+  });
+}
+
+export async function runTagEnrichmentNow() {
+  return request<TagEnrichmentStatus>("/sync/bilibili/tag-enrichment/run", {
+    method: "POST"
   });
 }
 

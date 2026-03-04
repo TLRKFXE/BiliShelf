@@ -73,6 +73,8 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "common.perPage": { "zh-CN": "每页", "en-US": "Per page" },
   "common.prev": { "zh-CN": "上一页", "en-US": "Prev" },
   "common.next": { "zh-CN": "下一页", "en-US": "Next" },
+  "common.jump": { "zh-CN": "跳转", "en-US": "Jump" },
+  "common.pageJumpPlaceholder": { "zh-CN": "页码", "en-US": "Page" },
   "common.cancel": { "zh-CN": "取消", "en-US": "Cancel" },
   "common.confirm": { "zh-CN": "确认", "en-US": "Confirm" },
   "common.delete": { "zh-CN": "删除", "en-US": "Delete" },
@@ -130,9 +132,14 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
       "Import runs in chunks automatically with wait intervals between rounds until this folder is done.",
   },
   "sync.includeTagEnrichmentHint": {
-    "zh-CN": "抓取并补齐 B 站标签（更完整但更慢）。关闭后速度更快。",
+    "zh-CN": "抓取并实时补齐 B 站标签（更完整但更慢）。建议关闭，主同步后将后台慢慢补齐。",
     "en-US":
-      "Fetch and enrich Bilibili tags (more complete but slower). Turn off for faster sync.",
+      "Fetch and enrich Bilibili tags during sync (more complete but slower). Recommended to keep off; tags will be enriched in background after main sync.",
+  },
+  "sync.tagEnrichDisabledHint": {
+    "zh-CN": "当前版本已关闭标签同步，仅同步收藏关系与视频基础信息，以提升稳定性并降低风控概率。",
+    "en-US":
+      "Tag sync is disabled in this build. Only favorite relations and core video metadata are synced for better stability and lower risk-control chance.",
   },
   "sync.resumeHint": {
     "zh-CN": "检测到上次中断进度：将从第 {page} 页继续导入。",
@@ -155,6 +162,127 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "{count} videos on Bilibili",
   },
   "sync.startImport": { "zh-CN": "开始同步", "en-US": "Start sync" },
+  "autoInit.dialogTitle": {
+    "zh-CN": "首次初始化同步",
+    "en-US": "Initial setup sync",
+  },
+  "autoInit.dialogDesc": {
+    "zh-CN":
+      "请选择你要初始化同步的收藏夹。系统会按串行方式逐个导入，先完成视频入库。",
+    "en-US":
+      "Select favorite folders for initial sync. Folders will be imported serially with videos first.",
+  },
+  "autoInit.folderCount": {
+    "zh-CN": "已选 {selected} / {total}",
+    "en-US": "Selected {selected} / {total}",
+  },
+  "autoInit.reloadFolders": {
+    "zh-CN": "刷新收藏夹",
+    "en-US": "Reload folders",
+  },
+  "autoInit.warning": {
+    "zh-CN":
+      "建议先勾选你最常用的收藏夹。收藏量极大的夹子可稍后再加，能降低风控概率并提升首轮速度。",
+    "en-US":
+      "Start with frequently used folders first. Very large folders can be added later to reduce risk-control and improve first-run speed.",
+  },
+  "autoInit.loadingFolders": {
+    "zh-CN": "正在加载收藏夹...",
+    "en-US": "Loading folders...",
+  },
+  "autoInit.emptyFolders": {
+    "zh-CN": "未获取到可同步收藏夹。",
+    "en-US": "No syncable folders found.",
+  },
+  "autoInit.remoteVideoCount": {
+    "zh-CN": "B站收藏 {count} 条",
+    "en-US": "{count} videos on Bilibili",
+  },
+  "autoInit.later": {
+    "zh-CN": "稍后再说",
+    "en-US": "Later",
+  },
+  "autoInit.start": {
+    "zh-CN": "开始初始化",
+    "en-US": "Start initialization",
+  },
+  "autoInit.progressTitle": {
+    "zh-CN": "初始化进度",
+    "en-US": "Initialization progress",
+  },
+  "autoInit.statusIdle": {
+    "zh-CN": "未开始",
+    "en-US": "Idle",
+  },
+  "autoInit.statusRunning": {
+    "zh-CN": "第一阶段同步中",
+    "en-US": "Phase 1 syncing",
+  },
+  "autoInit.statusCooldown": {
+    "zh-CN": "风控冷却中",
+    "en-US": "Cooling down after risk-control",
+  },
+  "autoInit.statusFailed": {
+    "zh-CN": "已暂停，等待续传",
+    "en-US": "Paused, waiting to resume",
+  },
+  "autoInit.statusCompleted": {
+    "zh-CN": "同步完成",
+    "en-US": "Sync completed",
+  },
+  "autoInit.cooldownRemain": {
+    "zh-CN": "预计 {time} 后可续传",
+    "en-US": "Resume available in {time}",
+  },
+  "autoInit.openPicker": {
+    "zh-CN": "重新选择收藏夹",
+    "en-US": "Choose folders again",
+  },
+  "autoInit.resume": {
+    "zh-CN": "继续初始化",
+    "en-US": "Resume initialization",
+  },
+  "autoInit.phase1Title": {
+    "zh-CN": "阶段1：视频关系同步",
+    "en-US": "Phase 1: Video relation sync",
+  },
+  "autoInit.phase1Summary": {
+    "zh-CN": "已入库 {imported}，已扫描 {scanned}，预计总量 {target}",
+    "en-US": "Imported {imported}, scanned {scanned}, estimated total {target}",
+  },
+  "autoInit.phase2Title": {
+    "zh-CN": "阶段2：标签后台补全",
+    "en-US": "Phase 2: Background tag enrichment",
+  },
+  "autoInit.phase2Summary": {
+    "zh-CN": "待补 {missing}，上轮处理 {processed}，补全 {bound}",
+    "en-US": "Missing {missing}, last batch processed {processed}, bound {bound}",
+  },
+  "sync.tagEnrichTitle": {
+    "zh-CN": "阶段2：后台标签补全",
+    "en-US": "Phase 2: Background tag enrichment",
+  },
+  "sync.reloadTagEnrich": {
+    "zh-CN": "刷新状态",
+    "en-US": "Refresh status",
+  },
+  "sync.tagEnrichStatus": {
+    "zh-CN": "待补标签视频 {missing} 条，上轮处理 {processed} 条，补全标签 {bound} 个",
+    "en-US":
+      "{missing} videos still missing tags; last batch processed {processed}, bound {bound} tags",
+  },
+  "sync.pauseTagEnrich": {
+    "zh-CN": "暂停补全",
+    "en-US": "Pause enrichment",
+  },
+  "sync.resumeTagEnrich": {
+    "zh-CN": "恢复补全",
+    "en-US": "Resume enrichment",
+  },
+  "sync.runTagEnrichNow": {
+    "zh-CN": "立即跑一批",
+    "en-US": "Run one batch now",
+  },
   "trash.foldersTitle": {
     "zh-CN": "回收站收藏夹",
     "en-US": "Folders In Trash",
@@ -427,6 +555,11 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "{count} more errors omitted",
   },
   "toast.syncFail": { "zh-CN": "同步导入失败", "en-US": "Sync import failed" },
+  "toast.syncNoProgress": {
+    "zh-CN": "本轮未拉取到可用数据，请确认已打开并登录 B 站页面后重试。",
+    "en-US":
+      "No usable data was fetched in this run. Open a logged-in Bilibili tab and retry.",
+  },
   "toast.syncLoadFoldersFail": {
     "zh-CN": "获取收藏夹列表失败",
     "en-US": "Failed to load sync folders",
@@ -453,6 +586,80 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "下次将从第 {page} 页继续，无需从头扫描。",
     "en-US":
       "Next run resumes from page {page} instead of rescanning from the beginning.",
+  },
+  "toast.syncTagBackground": {
+    "zh-CN": "已转入后台补全标签",
+    "en-US": "Tag enrichment switched to background",
+  },
+  "toast.syncTagBackgroundDesc": {
+    "zh-CN": "视频已优先完成同步，缺失标签将由后台按低频慢慢补齐。",
+    "en-US":
+      "Video sync is prioritized first, and missing tags will be filled gradually by background low-frequency jobs.",
+  },
+  "toast.tagEnrichPaused": {
+    "zh-CN": "已暂停后台标签补全",
+    "en-US": "Background tag enrichment paused",
+  },
+  "toast.tagEnrichResumed": {
+    "zh-CN": "已恢复后台标签补全",
+    "en-US": "Background tag enrichment resumed",
+  },
+  "toast.tagEnrichTriggered": {
+    "zh-CN": "已触发一批后台标签补全",
+    "en-US": "Triggered one background enrichment batch",
+  },
+  "toast.tagEnrichPauseFail": {
+    "zh-CN": "暂停标签补全失败",
+    "en-US": "Failed to pause tag enrichment",
+  },
+  "toast.tagEnrichResumeFail": {
+    "zh-CN": "恢复标签补全失败",
+    "en-US": "Failed to resume tag enrichment",
+  },
+  "toast.tagEnrichTriggerFail": {
+    "zh-CN": "触发标签补全失败",
+    "en-US": "Failed to trigger tag enrichment",
+  },
+  "toast.autoInitPickFolder": {
+    "zh-CN": "请至少选择一个收藏夹再开始初始化",
+    "en-US": "Select at least one folder to start initialization",
+  },
+  "toast.autoInitCooling": {
+    "zh-CN": "初始化进入冷却",
+    "en-US": "Initialization entered cooldown",
+  },
+  "toast.autoInitCoolingDesc": {
+    "zh-CN": "检测到风控（412），将稍后自动继续。",
+    "en-US": "Risk-control detected (412). Initialization will auto-resume later.",
+  },
+  "toast.autoInitDone": {
+    "zh-CN": "初始化同步完成",
+    "en-US": "Initialization sync completed",
+  },
+  "toast.autoInitDoneDesc": {
+    "zh-CN": "已完成第一阶段同步，累计写入视频 {videos} 条，标签将继续后台补全。",
+    "en-US":
+      "Phase 1 sync finished with {videos} videos imported. Tag enrichment will continue in background.",
+  },
+  "toast.autoInitFail": {
+    "zh-CN": "初始化同步失败，请稍后重试",
+    "en-US": "Initialization sync failed. Please retry later.",
+  },
+  "toast.autoInitLockHeld": {
+    "zh-CN": "初始化任务正在其它管理页运行，请关闭重复页面后重试。",
+    "en-US": "Initialization is running in another manager tab. Close duplicate tabs and retry.",
+  },
+  "toast.autoInitNeedResume": {
+    "zh-CN": "当前收藏夹未同步完成，已保留断点",
+    "en-US": "Current folder sync paused, checkpoint saved",
+  },
+  "toast.autoInitNeedResumeDesc": {
+    "zh-CN": "可从第 {page} 页继续初始化，避免重复抓取。",
+    "en-US": "Resume from page {page} to avoid re-fetching.",
+  },
+  "toast.appLoadFail": {
+    "zh-CN": "页面加载失败，请刷新重试",
+    "en-US": "Page failed to load. Please refresh and retry.",
   },
   "toast.exportDone": { "zh-CN": "导出完成", "en-US": "Export completed" },
   "toast.exportSummary": {

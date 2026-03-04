@@ -46,6 +46,20 @@ type VideoTagRecord = {
   tagId: number;
 };
 
+type TagEnrichmentMeta = {
+  paused: boolean;
+  cursorAfterVideoId: number;
+  totalMissing: number;
+  lastBatchProcessed: number;
+  lastBatchBound: number;
+  lastRunAt: number | null;
+  lastError: string | null;
+};
+
+type SyncMeta = {
+  tagEnrichment: TagEnrichmentMeta;
+};
+
 type LocalState = {
   counters: {
     folder: number;
@@ -59,6 +73,7 @@ type LocalState = {
   folderItems: FolderItemRecord[];
   tags: TagRecord[];
   videoTags: VideoTagRecord[];
+  syncMeta: SyncMeta;
 };
 
 type ApiResult = {
@@ -87,6 +102,20 @@ const BILI_ORIGIN = "https://www.bilibili.com";
 const BLOCKED_SYSTEM_TAGS = new Set(["uncategorized", "未分类"]);
 const DEFAULT_COVER = "https://i0.hdslb.com/bfs/archive/placeholder.jpg";
 const PAGE_FETCH_MESSAGE_TYPE = "BILISHELF_PAGE_FETCH_JSON";
+const TAG_ENRICH_ALARM = "bilishelf-tag-enrich";
+const TAG_ENRICH_BATCH_SIZE = 3;
+const TAG_ENRICH_RETRY_DELAY_MINUTES = 1;
+const TAG_ENRICH_RISK_DELAY_MINUTES = 15;
+const TAG_SYNC_ENABLED = false;
+const BILI_FETCH_TIMEOUT_MS = 18_000;
+const BILI_META_API_GAP_MS = 280;
+const BILI_META_API_GAP_JITTER_MS = 100;
+const REMOTE_FOLDERS_CACHE_TTL_MS = 5 * 60 * 1000;
+const ALLOW_PAGE_CONTEXT_FALLBACK = false;
+const FAVORITES_COOLDOWN_EVERY_VIDEOS = 400;
+const FAVORITES_COOLDOWN_MS = 30_000;
+const FAVORITES_PAGE_GAP_MS = 650;
+const FAVORITES_PAGE_GAP_JITTER_MS = 120;
 
 type SyncFetchStage = "nav" | "folders" | "folderVideos";
 type FetchSource = "extension" | "page";
@@ -97,6 +126,52 @@ type TabBridgePayload = {
   payload?: unknown;
   error?: string;
 };
+
+type FavoritesSyncSummaryStatus = {
+  foldersDetected: number;
+  foldersSynced: number;
+  videosProcessed: number;
+  videosUpserted: number;
+  folderLinksAdded: number;
+  tagsBound: number;
+  errorCount: number;
+};
+
+type FavoritesSyncStatus = {
+  running: boolean;
+  startedAt: number | null;
+  finishedAt: number | null;
+  total: number;
+  current: number;
+  folderTitle: string;
+  folderIndex: number;
+  folderTotal: number;
+  message: string;
+  lastError: string | null;
+  riskBlocked: boolean;
+  resumePageByFolder: Record<string, number>;
+  summary: FavoritesSyncSummaryStatus;
+  errors: Array<{ folder: string; message: string }>;
+};
+
+type FavoritesSyncProgress = {
+  total: number;
+  current: number;
+  folderTitle: string;
+  folderIndex: number;
+  folderTotal: number;
+  message: string;
+};
+
+const defaultTagEnrichmentMeta = (): TagEnrichmentMeta => ({
+  paused: false,
+  cursorAfterVideoId: 0,
+  totalMissing: 0,
+  lastBatchProcessed: 0,
+  lastBatchBound: 0,
+  lastRunAt: null,
+  lastError: null
+});
 
 const defaultState = (): LocalState => ({
   counters: {
@@ -110,11 +185,47 @@ const defaultState = (): LocalState => ({
   videos: [],
   folderItems: [],
   tags: [],
-  videoTags: []
+  videoTags: [],
+  syncMeta: {
+    tagEnrichment: defaultTagEnrichmentMeta()
+  }
+});
+
+const emptyFavoritesSyncSummary = (): FavoritesSyncSummaryStatus => ({
+  foldersDetected: 0,
+  foldersSynced: 0,
+  videosProcessed: 0,
+  videosUpserted: 0,
+  folderLinksAdded: 0,
+  tagsBound: 0,
+  errorCount: 0
+});
+
+const defaultFavoritesSyncStatus = (): FavoritesSyncStatus => ({
+  running: false,
+  startedAt: null,
+  finishedAt: null,
+  total: 0,
+  current: 0,
+  folderTitle: "",
+  folderIndex: 0,
+  folderTotal: 0,
+  message: "",
+  lastError: null,
+  riskBlocked: false,
+  resumePageByFolder: {},
+  summary: emptyFavoritesSyncSummary(),
+  errors: []
 });
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 let stateQueue: Promise<void> = Promise.resolve();
+let tagEnrichmentTask: Promise<void> | null = null;
+let biliCookieHeaderCache: { value: string; expiresAt: number } | null = null;
+let nextBiliRequestAt = 0;
+let biliRequestThrottleQueue: Promise<void> = Promise.resolve();
+let favoritesSyncTask: Promise<void> | null = null;
+let favoritesSyncStatus: FavoritesSyncStatus = defaultFavoritesSyncStatus();
 
 function now() {
   return Date.now();
@@ -233,7 +344,18 @@ async function readState() {
         })),
         folderItems: raw.folderItems ?? [],
         tags: raw.tags ?? [],
-        videoTags: raw.videoTags ?? []
+        videoTags: raw.videoTags ?? [],
+        syncMeta: {
+          tagEnrichment: {
+            paused: Boolean(raw.syncMeta?.tagEnrichment?.paused),
+            cursorAfterVideoId: toInt(raw.syncMeta?.tagEnrichment?.cursorAfterVideoId, 0),
+            totalMissing: toInt(raw.syncMeta?.tagEnrichment?.totalMissing, 0),
+            lastBatchProcessed: toInt(raw.syncMeta?.tagEnrichment?.lastBatchProcessed, 0),
+            lastBatchBound: toInt(raw.syncMeta?.tagEnrichment?.lastBatchBound, 0),
+            lastRunAt: toIntOrNull(raw.syncMeta?.tagEnrichment?.lastRunAt),
+            lastError: normalizeText(raw.syncMeta?.tagEnrichment?.lastError) || null
+          }
+        }
       };
       resolve(normalized);
     };
@@ -574,8 +696,54 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getBiliRequestGap(stage: SyncFetchStage) {
+  if (stage === "folderVideos") {
+    // Page loop already waits 500ms between pages, keep extra gap at 0.
+    return 0;
+  }
+  return BILI_META_API_GAP_MS + Math.floor(Math.random() * BILI_META_API_GAP_JITTER_MS);
+}
+
+async function throttleBiliRequest(stage: SyncFetchStage) {
+  const waitForTurn = biliRequestThrottleQueue;
+  let release!: () => void;
+  biliRequestThrottleQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await waitForTurn;
+  try {
+    const nowTs = Date.now();
+    const waitMs = Math.max(0, nextBiliRequestAt - nowTs);
+    if (waitMs > 0) {
+      await sleep(waitMs);
+    }
+    nextBiliRequestAt = Date.now() + getBiliRequestGap(stage);
+  } finally {
+    release();
+  }
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`Bilibili API request timeout (${timeoutMs}ms)`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function isRetryableStatus(status: number) {
-  return status === 412 || status === 429 || status >= 500;
+  return status === 408 || status === 429 || status >= 500;
 }
 
 function isRiskControlError(message: string) {
@@ -927,6 +1095,36 @@ function formatBiliRequestError(error: BiliRequestError) {
   return `[${stageLabel(error.stage)}][${error.source}] ${error.message}`;
 }
 
+async function getBiliCookieHeader(forceRefresh = false) {
+  const nowTs = Date.now();
+  if (!forceRefresh && biliCookieHeaderCache && biliCookieHeaderCache.expiresAt > nowTs) {
+    return biliCookieHeaderCache.value;
+  }
+
+  if (!chrome.cookies?.getAll) {
+    return "";
+  }
+
+  const cookies = await chrome.cookies.getAll({ domain: "bilibili.com" });
+  const validPairs = cookies
+    .map((item) => ({
+      name: normalizeText(item.name),
+      value: normalizeText(item.value)
+    }))
+    .filter((item) => item.name && item.value);
+  const hasSessData = validPairs.some((item) => item.name === "SESSDATA");
+  if (!hasSessData) {
+    return "";
+  }
+
+  const header = validPairs.map((item) => `${item.name}=${item.value}`).join("; ");
+  biliCookieHeaderCache = {
+    value: header,
+    expiresAt: nowTs + 90_000
+  };
+  return header;
+}
+
 async function sendMessageToTab<T = unknown>(tabId: number, message: unknown): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     chrome.tabs.sendMessage(tabId, message, (response) => {
@@ -959,7 +1157,9 @@ async function injectSyncBridgeScript(tabId: number) {
 }
 
 async function findBilibiliTabId() {
-  const tabs = await chrome.tabs.query({ url: ["https://www.bilibili.com/*"] });
+  const tabs = await chrome.tabs.query({
+    url: ["https://*.bilibili.com/*", "http://*.bilibili.com/*"]
+  });
   const activeTab = tabs.find((tab) => tab.active && typeof tab.id === "number");
   if (activeTab?.id) return activeTab.id;
   const fallback = tabs.find((tab) => typeof tab.id === "number");
@@ -970,12 +1170,11 @@ async function fetchBiliJsonViaPageContext<T>(url: string, stage: SyncFetchStage
   const tabId = await findBilibiliTabId();
   if (!tabId) {
     throw new BiliRequestError({
-      status: 412,
+      status: 428,
       stage,
       source: "page",
       url,
-      message:
-        "Bilibili risk-control blocked extension requests (412). Open any Bilibili page in a tab, then retry sync."
+      message: "No Bilibili tab found for page-context request. Open any Bilibili page and retry."
     });
   }
 
@@ -987,9 +1186,28 @@ async function fetchBiliJsonViaPageContext<T>(url: string, stage: SyncFetchStage
     });
   } catch (error) {
     if (!isMissingReceiverError(error)) {
-      throw error;
+      throw new BiliRequestError({
+        status: 403,
+        stage,
+        source: "page",
+        url,
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
-    await injectSyncBridgeScript(tabId);
+    try {
+      await injectSyncBridgeScript(tabId);
+    } catch (injectError) {
+      throw new BiliRequestError({
+        status: 403,
+        stage,
+        source: "page",
+        url,
+        message:
+          injectError instanceof Error
+            ? injectError.message
+            : "Failed to inject page bridge script"
+      });
+    }
     result = await sendMessageToTab<TabBridgePayload>(tabId, {
       type: PAGE_FETCH_MESSAGE_TYPE,
       url
@@ -1034,23 +1252,56 @@ async function fetchBiliJsonViaPageContext<T>(url: string, stage: SyncFetchStage
 }
 
 async function fetchBiliJsonByExtension<T>(url: string, stage: SyncFetchStage): Promise<T> {
-  const maxAttempts = 4;
+  const maxAttempts = 3;
   let lastError: BiliRequestError | null = null;
+  let manualCookieHeader = await getBiliCookieHeader();
+  if (!manualCookieHeader) {
+    throw new BiliRequestError({
+      status: 401,
+      stage,
+      source: "extension",
+      url,
+      message: "SESSDATA cookie is missing. Please login to Bilibili in this browser."
+    });
+  }
+  let allowManualCookieHeader = true;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const response = await fetch(url, {
+      const headers: Record<string, string> = {
+        Accept: "application/json, text/plain, */*",
+        Referer: `${BILI_ORIGIN}/`,
+        Origin: BILI_ORIGIN
+      };
+      if (allowManualCookieHeader && manualCookieHeader) {
+        headers.Cookie = manualCookieHeader;
+      }
+      await throttleBiliRequest(stage);
+      const response = await fetchWithTimeout(
+        url,
+        {
         credentials: "include",
-        headers: {
-          Accept: "application/json, text/plain, */*",
-          Referer: `${BILI_ORIGIN}/`,
-          Origin: BILI_ORIGIN
-        }
-      });
+        headers
+        },
+        BILI_FETCH_TIMEOUT_MS
+      );
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          // Login/session may have rotated, refresh cached cookie once.
+          manualCookieHeader = await getBiliCookieHeader(true);
+        }
+        if (response.status === 412) {
+          throw new BiliRequestError({
+            status: response.status,
+            stage,
+            source: "extension",
+            url,
+            message: `Bilibili API request failed (${response.status})`
+          });
+        }
         if (attempt < maxAttempts && isRetryableStatus(response.status)) {
-          const backoff = 350 * attempt + Math.floor(Math.random() * 260);
+          const backoff = 420 * attempt + Math.floor(Math.random() * 240);
           await sleep(backoff);
           continue;
         }
@@ -1076,9 +1327,30 @@ async function fetchBiliJsonByExtension<T>(url: string, stage: SyncFetchStage): 
 
       return payload.data;
     } catch (error) {
-      lastError = toBiliRequestError(error, stage, "extension", url);
+      const rawMessage = error instanceof Error ? error.message : String(error ?? "");
+      if (
+        allowManualCookieHeader &&
+        rawMessage.toLowerCase().includes("unsafe header") &&
+        rawMessage.toLowerCase().includes("cookie")
+      ) {
+        allowManualCookieHeader = false;
+        if (attempt < maxAttempts) continue;
+      }
+      const timeoutLike = rawMessage.toLowerCase().includes("timeout");
+      lastError = timeoutLike
+        ? new BiliRequestError({
+            status: 504,
+            stage,
+            source: "extension",
+            url,
+            message: "Bilibili API request timeout"
+          })
+        : toBiliRequestError(error, stage, "extension", url);
+      if (lastError.status === 412) {
+        break;
+      }
       if (attempt < maxAttempts) {
-        const backoff = 350 * attempt + Math.floor(Math.random() * 260);
+        const backoff = 420 * attempt + Math.floor(Math.random() * 240);
         await sleep(backoff);
         continue;
       }
@@ -1098,37 +1370,60 @@ async function fetchBiliJsonByExtension<T>(url: string, stage: SyncFetchStage): 
 }
 
 async function fetchBiliJson<T>(url: string, stage: SyncFetchStage): Promise<T> {
+  let extErr: BiliRequestError | null = null;
   try {
     return await fetchBiliJsonByExtension<T>(url, stage);
   } catch (extensionError) {
-    const extErr = toBiliRequestError(extensionError, stage, "extension", url);
-    if (extErr.status !== 412) {
-      throw extErr;
-    }
+    extErr = toBiliRequestError(extensionError, stage, "extension", url);
+  }
 
-    try {
-      return await fetchBiliJsonViaPageContext<T>(url, stage);
-    } catch (pageError) {
-      const pageErr = toBiliRequestError(pageError, stage, "page", url);
-      throw new BiliRequestError({
-        status: pageErr.status || extErr.status,
+  if (!ALLOW_PAGE_CONTEXT_FALLBACK) {
+    throw (
+      extErr ||
+      new BiliRequestError({
+        status: 500,
         stage,
-        source: pageErr.source,
+        source: "extension",
         url,
-        message: `${formatBiliRequestError(extErr)} | fallback failed: ${formatBiliRequestError(pageErr)}`
-      });
+        message: "Bilibili API request failed"
+      })
+    );
+  }
+  if (extErr.status === 412 || extErr.status === 401) {
+    throw extErr;
+  }
+
+  try {
+    return await fetchBiliJsonViaPageContext<T>(url, stage);
+  } catch (pageError) {
+    const pageErr = toBiliRequestError(pageError, stage, "page", url);
+    if (!extErr) {
+      throw pageErr;
     }
+    throw new BiliRequestError({
+      status: pageErr.status || extErr.status,
+      stage,
+      source: pageErr.source,
+      url,
+      message: `${formatBiliRequestError(extErr)} | fallback failed: ${formatBiliRequestError(pageErr)}`
+    });
   }
 }
 
 type RemoteFolder = { remoteId: number; title: string; mediaCount: number };
+let remoteFoldersCache: { expiresAt: number; items: RemoteFolder[] } | null = null;
 
 function pickRemoteFolderId(raw: Record<string, unknown>) {
   const id = toInt(raw.id ?? raw.media_id ?? 0, 0);
   return id > 0 ? id : 0;
 }
 
-async function fetchRemoteFoldersFromBilibili() {
+async function fetchRemoteFoldersFromBilibili(forceRefresh = false) {
+  const nowTs = Date.now();
+  if (!forceRefresh && remoteFoldersCache && remoteFoldersCache.expiresAt > nowTs) {
+    return remoteFoldersCache.items;
+  }
+
   const nav = await fetchBiliJson<{ isLogin?: boolean; mid?: number }>(BILI_NAV_API, "nav");
   const mid = toInt(nav.mid ?? 0, 0);
   if (!nav.isLogin || mid <= 0) {
@@ -1139,13 +1434,18 @@ async function fetchRemoteFoldersFromBilibili() {
     `${BILI_FOLDERS_API}?up_mid=${mid}`,
     "folders"
   );
-  return (folderData.list ?? [])
+  const items = (folderData.list ?? [])
     .map((item) => ({
       remoteId: pickRemoteFolderId(item),
       title: normalizeText(item.title),
       mediaCount: toInt((item as { media_count?: unknown }).media_count ?? 0, 0)
     }))
     .filter((item) => item.remoteId > 0 && item.title && item.mediaCount > 0) as RemoteFolder[];
+  remoteFoldersCache = {
+    items,
+    expiresAt: nowTs + REMOTE_FOLDERS_CACHE_TTL_MS
+  };
+  return items;
 }
 
 function extractMediaTagNames(media: Record<string, unknown>) {
@@ -1212,6 +1512,232 @@ function ensureSystemTagByName(state: LocalState, rawName: unknown) {
   };
   state.tags.push(created);
   return created;
+}
+
+function getSystemTagIdSet(state: LocalState) {
+  return new Set(
+    state.tags
+      .filter((tag) => tag.archivedAt === null && tag.type === "system")
+      .map((tag) => tag.id)
+  );
+}
+
+function getVideoIdSetWithSystemTags(state: LocalState) {
+  const systemTagIds = getSystemTagIdSet(state);
+  return new Set(
+    state.videoTags
+      .filter((relation) => systemTagIds.has(relation.tagId))
+      .map((relation) => relation.videoId)
+  );
+}
+
+function ensureTagEnrichmentMeta(state: LocalState) {
+  if (!state.syncMeta) {
+    state.syncMeta = { tagEnrichment: defaultTagEnrichmentMeta() };
+  }
+  if (!state.syncMeta.tagEnrichment) {
+    state.syncMeta.tagEnrichment = defaultTagEnrichmentMeta();
+  }
+  return state.syncMeta.tagEnrichment;
+}
+
+function collectMissingSystemTagCandidates(
+  state: LocalState,
+  limit: number,
+  cursorAfterVideoId = 0
+) {
+  const hasSystemTagVideoIds = getVideoIdSetWithSystemTags(state);
+  const missingVideos = state.videos
+    .filter((video) => video.deletedAt === null && !hasSystemTagVideoIds.has(video.id))
+    .sort((a, b) => a.id - b.id);
+  const threshold = Math.max(0, cursorAfterVideoId);
+  const preferred = missingVideos.filter((video) => video.id > threshold);
+  const chosen = (preferred.length > 0 ? preferred : missingVideos).slice(0, Math.max(1, limit));
+  return {
+    total: missingVideos.length,
+    items: chosen
+  };
+}
+
+function collectMissingSystemTagCandidateDtos(
+  state: LocalState,
+  limit: number,
+  cursorAfterVideoId = 0
+) {
+  const batch = collectMissingSystemTagCandidates(state, limit, cursorAfterVideoId);
+  return {
+    total: batch.total,
+    items: batch.items
+      .map((video) => ({ id: video.id, bvid: video.bvid }))
+  };
+}
+
+function countMissingSystemTagVideos(state: LocalState) {
+  const hasSystemTagVideoIds = getVideoIdSetWithSystemTags(state);
+  return state.videos.filter((video) => video.deletedAt === null && !hasSystemTagVideoIds.has(video.id)).length;
+}
+
+function bindSystemTagsToVideo(state: LocalState, videoId: number, tagNames: string[]) {
+  let boundCount = 0;
+  for (const tagName of tagNames) {
+    const tag = ensureSystemTagByName(state, tagName);
+    if (!tag) continue;
+    const exists = state.videoTags.some(
+      (relation) => relation.videoId === videoId && relation.tagId === tag.id
+    );
+    if (exists) continue;
+    state.videoTags.push({
+      id: state.counters.videoTag++,
+      videoId,
+      tagId: tag.id
+    });
+    boundCount += 1;
+  }
+  return boundCount;
+}
+
+function scheduleTagEnrichment(minutes: number) {
+  if (!chrome.alarms?.create) return;
+  chrome.alarms.create(TAG_ENRICH_ALARM, {
+    delayInMinutes: Math.max(1, Math.ceil(minutes))
+  });
+}
+
+async function runTagEnrichmentBatch(trigger: "sync" | "alarm" | "startup") {
+  const plan = await withState((state) => {
+    const meta = ensureTagEnrichmentMeta(state);
+    const batch = collectMissingSystemTagCandidateDtos(
+      state,
+      TAG_ENRICH_BATCH_SIZE,
+      meta.cursorAfterVideoId
+    );
+    meta.totalMissing = batch.total;
+    meta.lastBatchProcessed = 0;
+    meta.lastBatchBound = 0;
+    if (meta.paused) {
+      return {
+        paused: true as const,
+        candidates: [] as Array<{ id: number; bvid: string }>,
+        cursorAfterVideoId: meta.cursorAfterVideoId,
+        totalMissing: batch.total
+      };
+    }
+    return {
+      paused: false as const,
+      candidates: batch.items,
+      cursorAfterVideoId: meta.cursorAfterVideoId,
+      totalMissing: batch.total
+    };
+  }, true);
+
+  if (plan.paused) return;
+  if (plan.candidates.length === 0) {
+    if (chrome.alarms?.clear) chrome.alarms.clear(TAG_ENRICH_ALARM);
+    return;
+  }
+
+  const fetchedTagMap = new Map<number, string[]>();
+  let riskBlocked = false;
+  let lastProcessedVideoId = plan.cursorAfterVideoId;
+  let lastErrorMessage: string | null = null;
+  for (const candidate of plan.candidates) {
+    lastProcessedVideoId = candidate.id;
+    const bvid = normalizeText(candidate.bvid);
+    if (!bvid) continue;
+    try {
+      const names = await fetchArchiveTagNames(bvid);
+      if (names.length > 0) {
+        fetchedTagMap.set(candidate.id, names);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      lastErrorMessage = message;
+      if ((error instanceof BiliRequestError && error.status === 412) || isRiskControlError(message)) {
+        riskBlocked = true;
+        break;
+      }
+    }
+    await sleep(850 + Math.floor(Math.random() * 260));
+  }
+
+  const result = await withState((state) => {
+    const meta = ensureTagEnrichmentMeta(state);
+    let bound = 0;
+    if (fetchedTagMap.size > 0) {
+      for (const [videoId, tagNames] of fetchedTagMap) {
+        const video = state.videos.find((item) => item.id === videoId && item.deletedAt === null);
+        if (!video) continue;
+        bound += bindSystemTagsToVideo(state, video.id, tagNames);
+      }
+    }
+
+    meta.lastRunAt = now();
+    meta.lastBatchProcessed = plan.candidates.length;
+    meta.lastBatchBound = bound;
+    meta.totalMissing = countMissingSystemTagVideos(state);
+    meta.cursorAfterVideoId = lastProcessedVideoId;
+    meta.lastError = riskBlocked ? lastErrorMessage || "Risk-control blocked (412)" : null;
+    if (meta.totalMissing <= 0) {
+      meta.cursorAfterVideoId = 0;
+      meta.lastError = null;
+    }
+
+    return {
+      missing: meta.totalMissing
+    };
+  }, true);
+
+  if (riskBlocked) {
+    scheduleTagEnrichment(TAG_ENRICH_RISK_DELAY_MINUTES);
+    return;
+  }
+  if (result.missing > 0) {
+    scheduleTagEnrichment(TAG_ENRICH_RETRY_DELAY_MINUTES);
+    return;
+  }
+
+  if (trigger === "startup" && result.missing === 0 && chrome.alarms?.clear) {
+    chrome.alarms.clear(TAG_ENRICH_ALARM);
+  }
+}
+
+function triggerTagEnrichment(trigger: "sync" | "alarm" | "startup") {
+  if (tagEnrichmentTask) return tagEnrichmentTask;
+  tagEnrichmentTask = runTagEnrichmentBatch(trigger)
+    .catch((error) => {
+      console.warn("[tag-enrich] failed:", error);
+      scheduleTagEnrichment(TAG_ENRICH_RETRY_DELAY_MINUTES);
+    })
+    .finally(() => {
+      tagEnrichmentTask = null;
+    });
+  return tagEnrichmentTask;
+}
+
+function getTagEnrichmentStatus(state: LocalState) {
+  if (!TAG_SYNC_ENABLED) {
+    return {
+      paused: true,
+      running: false,
+      cursorAfterVideoId: 0,
+      totalMissing: 0,
+      lastBatchProcessed: 0,
+      lastBatchBound: 0,
+      lastRunAt: null,
+      lastError: "Tag sync is disabled"
+    };
+  }
+  const meta = ensureTagEnrichmentMeta(state);
+  return {
+    paused: meta.paused,
+    running: Boolean(tagEnrichmentTask),
+    cursorAfterVideoId: meta.cursorAfterVideoId,
+    totalMissing: meta.totalMissing,
+    lastBatchProcessed: meta.lastBatchProcessed,
+    lastBatchBound: meta.lastBatchBound,
+    lastRunAt: meta.lastRunAt,
+    lastError: meta.lastError
+  };
 }
 
 function ensureFolderByNameForImport(state: LocalState, rawName: unknown) {
@@ -1289,58 +1815,87 @@ type SyncSummary = {
 async function syncFromBilibiliToState(
   state: LocalState,
   options: {
-    offset?: number;
-    startPage?: number;
-    includeTagEnrichment?: boolean;
-    maxFolders?: number;
-    maxPagesPerFolder?: number;
     selectedRemoteFolderIds?: number[];
-    maxVideosPerFolder?: number;
+    resumePageByFolder?: Record<string, number>;
+    onProgress?: (progress: FavoritesSyncProgress) => void;
   }
 ) {
-  const remoteFolders = await fetchRemoteFoldersFromBilibili();
   const selectedIdSet = new Set(
     (options.selectedRemoteFolderIds ?? [])
       .map((id) => Number(id))
       .filter((id) => Number.isFinite(id) && id > 0)
   );
-  const candidateFolders =
+  const remoteFolders = await fetchRemoteFoldersFromBilibili();
+  const foldersToSync =
     selectedIdSet.size > 0
-      ? remoteFolders.filter((folder) => selectedIdSet.has(folder.remoteId))
+      ? Array.from(selectedIdSet)
+          .map((remoteId) => {
+            const remoteFolder = remoteFolders.find((item) => item.remoteId === remoteId);
+            if (remoteFolder) return remoteFolder;
+            const localFolder = state.folders.find(
+              (folder) => folder.deletedAt === null && folder.remoteMediaId === remoteId
+            );
+            return {
+              remoteId,
+              title: localFolder?.name || `Bilibili Favorite ${remoteId}`,
+              mediaCount: 0
+            } as RemoteFolder;
+          })
+          .filter((item) => item.remoteId > 0)
       : remoteFolders;
-
-  const maxFolders = options.maxFolders ? Math.min(options.maxFolders, 200) : 10;
-  const offset = Math.min(Math.max(0, options.offset ?? 0), candidateFolders.length);
-  const foldersToSync = candidateFolders.slice(offset, offset + maxFolders);
-  const startPage = Math.max(1, options.startPage ?? 1);
-  const maxPages = Math.max(1, options.maxPagesPerFolder ?? 5);
-  const maxVideosPerFolder = Math.max(1, options.maxVideosPerFolder ?? 200);
-  const singleFolderRun = selectedIdSet.size === 1 && foldersToSync.length === 1;
+  const totalEstimate = foldersToSync.reduce(
+    (sum, folder) => sum + Math.max(0, Number(folder.mediaCount || 0)),
+    0
+  );
 
   let foldersSynced = 0;
-  let foldersAttempted = 0;
   let videosProcessed = 0;
   let videosUpserted = 0;
   let folderLinksAdded = 0;
   let tagsBound = 0;
-  let riskErrorStreak = 0;
   let riskBlocked = false;
-  let hasMorePage = false;
-  let nextPage: number | null = null;
   const errors: Array<{ folder: string; message: string }> = [];
-  const archiveTagCache = new Map<string, string[]>();
+  let progressCurrent = 0;
+  let videosSinceCooldown = 0;
+  const resumePageByFolder: Record<string, number> = {};
+  for (const [remoteIdRaw, pageRaw] of Object.entries(options.resumePageByFolder ?? {})) {
+    const remoteId = toInt(remoteIdRaw);
+    const page = toInt(pageRaw);
+    if (remoteId > 0 && page > 1) {
+      resumePageByFolder[String(remoteId)] = page;
+    }
+  }
+  const emitProgress = (progress: Omit<FavoritesSyncProgress, "total" | "current">) => {
+    options.onProgress?.({
+      total: totalEstimate,
+      current: progressCurrent,
+      ...progress
+    });
+  };
 
   for (const remoteFolder of foldersToSync) {
-    foldersAttempted += 1;
     try {
       const localFolder = ensureLocalFolderByRemoteId(state, remoteFolder);
       foldersSynced += 1;
-      riskErrorStreak = 0;
-
-      const pageSize = Math.max(1, Math.min(20, maxVideosPerFolder));
-      let takenCount = 0;
-      for (let step = 0; step < maxPages; step += 1) {
-        const page = startPage + step;
+      emitProgress({
+        folderTitle: remoteFolder.title,
+        folderIndex: foldersSynced,
+        folderTotal: foldersToSync.length,
+        message: `Syncing: ${remoteFolder.title}`
+      });
+      const pageSize = 20;
+      let page = Math.max(1, toInt(resumePageByFolder[String(remoteFolder.remoteId)] || 1));
+      if (page > 1) {
+        emitProgress({
+          folderTitle: remoteFolder.title,
+          folderIndex: foldersSynced,
+          folderTotal: foldersToSync.length,
+          message: `Resuming from page ${page}: ${remoteFolder.title}`
+        });
+      }
+      let folderFailed = false;
+      const remoteBvidKeys = new Set<string>();
+      while (true) {
         const query = new URLSearchParams({
           media_id: String(remoteFolder.remoteId),
           pn: String(page),
@@ -1351,48 +1906,57 @@ async function syncFromBilibiliToState(
           tid: "0",
           platform: "web"
         });
-        const folderMediaData = await fetchBiliJson<BiliFolderMediaListData>(
-          `${BILI_FOLDER_VIDEOS_API}?${query.toString()}`,
-          "folderVideos"
-        );
-        const pageMedias = folderMediaData.medias ?? [];
-        const remoteHasMore = resolveFolderHasMore(
-          folderMediaData,
-          page,
-          pageSize,
-          pageMedias.length
-        );
-        const remain = maxVideosPerFolder - takenCount;
-        if (remain <= 0) {
-          if (singleFolderRun) {
-            hasMorePage = true;
-            nextPage = page;
+
+        let folderMediaData: BiliFolderMediaListData;
+        try {
+          folderMediaData = await fetchBiliJson<BiliFolderMediaListData>(
+            `${BILI_FOLDER_VIDEOS_API}?${query.toString()}`,
+            "folderVideos"
+          );
+        } catch (error) {
+          const message = isBiliRequestError(error)
+            ? formatBiliRequestError(error)
+            : error instanceof Error
+              ? error.message
+              : String(error);
+          errors.push({
+            folder: remoteFolder.title,
+            message
+          });
+          const isRisk = isBiliRequestError(error)
+            ? error.status === 412 || isRiskControlError(message)
+            : isRiskControlError(message);
+          if (isRisk) {
+            riskBlocked = true;
           }
+          folderFailed = true;
           break;
         }
-        const medias = pageMedias.slice(0, remain);
+
+        const medias = folderMediaData.medias ?? [];
         if (medias.length === 0) {
-          if (singleFolderRun) {
-            hasMorePage = false;
-            nextPage = null;
-          }
           break;
         }
 
         for (const media of medias) {
-          const bvid = normalizeText(media.bvid);
+          const bvid = normalizeText(media.bvid ?? media.bv_id);
           if (!bvid) continue;
+          remoteBvidKeys.add(normalizeKey(bvid));
           videosProcessed += 1;
+          videosSinceCooldown += 1;
           const timestamp = now();
           const publishAt = toMillis(media.pubtime ?? media.ctime, timestamp);
           const favAt = toMillis(media.fav_time, timestamp);
-
-          const existing = state.videos.find((video) => normalizeKey(video.bvid) === normalizeKey(bvid));
+          const existing = state.videos.find(
+            (video) => normalizeKey(video.bvid) === normalizeKey(bvid)
+          );
           const basePayload = {
             bvid,
             title: normalizeText(media.title) || bvid,
             coverUrl: normalizeCoverUrl(media.cover),
-            uploader: normalizeText((media.upper as { name?: string } | undefined)?.name) || "Unknown uploader",
+            uploader:
+              normalizeText((media.upper as { name?: string } | undefined)?.name) ||
+              "Unknown uploader",
             uploaderSpaceUrl: normalizeBiliSpaceUrl(
               (media.upper as { space?: string; mid?: number } | undefined)?.space,
               (media.upper as { mid?: number } | undefined)?.mid
@@ -1442,61 +2006,53 @@ async function syncFromBilibiliToState(
           } else if (favAt > existingLink.addedAt) {
             existingLink.addedAt = favAt;
           }
-
-          const mediaTags = extractMediaTagNames(media);
-          if ((options.includeTagEnrichment ?? true) && mediaTags.length === 0) {
-            const bvidKey = normalizeText(media.bvid);
-            if (bvidKey) {
-              if (!archiveTagCache.has(bvidKey)) {
-                try {
-                  archiveTagCache.set(bvidKey, await fetchArchiveTagNames(bvidKey));
-                } catch {
-                  archiveTagCache.set(bvidKey, []);
-                }
-              }
-              for (const fetchedTagName of archiveTagCache.get(bvidKey) ?? []) {
-                if (!mediaTags.includes(fetchedTagName)) mediaTags.push(fetchedTagName);
-              }
-            }
-          }
-
-          for (const tagName of mediaTags) {
-            const systemTag = ensureSystemTagByName(state, tagName);
-            if (!systemTag) continue;
-            const existed = state.videoTags.some(
-              (edge) => edge.videoId === video.id && edge.tagId === systemTag.id
-            );
-            if (!existed) {
-              state.videoTags.push({
-                id: state.counters.videoTag++,
-                videoId: video.id,
-                tagId: systemTag.id
-              });
-              tagsBound += 1;
-            }
-          }
         }
+        progressCurrent += medias.length;
+        emitProgress({
+          folderTitle: remoteFolder.title,
+          folderIndex: foldersSynced,
+          folderTotal: foldersToSync.length,
+          message: `Syncing page ${page}: ${remoteFolder.title}`
+        });
 
-        takenCount += medias.length;
-        if (takenCount >= maxVideosPerFolder) {
-          if (singleFolderRun) {
-            hasMorePage = remoteHasMore;
-            nextPage = hasMorePage ? page + 1 : null;
-          }
-          break;
+        const remoteHasMore = resolveFolderHasMore(
+          folderMediaData,
+          page,
+          pageSize,
+          medias.length
+        );
+        if (videosSinceCooldown >= FAVORITES_COOLDOWN_EVERY_VIDEOS) {
+          videosSinceCooldown = 0;
+          await sleep(FAVORITES_COOLDOWN_MS);
         }
         if (!remoteHasMore) {
-          if (singleFolderRun) {
-            hasMorePage = false;
-            nextPage = null;
-          }
+          delete resumePageByFolder[String(remoteFolder.remoteId)];
           break;
         }
-        if (singleFolderRun) {
-          hasMorePage = true;
-          nextPage = page + 1;
-        }
-        await sleep(120 + Math.floor(Math.random() * 140));
+        page += 1;
+        resumePageByFolder[String(remoteFolder.remoteId)] = page;
+        await sleep(FAVORITES_PAGE_GAP_MS + Math.floor(Math.random() * FAVORITES_PAGE_GAP_JITTER_MS));
+      }
+
+      if (!folderFailed) {
+        const folderVideoIdSet = new Set(
+          state.videos
+            .filter((video) => remoteBvidKeys.has(normalizeKey(video.bvid)))
+            .map((video) => video.id)
+        );
+        state.folderItems = state.folderItems.filter((item) => {
+          if (item.folderId !== localFolder.id) return true;
+          return folderVideoIdSet.has(item.videoId);
+        });
+        markOrphanVideosDeleted(state);
+      }
+
+      if (riskBlocked) {
+        errors.push({
+          folder: "__sync__",
+          message: "Bilibili risk-control (412) detected. Stop and retry later."
+        });
+        break;
       }
     } catch (error) {
       const message = isBiliRequestError(error)
@@ -1512,27 +2068,18 @@ async function syncFromBilibiliToState(
         ? error.status === 412 || isRiskControlError(message)
         : isRiskControlError(message);
       if (isRiskBlocked) {
-        riskErrorStreak += 1;
-        if (riskErrorStreak >= 3) {
-          riskBlocked = true;
-          errors.push({
-            folder: "__sync__",
-            message:
-              "Too many 412 responses in a row; sync stopped early to avoid triggering stronger risk-control. Retry later."
-          });
-          break;
-        }
-      } else {
-        riskErrorStreak = 0;
+        riskBlocked = true;
+        errors.push({
+          folder: "__sync__",
+          message: "Bilibili risk-control (412) detected. Stop and retry later."
+        });
+        break;
       }
     }
   }
 
-  const nextOffsetRaw = offset + foldersAttempted;
-  const hasMore = nextOffsetRaw < candidateFolders.length;
-
   const summary: SyncSummary = {
-    foldersDetected: candidateFolders.length,
+    foldersDetected: foldersToSync.length,
     foldersSynced,
     videosProcessed,
     videosUpserted,
@@ -1548,15 +2095,129 @@ async function syncFromBilibiliToState(
   return {
     ok: true,
     summary,
-    hasMore,
-    nextOffset: hasMore ? nextOffsetRaw : null,
-    hasMorePage: singleFolderRun ? hasMorePage : false,
-    nextPage: singleFolderRun && hasMorePage ? nextPage : null,
+    hasMore: false,
+    nextOffset: null,
+    hasMorePage: false,
+    nextPage: null,
     riskBlocked,
+    resumePageByFolder,
     errors: returnedErrors,
     errorsOmitted,
     syncedAt: now()
   };
+}
+
+function getFavoritesSyncStatus() {
+  return {
+    ...favoritesSyncStatus,
+    resumePageByFolder: { ...favoritesSyncStatus.resumePageByFolder },
+    summary: { ...favoritesSyncStatus.summary },
+    errors: favoritesSyncStatus.errors.slice(0, 30)
+  };
+}
+
+function updateFavoritesSyncStatus(patch: Partial<FavoritesSyncStatus>) {
+  favoritesSyncStatus = {
+    ...favoritesSyncStatus,
+    ...patch,
+    resumePageByFolder: patch.resumePageByFolder
+      ? { ...patch.resumePageByFolder }
+      : { ...favoritesSyncStatus.resumePageByFolder },
+    summary: patch.summary
+      ? { ...patch.summary }
+      : { ...favoritesSyncStatus.summary },
+    errors: patch.errors ? [...patch.errors] : [...favoritesSyncStatus.errors]
+  };
+}
+
+function startFavoritesSyncTask(params: {
+  selectedRemoteFolderIds: number[];
+  resumePageByFolder?: Record<string, number>;
+}) {
+  if (favoritesSyncTask) {
+    return false;
+  }
+
+  const resumePageByFolder: Record<string, number> = {};
+  for (const [remoteIdRaw, pageRaw] of Object.entries(params.resumePageByFolder ?? {})) {
+    const remoteId = toInt(remoteIdRaw);
+    const page = toInt(pageRaw);
+    if (remoteId > 0 && page > 1) {
+      resumePageByFolder[String(remoteId)] = page;
+    }
+  }
+
+  const startedAt = now();
+  updateFavoritesSyncStatus({
+    running: true,
+    startedAt,
+    finishedAt: null,
+    total: 0,
+    current: 0,
+    folderTitle: "",
+    folderIndex: 0,
+    folderTotal: 0,
+    message: "Starting favorites sync...",
+    lastError: null,
+    riskBlocked: false,
+    resumePageByFolder,
+    summary: emptyFavoritesSyncSummary(),
+    errors: []
+  });
+
+  favoritesSyncTask = withState(
+    async (state) =>
+      syncFromBilibiliToState(state, {
+        selectedRemoteFolderIds: params.selectedRemoteFolderIds,
+        resumePageByFolder,
+        onProgress: (progress) => {
+          updateFavoritesSyncStatus({
+            total: progress.total,
+            current: progress.current,
+            folderTitle: progress.folderTitle,
+            folderIndex: progress.folderIndex,
+            folderTotal: progress.folderTotal,
+            message: progress.message
+          });
+        }
+      }),
+    true
+  )
+    .then((result) => {
+      updateFavoritesSyncStatus({
+        running: false,
+        finishedAt: now(),
+        total: Math.max(favoritesSyncStatus.total, result.summary.videosProcessed),
+        current: result.summary.videosProcessed,
+        message: "Favorites sync completed",
+        lastError:
+          result.errors.length > 0
+            ? result.errors[result.errors.length - 1]?.message || null
+            : null,
+        riskBlocked: Boolean(result.riskBlocked),
+        resumePageByFolder: result.resumePageByFolder ?? {},
+        summary: result.summary,
+        errors: result.errors
+      });
+    })
+    .catch((error) => {
+      const message = isBiliRequestError(error)
+        ? formatBiliRequestError(error)
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      updateFavoritesSyncStatus({
+        running: false,
+        finishedAt: now(),
+        message: "Favorites sync failed",
+        lastError: message
+      });
+    })
+    .finally(() => {
+      favoritesSyncTask = null;
+    });
+
+  return true;
 }
 
 function buildExportPayload(state: LocalState) {
@@ -1608,6 +2269,117 @@ function csvEscape(value: unknown) {
   return text;
 }
 
+function handleReadOnlyApi(
+  state: LocalState,
+  path: string,
+  params: URLSearchParams
+): ApiResult | null {
+  if (path === "/health") {
+    return ok({ ok: true });
+  }
+
+  if (path === "/folders") {
+    const items = activeFolders(state).map((folder) => {
+      const itemCount = state.folderItems.filter((item) => {
+        if (item.folderId !== folder.id) return false;
+        const video = state.videos.find((row) => row.id === item.videoId);
+        return !!video && video.deletedAt === null;
+      }).length;
+      return { ...folder, itemCount };
+    });
+    return ok({ items });
+  }
+
+  if (path === "/trash/folders") {
+    const items = state.folders
+      .filter((folder) => folder.deletedAt !== null)
+      .sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0))
+      .map((folder) => {
+        const itemCount = state.folderItems.filter((item) => item.folderId === folder.id).length;
+        return { ...folder, itemCount };
+      });
+    return ok({ items });
+  }
+
+  if (path === "/videos") {
+    const folderIdRaw = params.get("folderId");
+    const folderId = folderIdRaw ? toInt(folderIdRaw) : undefined;
+    const items = filterVideoList(state, {
+      includeDeleted: false,
+      folderId,
+      tags: parseListParam(params, "tags"),
+      title: params.get("title") || undefined,
+      description: params.get("description") || undefined,
+      uploader: params.get("uploader") || undefined,
+      customTag: params.get("customTag") || undefined,
+      systemTag: params.get("systemTag") || undefined,
+      from: toIntOrNull(params.get("from")),
+      to: toIntOrNull(params.get("to"))
+    });
+    const data = paginate(items, params.get("page"), params.get("pageSize"));
+    return ok(data);
+  }
+
+  if (path === "/videos/search") {
+    const folderIdRaw = params.get("folderId");
+    const folderId = folderIdRaw ? toInt(folderIdRaw) : undefined;
+    const items = filterVideoList(state, {
+      includeDeleted: false,
+      folderId,
+      tags: parseListParam(params, "tags"),
+      q: params.get("q") || undefined,
+      title: params.get("title") || undefined,
+      description: params.get("description") || undefined,
+      uploader: params.get("uploader") || undefined,
+      customTag: params.get("customTag") || undefined,
+      systemTag: params.get("systemTag") || undefined,
+      from: toIntOrNull(params.get("from")),
+      to: toIntOrNull(params.get("to"))
+    });
+    const data = paginate(items, params.get("page"), params.get("pageSize"));
+    return ok(data);
+  }
+
+  if (path === "/tags") {
+    const page = params.get("page");
+    const pageSize = params.get("pageSize");
+    const type = params.get("type");
+    const search = normalizeText(params.get("search"));
+    const items = state.tags
+      .filter((tag) => tag.archivedAt === null)
+      .filter((tag) => (type === "system" || type === "custom" ? tag.type === type : true))
+      .filter((tag) => (search ? includesIgnoreCase(tag.name, search) : true))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((tag) => {
+        const linkedVideoIds = state.videoTags
+          .filter((edge) => edge.tagId === tag.id)
+          .map((edge) => edge.videoId);
+        const usageCount = state.videos.filter(
+          (video) => video.deletedAt === null && linkedVideoIds.includes(video.id)
+        ).length;
+        return {
+          id: tag.id,
+          name: tag.name,
+          type: tag.type,
+          usageCount,
+          createdAt: tag.createdAt
+        };
+      });
+    const data = paginate(items, page, pageSize);
+    return ok(data);
+  }
+
+  if (path === "/trash/videos") {
+    const items = filterVideoList(state, { includeDeleted: true })
+      .filter((video) => video.deletedAt !== null)
+      .sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
+    const data = paginate(items, params.get("page"), params.get("pageSize"));
+    return ok(data);
+  }
+
+  return null;
+}
+
 async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
   const method = normalizeText(request.method || "GET").toUpperCase();
   const fullPath = normalizeText(request.path);
@@ -1616,43 +2388,122 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
   const params = url.searchParams;
   const body = (request.body ?? {}) as Record<string, unknown>;
 
+  // Fast-path status endpoints must bypass withState queue, otherwise
+  // long-running sync tasks block polling and trigger frontend timeouts.
+  if (method === "GET" && path === "/sync/bilibili/history-model/status") {
+    return ok(getFavoritesSyncStatus());
+  }
+
+  if (method === "POST" && path === "/sync/bilibili/history-model/start") {
+    const selectedRemoteFolderIds = Array.isArray(body.selectedRemoteFolderIds)
+      ? body.selectedRemoteFolderIds
+          .map((item) => toInt(item))
+          .filter((item) => item > 0)
+      : [];
+    const resumePageByFolderRaw =
+      body.resumePageByFolder && typeof body.resumePageByFolder === "object"
+        ? (body.resumePageByFolder as Record<string, unknown>)
+        : {};
+    const resumePageByFolder: Record<string, number> = {};
+    for (const [remoteIdRaw, pageRaw] of Object.entries(resumePageByFolderRaw)) {
+      const remoteId = toInt(remoteIdRaw);
+      const page = toInt(pageRaw);
+      if (remoteId > 0 && page > 1) {
+        resumePageByFolder[String(remoteId)] = page;
+      }
+    }
+    const started = startFavoritesSyncTask({
+      selectedRemoteFolderIds,
+      resumePageByFolder
+    });
+    return ok({
+      ok: true,
+      started,
+      status: getFavoritesSyncStatus()
+    });
+  }
+
+  if (method === "GET") {
+    const snapshot = await readState();
+    const fastReadResult = handleReadOnlyApi(snapshot, path, params);
+    if (fastReadResult) return fastReadResult;
+  }
+
   try {
     return await withState(async (state) => {
       if (method === "GET" && path === "/health") {
         return ok({ ok: true });
       }
 
+      if (method === "GET" && path === "/sync/bilibili/tag-enrichment/status") {
+        return ok(getTagEnrichmentStatus(state));
+      }
+
+      if (method === "POST" && path === "/sync/bilibili/tag-enrichment/pause") {
+        if (!TAG_SYNC_ENABLED) {
+          return ok({
+            ok: true,
+            ...getTagEnrichmentStatus(state)
+          });
+        }
+        const meta = ensureTagEnrichmentMeta(state);
+        meta.paused = true;
+        meta.lastError = null;
+        if (chrome.alarms?.clear) {
+          chrome.alarms.clear(TAG_ENRICH_ALARM);
+        }
+        return ok({
+          ok: true,
+          ...getTagEnrichmentStatus(state)
+        });
+      }
+
+      if (method === "POST" && path === "/sync/bilibili/tag-enrichment/resume") {
+        if (!TAG_SYNC_ENABLED) {
+          return ok({
+            ok: true,
+            ...getTagEnrichmentStatus(state)
+          });
+        }
+        const meta = ensureTagEnrichmentMeta(state);
+        meta.paused = false;
+        meta.lastError = null;
+        scheduleTagEnrichment(1);
+        void triggerTagEnrichment("sync");
+        return ok({
+          ok: true,
+          ...getTagEnrichmentStatus(state)
+        });
+      }
+
+      if (method === "POST" && path === "/sync/bilibili/tag-enrichment/run") {
+        if (!TAG_SYNC_ENABLED) {
+          return ok({
+            ok: true,
+            ...getTagEnrichmentStatus(state)
+          });
+        }
+        const meta = ensureTagEnrichmentMeta(state);
+        if (!meta.paused) {
+          scheduleTagEnrichment(1);
+          void triggerTagEnrichment("sync");
+        }
+        return ok({
+          ok: true,
+          ...getTagEnrichmentStatus(state)
+        });
+      }
+
       if (method === "POST" && path === "/sync/bilibili") {
-        const offsetRaw = toIntOrNull(body.offset);
-        const startPageRaw = toIntOrNull(body.startPage);
-        const includeTagEnrichment =
-          body.includeTagEnrichment === undefined ? true : Boolean(body.includeTagEnrichment);
-        const maxFoldersRaw = toIntOrNull(body.maxFolders);
-        const maxPagesRaw = toIntOrNull(body.maxPagesPerFolder);
-        const maxVideosRaw = toIntOrNull(body.maxVideosPerFolder);
         const selectedRemoteFolderIds = Array.isArray(body.selectedRemoteFolderIds)
           ? body.selectedRemoteFolderIds
               .map((item) => toInt(item))
               .filter((item) => item > 0)
           : [];
-        const offset = offsetRaw && offsetRaw > 0 ? offsetRaw : 0;
-        const startPage = startPageRaw && startPageRaw > 0 ? startPageRaw : 1;
-        const maxFolders =
-          maxFoldersRaw && maxFoldersRaw > 0 ? Math.min(maxFoldersRaw, 500) : 10;
-        const maxPagesPerFolder =
-          maxPagesRaw && maxPagesRaw > 0 ? Math.min(maxPagesRaw, 200) : 5;
-        const maxVideosPerFolder =
-          maxVideosRaw && maxVideosRaw > 0 ? Math.min(maxVideosRaw, 5000) : 200;
 
         try {
           const data = await syncFromBilibiliToState(state, {
-            offset,
-            startPage,
-            includeTagEnrichment,
-            maxFolders,
-            maxPagesPerFolder,
-            selectedRemoteFolderIds,
-            maxVideosPerFolder
+            selectedRemoteFolderIds
           });
           return ok(data);
         } catch (error) {
@@ -1677,7 +2528,8 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
 
       if (method === "POST" && path === "/sync/bilibili/folders") {
         try {
-          const items = await fetchRemoteFoldersFromBilibili();
+          const forceRefresh = Boolean(body.forceRefresh);
+          const items = await fetchRemoteFoldersFromBilibili(forceRefresh);
           return ok({
             ok: true,
             items,
@@ -2599,6 +3451,17 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
 }
 
 export default defineBackground(() => {
+  if (TAG_SYNC_ENABLED && chrome.alarms?.onAlarm) {
+    chrome.alarms.onAlarm.addListener((alarm) => {
+      if (alarm.name !== TAG_ENRICH_ALARM) return;
+      void triggerTagEnrichment("alarm");
+    });
+  }
+
+  if (TAG_SYNC_ENABLED) {
+    void triggerTagEnrichment("startup");
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== MESSAGE_TYPE) return false;
 

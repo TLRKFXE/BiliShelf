@@ -13,7 +13,7 @@ import {
 import type { Locale } from "@/stores/app-ui";
 import type { Folder, Tag, Video } from "@/types";
 import { CalendarDays } from "lucide-vue-next";
-import { ref } from "vue";
+import { ref, watch } from "vue";
 
 type SearchFieldToken =
   | "title"
@@ -68,6 +68,7 @@ const emit = defineEmits<{
   detail: [id: number];
   prevVideoPage: [];
   nextVideoPage: [];
+  jumpVideoPage: [value: number];
   videoPageSizeChange: [value: string];
   batchCopy: [];
   batchMove: [];
@@ -76,6 +77,15 @@ const emit = defineEmits<{
 
 const fromDatePickerRef = ref<HTMLInputElement | null>(null);
 const toDatePickerRef = ref<HTMLInputElement | null>(null);
+const videoPageJump = ref("");
+
+watch(
+  () => props.videoPage,
+  (page) => {
+    videoPageJump.value = String(page);
+  },
+  { immediate: true }
+);
 
 function formatDateForDisplay(value: string) {
   return value ? value.replace(/-/g, "/") : "";
@@ -118,6 +128,21 @@ function handleNativeDateChange(field: DateField, event: Event) {
     return;
   }
   emit("update:toDate", value);
+}
+
+function handleVideoPageJumpInput(value: string | number) {
+  videoPageJump.value = String(value ?? "");
+}
+
+function submitVideoPageJump() {
+  const parsed = Number.parseInt(videoPageJump.value.trim(), 10);
+  if (!Number.isFinite(parsed)) {
+    videoPageJump.value = String(props.videoPage);
+    return;
+  }
+  const target = Math.min(Math.max(1, parsed), Math.max(1, props.videoTotalPages));
+  videoPageJump.value = String(target);
+  emit("jumpVideoPage", target);
 }
 </script>
 
@@ -256,6 +281,23 @@ function handleNativeDateChange(field: DateField, event: Event) {
           @click="emit('nextVideoPage')"
         >
           {{ t("common.next") }}
+        </Button>
+        <Input
+          :model-value="videoPageJump"
+          type="text"
+          inputmode="numeric"
+          :placeholder="t('common.pageJumpPlaceholder')"
+          class="h-9 w-[90px]"
+          @update:model-value="handleVideoPageJumpInput(String($event))"
+          @keydown.enter.prevent="submitVideoPageJump"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          :disabled="loading || videoTotalPages <= 1"
+          @click="submitVideoPageJump"
+        >
+          {{ t("common.jump") }}
         </Button>
       </div>
     </div>

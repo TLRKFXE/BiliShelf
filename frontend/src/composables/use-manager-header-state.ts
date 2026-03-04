@@ -39,8 +39,8 @@ export function useManagerHeaderState(params: UseManagerHeaderStateParams) {
 
   const batchPanelClasses = computed(() =>
     isDark.value
-      ? "fixed bottom-4 left-4 right-4 z-40 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-zinc-100 shadow-2xl backdrop-blur lg:left-[calc(320px+2rem)] lg:right-6"
-      : "batch-panel-light fixed bottom-4 left-4 right-4 z-40 rounded-xl border border-slate-300 bg-white/95 p-3 text-slate-900 shadow-2xl backdrop-blur lg:left-[calc(320px+2rem)] lg:right-6"
+      ? "sticky bottom-3 z-20 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 text-zinc-100 shadow-2xl backdrop-blur"
+      : "batch-panel-light sticky bottom-3 z-20 rounded-xl border border-slate-300 bg-white/95 p-3 text-slate-900 shadow-2xl backdrop-blur"
   );
 
   const batchOutlineButtonClasses = computed(() =>

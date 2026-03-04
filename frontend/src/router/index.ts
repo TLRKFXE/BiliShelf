@@ -42,10 +42,14 @@ router.beforeEach((to) => {
 
 router.beforeResolve(async (to) => {
   const libraryStore = useLibraryStore(pinia);
-  if (to.name === "manager") {
-    await libraryStore.prefetchForRoute("manager");
-  } else if (to.name === "trash") {
-    await libraryStore.prefetchForRoute("trash");
+  try {
+    if (to.name === "manager") {
+      await libraryStore.prefetchForRoute("manager");
+    } else if (to.name === "trash") {
+      await libraryStore.prefetchForRoute("trash");
+    }
+  } catch (error) {
+    console.error("[router] prefetch failed, continue rendering:", error);
   }
 
   if (!to.meta.title) {

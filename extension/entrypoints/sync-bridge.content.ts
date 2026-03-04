@@ -120,7 +120,7 @@ function pageFetchJson(
 }
 
 export default defineContentScript({
-  matches: ["https://www.bilibili.com/*"],
+  matches: ["*://*.bilibili.com/*"],
   runAt: "document_start",
   main() {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

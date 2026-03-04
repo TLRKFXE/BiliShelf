@@ -1,11 +1,14 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useRoute, useRouter } from "vue-router";
+import { Button } from "./components/ui/button";
+import { Progress } from "./components/ui/progress";
 import ConfirmActionDialog from "./components/dialogs/ConfirmActionDialog.vue";
 import ManageTagsDialog from "./components/dialogs/ManageTagsDialog.vue";
 import RenameTagDialog from "./components/dialogs/RenameTagDialog.vue";
 import SyncImportDialog from "./components/dialogs/SyncImportDialog.vue";
+import AutoInitSetupDialog from "./components/dialogs/AutoInitSetupDialog.vue";
 import VideoDetailDialog from "./components/dialogs/VideoDetailDialog.vue";
 import FolderSidebar from "./components/FolderSidebar.vue";
 import ManagerHeader from "./components/layout/ManagerHeader.vue";
@@ -35,9 +38,16 @@ import { useRenameTagDialog } from "./composables/use-rename-tag-dialog";
 import { useVideoDetail } from "./composables/use-video-detail";
 import {
   exportLibrary,
+  fetchHistoryModelSyncStatus,
+  fetchTagEnrichmentStatus,
   fetchBilibiliSyncFolders,
   importLibrary,
-  syncFromBilibili,
+  pauseTagEnrichment,
+  resumeTagEnrichment,
+  runTagEnrichmentNow,
+  startHistoryModelSync,
+  type HistoryModelSyncStatus,
+  type TagEnrichmentStatus,
   updateVideo,
   type SyncRemoteFolder,
 } from "./lib/api";
@@ -133,12 +143,26 @@ const syncingImport = ref(false);
 const exportingLibrary = ref(false);
 const importingLibrary = ref(false);
 const syncDialogOpen = ref(false);
+const autoInitDialogOpen = ref(false);
 const syncFetchingFolders = ref(false);
 const syncFolders = ref<SyncRemoteFolder[]>([]);
 const syncSelectedFolderIds = ref<number[]>([]);
+const autoInitFetchingFolders = ref(false);
+const autoInitFolders = ref<SyncRemoteFolder[]>([]);
+const autoInitSelectedFolderIds = ref<number[]>([]);
+const autoInitSubmitting = ref(false);
 const syncChunkSize = ref(20);
 const syncSpeedMode = ref<"stable" | "balanced" | "fast">("balanced");
-const syncIncludeTagEnrichment = ref(true);
+const syncIncludeTagEnrichment = ref(false);
+const tagEnrichmentStatus = ref<TagEnrichmentStatus | null>(null);
+const tagEnrichmentLoading = ref(false);
+const TAG_SYNC_ENABLED = false;
+const autoInitRunning = ref(false);
+const AUTO_INIT_STATE_KEY = "bilishelf-auto-init-v3";
+const AUTO_INIT_LOCK_KEY = "bilishelf-auto-init-v3.lock";
+const AUTO_INIT_LOCK_TTL_MS = 90_000;
+const AUTO_INIT_PROBE_SCHEDULE_MS = [30_000, 45_000, 60_000, 90_000, 120_000, 180_000, 300_000];
+const AUTO_INIT_STATE_TIMEOUT_MS = 6 * 60 * 1000;
 const SYNC_CURSOR_STORAGE_KEY = "bilishelf-sync-cursors-v1";
 const SYNC_CHUNK_DELAY_MS = 1100;
 const SYNC_CHUNK_DELAY_JITTER_MS = 500;
@@ -147,21 +171,27 @@ const EXPORT_REMINDER_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const LAST_EXPORT_AT_KEY = "bilishelf-last-export-at";
 const LAST_EXPORT_REMINDER_DAY_KEY = "bilishelf-last-export-reminder-day";
 const importFileInput = ref<HTMLInputElement | null>(null);
+const autoInitOwnerId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const tickNow = ref(Date.now());
+let autoInitHeartbeatTimer: number | null = null;
+let tagEnrichmentPollTimer: number | null = null;
+let autoInitRetryTimer: number | null = null;
+let tickTimer: number | null = null;
 
 const SYNC_SPEED_PROFILES = {
   stable: {
     pagesPerRound: 1,
-    delayMs: 1200,
-    jitterMs: 450
+    delayMs: 900,
+    jitterMs: 280
   },
   balanced: {
     pagesPerRound: 2,
-    delayMs: 650,
-    jitterMs: 220
+    delayMs: 520,
+    jitterMs: 180
   },
   fast: {
     pagesPerRound: 3,
-    delayMs: 260,
+    delayMs: 320,
     jitterMs: 120
   }
 } as const;
@@ -346,6 +376,7 @@ function selectAllVisible() {
 }
 
 const {
+  goToVideoPage,
   prevVideoPage,
   nextVideoPage,
   handleVideoPageSizeChange,
@@ -452,6 +483,21 @@ function writeSyncCursorMap(map: Record<string, number>) {
 
 const syncCursorMap = ref<Record<string, number>>(readSyncCursorMap());
 
+type AutoInitStatus = "idle" | "running" | "cooldown" | "completed" | "failed";
+type AutoInitState = {
+  status: AutoInitStatus;
+  folderIds: number[];
+  folderIndex: number;
+  riskStreak: number;
+  nextRetryAt: number | null;
+  startedAt: number;
+  updatedAt: number;
+  phase1Imported: number;
+  phase1Scanned: number;
+  targetVideosEstimate: number;
+  lastError: string;
+};
+
 function getSyncResumePage(folderId: number) {
   const page = Number(syncCursorMap.value[String(folderId)] || 1);
   return Number.isFinite(page) && page > 1 ? Math.trunc(page) : 1;
@@ -470,6 +516,228 @@ function setSyncResumePage(folderId: number, page: number | null) {
     syncCursorMap.value = next;
   }
   writeSyncCursorMap(syncCursorMap.value);
+}
+
+function buildResumePageByFolder(folderIds: number[]) {
+  const map: Record<string, number> = {};
+  for (const folderId of folderIds) {
+    const page = getSyncResumePage(folderId);
+    if (page > 1) {
+      map[String(folderId)] = page;
+    }
+  }
+  return map;
+}
+
+function getDefaultAutoInitState(): AutoInitState {
+  const ts = Date.now();
+  return {
+    status: "idle",
+    folderIds: [],
+    folderIndex: 0,
+    riskStreak: 0,
+    nextRetryAt: null,
+    startedAt: ts,
+    updatedAt: ts,
+    phase1Imported: 0,
+    phase1Scanned: 0,
+    targetVideosEstimate: 0,
+    lastError: ""
+  };
+}
+
+function readAutoInitState() {
+  try {
+    const raw = window.localStorage.getItem(AUTO_INIT_STATE_KEY);
+    if (!raw) return getDefaultAutoInitState();
+    const parsed = JSON.parse(raw) as Partial<AutoInitState>;
+    const base = getDefaultAutoInitState();
+    return {
+      status: (["idle", "running", "cooldown", "completed", "failed"] as AutoInitStatus[]).includes(
+        parsed.status as AutoInitStatus
+      )
+        ? (parsed.status as AutoInitStatus)
+        : base.status,
+      folderIds: Array.isArray(parsed.folderIds)
+        ? parsed.folderIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+        : [],
+      folderIndex: Math.max(0, Math.trunc(Number(parsed.folderIndex ?? 0))),
+      riskStreak: Math.max(0, Math.trunc(Number(parsed.riskStreak ?? 0))),
+      nextRetryAt:
+        parsed.nextRetryAt && Number.isFinite(Number(parsed.nextRetryAt))
+          ? Number(parsed.nextRetryAt)
+          : null,
+      startedAt:
+        parsed.startedAt && Number.isFinite(Number(parsed.startedAt))
+          ? Number(parsed.startedAt)
+          : base.startedAt,
+      updatedAt:
+        parsed.updatedAt && Number.isFinite(Number(parsed.updatedAt))
+          ? Number(parsed.updatedAt)
+          : base.updatedAt,
+      phase1Imported: Math.max(0, Math.trunc(Number(parsed.phase1Imported ?? 0))),
+      phase1Scanned: Math.max(0, Math.trunc(Number(parsed.phase1Scanned ?? 0))),
+      targetVideosEstimate: Math.max(0, Math.trunc(Number(parsed.targetVideosEstimate ?? 0))),
+      lastError: String(parsed.lastError ?? "")
+    } as AutoInitState;
+  } catch {
+    return getDefaultAutoInitState();
+  }
+}
+
+const autoInitState = ref<AutoInitState>(readAutoInitState());
+
+function writeAutoInitState(
+  patch: Partial<AutoInitState> | ((current: AutoInitState) => AutoInitState)
+) {
+  const current = readAutoInitState();
+  const next =
+    typeof patch === "function"
+      ? patch(current)
+      : {
+          ...current,
+          ...patch
+        };
+  next.updatedAt = Date.now();
+  window.localStorage.setItem(AUTO_INIT_STATE_KEY, JSON.stringify(next));
+  autoInitState.value = next;
+  return next;
+}
+
+function formatSeconds(totalMs: number) {
+  const totalSec = Math.max(0, Math.ceil(totalMs / 1000));
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (min <= 0) return `${sec}s`;
+  return `${min}m ${sec}s`;
+}
+
+function looksLikeRiskControlError(message: string) {
+  const text = String(message || "").toLowerCase();
+  return text.includes("(412)") || text.includes(" 412") || text.includes("risk-control");
+}
+
+const autoInitPhase1Progress = computed(() => {
+  const target = Math.max(0, autoInitState.value.targetVideosEstimate);
+  const imported = Math.max(0, autoInitState.value.phase1Imported);
+  if (target <= 0) {
+    if (autoInitState.value.status === "completed") return 100;
+    return imported > 0 ? Math.min(95, imported % 100) : 0;
+  }
+  return Math.max(0, Math.min(100, (imported / target) * 100));
+});
+
+const autoInitTagProgress = computed(() => {
+  const imported = Math.max(0, autoInitState.value.phase1Imported);
+  const missing = Math.max(0, tagEnrichmentStatus.value?.totalMissing ?? 0);
+  if (imported <= 0) return missing <= 0 ? 100 : 0;
+  const done = Math.max(0, imported - missing);
+  return Math.max(0, Math.min(100, (done / imported) * 100));
+});
+
+const autoInitCooldownRemainMs = computed(() => {
+  if (autoInitState.value.status !== "cooldown" || !autoInitState.value.nextRetryAt) return 0;
+  return Math.max(0, autoInitState.value.nextRetryAt - tickNow.value);
+});
+
+const autoInitStatusText = computed(() => {
+  const status = autoInitState.value.status;
+  if (status === "running") return t("autoInit.statusRunning");
+  if (status === "cooldown") return t("autoInit.statusCooldown");
+  if (status === "failed") return t("autoInit.statusFailed");
+  if (status === "completed") return t("autoInit.statusCompleted");
+  return t("autoInit.statusIdle");
+});
+
+const showAutoInitProgressPanel = computed(() => {
+  if (trashMode.value) return false;
+  const hasPhaseState =
+    autoInitState.value.status !== "idle" || autoInitState.value.folderIds.length > 0;
+  const hasTagBacklog = (tagEnrichmentStatus.value?.totalMissing ?? 0) > 0;
+  return hasPhaseState || hasTagBacklog;
+});
+
+function handleStorageSync(event: StorageEvent) {
+  if (event.key === AUTO_INIT_STATE_KEY) {
+    autoInitState.value = readAutoInitState();
+    return;
+  }
+  if (event.key === SYNC_CURSOR_STORAGE_KEY) {
+    syncCursorMap.value = readSyncCursorMap();
+  }
+}
+
+function readAutoInitLock() {
+  try {
+    const raw = window.localStorage.getItem(AUTO_INIT_LOCK_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { owner: string; expiresAt: number };
+    if (!parsed || typeof parsed.owner !== "string" || !Number.isFinite(parsed.expiresAt)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function tryAcquireAutoInitLock() {
+  const ts = Date.now();
+  const existing = readAutoInitLock();
+  if (existing && existing.expiresAt > ts && existing.owner !== autoInitOwnerId) {
+    return false;
+  }
+
+  const lock = {
+    owner: autoInitOwnerId,
+    expiresAt: ts + AUTO_INIT_LOCK_TTL_MS
+  };
+  window.localStorage.setItem(AUTO_INIT_LOCK_KEY, JSON.stringify(lock));
+  const confirmed = readAutoInitLock();
+  return Boolean(confirmed && confirmed.owner === autoInitOwnerId);
+}
+
+function renewAutoInitLock() {
+  const current = readAutoInitLock();
+  if (!current || current.owner !== autoInitOwnerId) return false;
+  window.localStorage.setItem(
+    AUTO_INIT_LOCK_KEY,
+    JSON.stringify({
+      owner: autoInitOwnerId,
+      expiresAt: Date.now() + AUTO_INIT_LOCK_TTL_MS
+    })
+  );
+  return true;
+}
+
+function releaseAutoInitLock() {
+  const current = readAutoInitLock();
+  if (current?.owner === autoInitOwnerId) {
+    window.localStorage.removeItem(AUTO_INIT_LOCK_KEY);
+  }
+}
+
+function getAutoInitCooldownMs(riskStreak: number) {
+  const index = Math.max(0, Math.trunc(riskStreak) - 1);
+  return AUTO_INIT_PROBE_SCHEDULE_MS[Math.min(index, AUTO_INIT_PROBE_SCHEDULE_MS.length - 1)];
+}
+
+async function probeBilibiliRiskRecovery() {
+  try {
+    await fetchBilibiliSyncFolders({ forceRefresh: true });
+    return {
+      ready: true as const,
+      riskBlocked: false,
+      message: ""
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ready: false as const,
+      riskBlocked: looksLikeRiskControlError(message),
+      message
+    };
+  }
 }
 
 function markExportFinishedAt(timestamp = Date.now()) {
@@ -502,6 +770,71 @@ function maybeNotifyExportReminder() {
   }
 }
 
+async function refreshTagEnrichmentState() {
+  tagEnrichmentLoading.value = true;
+  try {
+    tagEnrichmentStatus.value = await fetchTagEnrichmentStatus();
+  } catch (error) {
+    console.warn("[tag-enrichment] status failed:", error);
+  } finally {
+    tagEnrichmentLoading.value = false;
+  }
+}
+
+async function pauseTagEnrichmentFromUi() {
+  if (tagEnrichmentLoading.value) return;
+  tagEnrichmentLoading.value = true;
+  try {
+    tagEnrichmentStatus.value = await pauseTagEnrichment();
+    notifySuccess(t("toast.tagEnrichPaused"));
+  } catch (error) {
+    notifyError(t("toast.tagEnrichPauseFail"), error);
+  } finally {
+    tagEnrichmentLoading.value = false;
+  }
+}
+
+async function resumeTagEnrichmentFromUi() {
+  if (tagEnrichmentLoading.value) return;
+  tagEnrichmentLoading.value = true;
+  try {
+    tagEnrichmentStatus.value = await resumeTagEnrichment();
+    notifySuccess(t("toast.tagEnrichResumed"));
+  } catch (error) {
+    notifyError(t("toast.tagEnrichResumeFail"), error);
+  } finally {
+    tagEnrichmentLoading.value = false;
+  }
+}
+
+async function runTagEnrichmentNowFromUi() {
+  if (tagEnrichmentLoading.value) return;
+  tagEnrichmentLoading.value = true;
+  try {
+    tagEnrichmentStatus.value = await runTagEnrichmentNow();
+    notifySuccess(t("toast.tagEnrichTriggered"));
+  } catch (error) {
+    notifyError(t("toast.tagEnrichTriggerFail"), error);
+  } finally {
+    tagEnrichmentLoading.value = false;
+  }
+}
+
+function startTagEnrichmentPolling() {
+  if (tagEnrichmentPollTimer !== null) window.clearInterval(tagEnrichmentPollTimer);
+  tagEnrichmentPollTimer = window.setInterval(() => {
+    if (route.name !== "manager") return;
+    void refreshTagEnrichmentState();
+  }, 15_000);
+}
+
+function stopTagEnrichmentPolling() {
+  if (tagEnrichmentPollTimer !== null) {
+    window.clearInterval(tagEnrichmentPollTimer);
+    tagEnrichmentPollTimer = null;
+  }
+}
+
 async function loadSyncFolderOptions(force = false) {
   if (syncFetchingFolders.value) return;
   if (!force && syncFolders.value.length > 0) return;
@@ -521,9 +854,71 @@ async function loadSyncFolderOptions(force = false) {
   }
 }
 
+async function loadAutoInitFolderOptions(force = false) {
+  if (autoInitFetchingFolders.value) return;
+  if (!force && autoInitFolders.value.length > 0) return;
+  autoInitFetchingFolders.value = true;
+  try {
+    const result = await fetchBilibiliSyncFolders();
+    autoInitFolders.value = (result.items ?? []).filter((folder) => folder.mediaCount > 0);
+    const available = new Set(autoInitFolders.value.map((item) => item.remoteId));
+    autoInitSelectedFolderIds.value = autoInitSelectedFolderIds.value.filter((id) =>
+      available.has(id)
+    );
+  } catch (error) {
+    console.error(error);
+    notifyError(t("toast.syncLoadFoldersFail"), error);
+  } finally {
+    autoInitFetchingFolders.value = false;
+  }
+}
+
+function openAutoInitDialog() {
+  autoInitDialogOpen.value = true;
+  void loadAutoInitFolderOptions();
+}
+
+function toggleAutoInitFolder(remoteId: number, checked: boolean) {
+  if (!checked) {
+    autoInitSelectedFolderIds.value = autoInitSelectedFolderIds.value.filter((id) => id !== remoteId);
+    return;
+  }
+  autoInitSelectedFolderIds.value = [...new Set([...autoInitSelectedFolderIds.value, remoteId])];
+}
+
+async function confirmAutoInitSetup() {
+  if (autoInitSubmitting.value) return;
+  if (autoInitSelectedFolderIds.value.length === 0) {
+    notifyError(t("toast.autoInitPickFolder"));
+    return;
+  }
+  const selectedSet = new Set(autoInitSelectedFolderIds.value);
+  const targetVideosEstimate = autoInitFolders.value
+    .filter((folder) => selectedSet.has(folder.remoteId))
+    .reduce((sum, folder) => sum + Math.max(0, Number(folder.mediaCount || 0)), 0);
+  autoInitSubmitting.value = true;
+  try {
+    writeAutoInitState({
+      status: "running",
+      folderIds: [...autoInitSelectedFolderIds.value],
+      folderIndex: 0,
+      nextRetryAt: null,
+      riskStreak: 0,
+      phase1Imported: 0,
+      phase1Scanned: 0,
+      targetVideosEstimate,
+      lastError: ""
+    });
+    autoInitDialogOpen.value = false;
+    void safeMaybeStartAutoInitSync({ force: true });
+  } finally {
+    autoInitSubmitting.value = false;
+  }
+}
+
 async function openSyncImportDialog() {
   syncDialogOpen.value = true;
-  await loadSyncFolderOptions();
+  await Promise.all([loadSyncFolderOptions(), refreshTagEnrichmentState()]);
 }
 
 function toggleSyncFolder(remoteId: number, checked: boolean) {
@@ -531,70 +926,101 @@ function toggleSyncFolder(remoteId: number, checked: boolean) {
     syncSelectedFolderIds.value = syncSelectedFolderIds.value.filter((id) => id !== remoteId);
     return;
   }
-  syncSelectedFolderIds.value = [remoteId];
+  syncSelectedFolderIds.value = [...new Set([...syncSelectedFolderIds.value, remoteId])];
 }
 
 async function submitSyncImport() {
   if (syncingImport.value || exportingLibrary.value) return;
-  if (syncSelectedFolderIds.value.length !== 1) {
-    notifyError(t("toast.syncPickOneFolder"));
+  if (syncSelectedFolderIds.value.length === 0) {
+    notifyError(t("toast.autoInitPickFolder"));
     return;
   }
 
+  const result = await runFavoritesSyncLikeHistory(syncSelectedFolderIds.value, {
+    notify: true,
+    closeDialogOnSuccess: true
+  });
+  if (result.noProgress && result.errors.length === 0) {
+    notifyError(t("toast.syncFail"), t("toast.syncNoProgress"));
+  }
+}
+
+type FolderSyncRunResult = {
+  foldersSynced: number;
+  videosImported: number;
+  videosScanned: number;
+  riskBlocked: boolean;
+  noProgress: boolean;
+  hasMorePage: boolean;
+  nextPage: number | null;
+  errors: Array<{ folder: string; message: string }>;
+  errorsOmittedTotal: number;
+};
+
+async function runFavoritesSyncLikeHistory(
+  selectedRemoteFolderIds: number[],
+  options: {
+    notify: boolean;
+    closeDialogOnSuccess: boolean;
+    resumePageByFolder?: Record<string, number>;
+  }
+): Promise<FolderSyncRunResult> {
   syncingImport.value = true;
   try {
-    const selectedRemoteFolderId = syncSelectedFolderIds.value[0];
-    const chunkSize = Math.max(10, Math.min(30, Math.trunc(syncChunkSize.value || 20)));
-    const speedProfile = SYNC_SPEED_PROFILES[syncSpeedMode.value];
-    const maxPagesPerRound = Math.max(1, speedProfile.pagesPerRound);
-
-    let startPage = getSyncResumePage(selectedRemoteFolderId);
-    let rounds = 0;
-    let foldersSynced = 0;
-    let videosImported = 0;
-    let riskBlocked = false;
-    let hasMorePage = true;
-    let errorsOmittedTotal = 0;
-    const allErrors: Array<{ folder: string; message: string }> = [];
-
-    while (hasMorePage && !riskBlocked && rounds < SYNC_MAX_ROUNDS) {
-      rounds += 1;
-      const result = await syncFromBilibili({
-        selectedRemoteFolderIds: [selectedRemoteFolderId],
-        startPage,
-        includeTagEnrichment: syncIncludeTagEnrichment.value,
-        maxFolders: 1,
-        maxPagesPerFolder: maxPagesPerRound,
-        maxVideosPerFolder: Math.max(20, chunkSize * maxPagesPerRound)
+    const uniqueFolderIds = [...new Set(selectedRemoteFolderIds.filter((id) => id > 0))];
+    const resumePageByFolder = options.resumePageByFolder ?? buildResumePageByFolder(uniqueFolderIds);
+    let startResult = await startHistoryModelSync({
+      selectedRemoteFolderIds: uniqueFolderIds,
+      resumePageByFolder
+    });
+    if (!startResult.started && !startResult.status.running) {
+      await sleepMs(180);
+      startResult = await startHistoryModelSync({
+        selectedRemoteFolderIds: uniqueFolderIds,
+        resumePageByFolder
       });
-
-      foldersSynced = Math.max(foldersSynced, result.summary.foldersSynced);
-      videosImported += result.summary.folderLinksAdded;
-      riskBlocked = riskBlocked || Boolean(result.riskBlocked);
-      errorsOmittedTotal += Number(result.errorsOmitted ?? 0);
-      allErrors.push(...(result.errors ?? []));
-
-      const nextPage = typeof result.nextPage === "number" ? result.nextPage : null;
-      hasMorePage = Boolean(result.hasMorePage) && nextPage !== null;
-      if (!hasMorePage) {
-        setSyncResumePage(selectedRemoteFolderId, null);
-        break;
-      }
-
-      startPage = nextPage as number;
-      setSyncResumePage(selectedRemoteFolderId, startPage);
-      if (riskBlocked) break;
-      const waitMs =
-        speedProfile.delayMs +
-        Math.floor(Math.random() * speedProfile.jitterMs);
-      await sleepMs(waitMs);
+    }
+    if (!startResult.started && !startResult.status.running) {
+      throw new Error("Sync task did not start, please retry");
     }
 
-    if (rounds >= SYNC_MAX_ROUNDS && hasMorePage) {
-      allErrors.push({
-        folder: "__sync__",
-        message: "Sync reached safety round limit and stopped early. Re-run sync to continue."
-      });
+    let status: HistoryModelSyncStatus | null = null;
+    const pollStartedAt = Date.now();
+    while (true) {
+      status = await fetchHistoryModelSyncStatus();
+      if (!status.running) break;
+      if (Date.now() - pollStartedAt > 2 * 60 * 60 * 1000) {
+        throw new Error("Sync polling exceeded 2 hours timeout");
+      }
+      await sleepMs(850);
+    }
+    if (!status) {
+      throw new Error("Sync status is unavailable");
+    }
+
+    const foldersSynced = Math.max(0, status.summary.foldersSynced);
+    const videosImported = Math.max(0, status.summary.folderLinksAdded);
+    const videosScanned = Math.max(0, status.summary.videosProcessed);
+    const riskBlocked = Boolean(status.riskBlocked);
+    const resumeMapRaw = status.resumePageByFolder ?? {};
+    const resumeMap: Record<string, number> = {};
+    for (const [folderId, pageRaw] of Object.entries(resumeMapRaw)) {
+      const page = Number(pageRaw);
+      if (Number.isFinite(page) && page > 1) {
+        resumeMap[String(folderId)] = Math.trunc(page);
+      }
+    }
+    for (const folderId of uniqueFolderIds) {
+      const nextPage = resumeMap[String(folderId)] ?? null;
+      setSyncResumePage(folderId, nextPage);
+    }
+    const singleFolderId = uniqueFolderIds.length === 1 ? uniqueFolderIds[0] : null;
+    const singleFolderNextPage =
+      singleFolderId !== null ? (resumeMap[String(singleFolderId)] ?? null) : null;
+    const errorsOmittedTotal = 0;
+    const allErrors = status.errors ?? [];
+    if (status.lastError && allErrors.length === 0) {
+      allErrors.push({ folder: "__sync__", message: status.lastError });
     }
 
     if (videosImported > 0) {
@@ -609,6 +1035,8 @@ async function submitSyncImport() {
     }
 
     await refreshFoldersVideosAndTags();
+    await refreshTagEnrichmentState();
+
     const visibleErrors = Array.from(
       new Set(
         allErrors
@@ -625,52 +1053,313 @@ async function submitSyncImport() {
     const systemError = allErrors.find((item) => item.folder === "__sync__");
     const errorDesc = [
       visibleErrors,
-      errorsOmittedTotal > 0
-        ? t("toast.syncHiddenErrors", {
-            count: errorsOmittedTotal
-          })
-        : "",
-      hiddenCount > 0
-        ? t("toast.syncHiddenErrors", { count: hiddenCount })
-        : "",
+      errorsOmittedTotal > 0 ? t("toast.syncHiddenErrors", { count: errorsOmittedTotal }) : "",
+      hiddenCount > 0 ? t("toast.syncHiddenErrors", { count: hiddenCount }) : "",
       systemError?.message || ""
     ]
       .filter(Boolean)
       .join(" | ");
 
     const fullyFailed = videosImported === 0 && allErrors.length > 0;
-    if (fullyFailed) {
-      notifyError(t("toast.syncFail"), errorDesc || t("common.requestFailed"));
-      return;
+    const noProgress = videosImported === 0 && videosScanned === 0;
+    if (options.notify) {
+      if (fullyFailed) {
+        notifyError(t("toast.syncFail"), errorDesc || t("common.requestFailed"));
+      } else if (!noProgress) {
+        if (options.closeDialogOnSuccess) {
+          syncDialogOpen.value = false;
+        }
+        notifySuccess(
+          t("toast.syncDone"),
+          t("toast.syncSummary", {
+            folders: foldersSynced,
+            videos: videosImported
+          })
+        );
+        if (allErrors.length > 0) {
+          notifyError(t("toast.syncPartial"), errorDesc);
+        }
+      }
     }
 
-    syncDialogOpen.value = false;
-    notifySuccess(
-      t("toast.syncDone"),
-      t("toast.syncSummary", {
-        folders: foldersSynced,
-        videos: videosImported
-      })
-    );
-
-    if (allErrors.length > 0) {
-      notifyError(t("toast.syncPartial"), errorDesc);
-    }
-
-    if (videosImported > 0 && getSyncResumePage(selectedRemoteFolderId) > 1) {
-      notifySuccess(
-        t("toast.syncResumeSaved"),
-        t("toast.syncResumeSavedDesc", {
-          page: getSyncResumePage(selectedRemoteFolderId)
-        })
-      );
-    }
+    return {
+      foldersSynced,
+      videosImported,
+      videosScanned,
+      riskBlocked,
+      noProgress,
+      hasMorePage: Number.isFinite(Number(singleFolderNextPage)) && Number(singleFolderNextPage) > 1,
+      nextPage:
+        Number.isFinite(Number(singleFolderNextPage)) && Number(singleFolderNextPage) > 1
+          ? Math.trunc(Number(singleFolderNextPage))
+          : null,
+      errors: allErrors,
+      errorsOmittedTotal
+    };
   } catch (error) {
     console.error(error);
-    notifyError(t("toast.syncFail"), error);
+    const message = error instanceof Error ? error.message : String(error);
+    const riskBlocked = looksLikeRiskControlError(message);
+    if (options.notify) notifyError(t("toast.syncFail"), error);
+    return {
+      foldersSynced: 0,
+      videosImported: 0,
+      videosScanned: 0,
+      riskBlocked,
+      noProgress: true,
+      hasMorePage: false,
+      nextPage: null,
+      errors: [{ folder: "__sync__", message }],
+      errorsOmittedTotal: 0
+    };
   } finally {
     syncingImport.value = false;
   }
+}
+
+function startAutoInitLockHeartbeat() {
+  if (autoInitHeartbeatTimer !== null) window.clearInterval(autoInitHeartbeatTimer);
+  autoInitHeartbeatTimer = window.setInterval(() => {
+    renewAutoInitLock();
+  }, Math.max(20_000, Math.floor(AUTO_INIT_LOCK_TTL_MS / 2)));
+}
+
+function stopAutoInitLockHeartbeat() {
+  if (autoInitHeartbeatTimer !== null) {
+    window.clearInterval(autoInitHeartbeatTimer);
+    autoInitHeartbeatTimer = null;
+  }
+}
+
+async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
+  const force = options.force === true;
+  if (trashMode.value) return;
+  if (autoInitRunning.value || syncingImport.value) return;
+  if (autoInitRetryTimer !== null) {
+    window.clearTimeout(autoInitRetryTimer);
+    autoInitRetryTimer = null;
+  }
+
+  const state = readAutoInitState();
+  autoInitState.value = state;
+  let normalizedIds = state.folderIds.filter((id) => Number.isFinite(id) && id > 0);
+  const staleCompletedState =
+    state.status === "completed" &&
+    normalizedIds.length > 0 &&
+    total.value === 0 &&
+    folders.value.length === 0;
+  if (staleCompletedState) {
+    writeAutoInitState(getDefaultAutoInitState());
+    normalizedIds = [];
+  }
+  if (state.status === "completed") return;
+  if (state.status === "cooldown" && state.nextRetryAt && Date.now() < state.nextRetryAt) {
+    return;
+  }
+  if (state.status === "cooldown") {
+    const probe = await probeBilibiliRiskRecovery();
+    if (!probe.ready) {
+      if (probe.riskBlocked) {
+        const nextRiskStreak = Math.max(1, (state.riskStreak || 0) + 1);
+        const cooldownMs = getAutoInitCooldownMs(nextRiskStreak);
+        writeAutoInitState({
+          status: "cooldown",
+          folderIds: normalizedIds,
+          folderIndex: state.folderIndex,
+          riskStreak: nextRiskStreak,
+          nextRetryAt: Date.now() + cooldownMs,
+          phase1Imported: Math.max(0, state.phase1Imported || 0),
+          phase1Scanned: Math.max(0, state.phase1Scanned || 0),
+          targetVideosEstimate: Math.max(0, state.targetVideosEstimate || 0),
+          lastError: probe.message || "Risk-control is still active. Waiting for next probe."
+        });
+        return;
+      }
+      if (!force) {
+        return;
+      }
+      writeAutoInitState({
+        status: "failed",
+        folderIds: normalizedIds,
+        folderIndex: state.folderIndex,
+        riskStreak: Math.max(0, state.riskStreak || 0),
+        nextRetryAt: null,
+        phase1Imported: Math.max(0, state.phase1Imported || 0),
+        phase1Scanned: Math.max(0, state.phase1Scanned || 0),
+        targetVideosEstimate: Math.max(0, state.targetVideosEstimate || 0),
+        lastError: probe.message || "Probe failed before sync resume."
+      });
+      return;
+    }
+  }
+  if (normalizedIds.length === 0 || state.status === "idle") {
+    try {
+      await loadAutoInitFolderOptions(true);
+    } catch {
+    }
+    const folderIds = autoInitFolders.value
+      .map((item) => Number(item.remoteId))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (folderIds.length === 0) {
+      writeAutoInitState({
+        status: "failed",
+        folderIds: [],
+        folderIndex: 0,
+        nextRetryAt: null,
+        targetVideosEstimate: 0,
+        lastError: "No syncable Bilibili favorite folders found. Ensure login is valid and retry."
+      });
+      return;
+    }
+    const targetVideosEstimate = autoInitFolders.value.reduce(
+      (sum, folder) => sum + Math.max(0, Number(folder.mediaCount || 0)),
+      0
+    );
+    const bootstrapped = writeAutoInitState({
+      status: "running",
+      folderIds,
+      folderIndex: 0,
+      riskStreak: 0,
+      nextRetryAt: null,
+      phase1Imported: 0,
+      phase1Scanned: 0,
+      targetVideosEstimate,
+      lastError: ""
+    });
+    normalizedIds = bootstrapped.folderIds.filter((id) => Number.isFinite(id) && id > 0);
+  }
+
+  if (
+    !force &&
+    state.status === "running" &&
+    Date.now() - state.updatedAt < AUTO_INIT_STATE_TIMEOUT_MS
+  ) {
+    return;
+  }
+
+  autoInitRunning.value = true;
+  try {
+    const latestState = readAutoInitState();
+    const startIndex = Math.max(0, Math.min(latestState.folderIndex, normalizedIds.length));
+    writeAutoInitState({
+      status: "running",
+      folderIds: normalizedIds,
+      folderIndex: startIndex,
+      nextRetryAt: null,
+      lastError: ""
+    });
+
+    let totalImported = Math.max(0, state.phase1Imported);
+    let totalScanned = Math.max(0, state.phase1Scanned);
+    for (let index = startIndex; index < normalizedIds.length; index += 1) {
+      const folderId = normalizedIds[index];
+      const result = await runFavoritesSyncLikeHistory([folderId], {
+        notify: false,
+        closeDialogOnSuccess: false
+      });
+      totalImported += result.videosImported;
+      totalScanned += result.videosScanned;
+
+      if (result.riskBlocked) {
+        const latest = readAutoInitState();
+        const nextRiskStreak = (latest.riskStreak || 0) + 1;
+        const cooldownMs = getAutoInitCooldownMs(nextRiskStreak);
+        writeAutoInitState({
+          status: "cooldown",
+          folderIds: normalizedIds,
+          folderIndex: index,
+          riskStreak: nextRiskStreak,
+          nextRetryAt: Date.now() + cooldownMs,
+          phase1Imported: totalImported,
+          phase1Scanned: totalScanned,
+          targetVideosEstimate: Math.max(0, latest.targetVideosEstimate || 0),
+          lastError: result.errors[0]?.message || "risk-control (412)"
+        });
+        notifyError(t("toast.autoInitCooling"), t("toast.autoInitCoolingDesc"));
+        return;
+      }
+
+      if (result.noProgress && result.errors.length > 0) {
+        const latest = readAutoInitState();
+        writeAutoInitState({
+          status: "failed",
+          folderIds: normalizedIds,
+          folderIndex: index,
+          riskStreak: latest.riskStreak || 0,
+          nextRetryAt: null,
+          phase1Imported: totalImported,
+          phase1Scanned: totalScanned,
+          targetVideosEstimate: Math.max(0, latest.targetVideosEstimate || 0),
+          lastError: result.errors[0]?.message || "sync failed"
+        });
+        notifyError(t("toast.autoInitFail"), result.errors[0]?.message || t("common.requestFailed"));
+        return;
+      }
+
+      const latest = readAutoInitState();
+      writeAutoInitState({
+        status: "running",
+        folderIds: normalizedIds,
+        folderIndex: index + 1,
+        riskStreak: latest.riskStreak || 0,
+        nextRetryAt: null,
+        phase1Imported: totalImported,
+        phase1Scanned: totalScanned,
+        targetVideosEstimate: Math.max(0, latest.targetVideosEstimate || 0),
+        lastError: ""
+      });
+      await sleepMs(640 + Math.floor(Math.random() * 260));
+    }
+
+    const latest = readAutoInitState();
+    writeAutoInitState({
+      status: "completed",
+      folderIds: normalizedIds,
+      folderIndex: normalizedIds.length,
+      riskStreak: 0,
+      nextRetryAt: null,
+      phase1Imported: totalImported,
+      phase1Scanned: totalScanned,
+      targetVideosEstimate: Math.max(0, latest.targetVideosEstimate || 0),
+      lastError: ""
+    });
+    await refreshTagEnrichmentState();
+    notifySuccess(
+      t("toast.autoInitDone"),
+      t("toast.autoInitDoneDesc", { videos: totalImported })
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    writeAutoInitState((current) => ({
+      ...current,
+      status: "failed",
+      nextRetryAt: null,
+      lastError: message
+    }));
+    notifyError(t("toast.autoInitFail"), message);
+    console.error("[auto-init] failed:", error);
+  } finally {
+    autoInitRunning.value = false;
+  }
+}
+
+async function safeMaybeStartAutoInitSync(options: { force?: boolean } = {}) {
+  try {
+    await maybeStartAutoInitSync(options);
+  } catch (error) {
+    console.error("[auto-init] unexpected error:", error);
+    notifyError(t("toast.autoInitFail"), error);
+    autoInitRunning.value = false;
+  }
+}
+
+async function resumeAutoInitFromUi() {
+  if (autoInitRunning.value || syncingImport.value) return;
+  void safeMaybeStartAutoInitSync({ force: true });
+}
+
+function reopenAutoInitSetupFromUi() {
+  openAutoInitDialog();
 }
 
 async function handleExport(format: "json" | "csv") {
@@ -843,7 +1532,18 @@ watch(
   async (nextName, previousName) => {
     if (!routeReady.value) return;
     if (nextName === previousName) return;
-    await applyViewMode(nextName === "trash");
+    try {
+      await applyViewMode(nextName === "trash");
+      if (nextName === "manager") {
+        startTagEnrichmentPolling();
+        void safeMaybeStartAutoInitSync();
+      } else {
+        stopTagEnrichmentPolling();
+      }
+    } catch (error) {
+      console.error("[route] view switch failed:", error);
+      notifyError(t("toast.appLoadFail"), error);
+    }
   }
 );
 
@@ -874,7 +1574,29 @@ watch(
   }
 );
 
+watch(
+  () => autoInitCooldownRemainMs.value,
+  (remainMs) => {
+    if (route.name !== "manager") return;
+    if (autoInitState.value.status !== "cooldown") return;
+    if (remainMs > 0) return;
+    if (autoInitRunning.value || syncingImport.value) return;
+    if (autoInitRetryTimer !== null) return;
+    autoInitRetryTimer = window.setTimeout(() => {
+      autoInitRetryTimer = null;
+      void safeMaybeStartAutoInitSync({ force: true });
+    }, 280);
+  }
+);
+
 onMounted(async () => {
+  autoInitState.value = readAutoInitState();
+  tickNow.value = Date.now();
+  if (tickTimer !== null) window.clearInterval(tickTimer);
+  tickTimer = window.setInterval(() => {
+    tickNow.value = Date.now();
+  }, 1000);
+  window.addEventListener("storage", handleStorageSync);
   uiStore.initFromStorage();
   if (route.name === "manager") {
     applyManagerQuery(route.query);
@@ -893,11 +1615,34 @@ onMounted(async () => {
     } else {
       await refreshVideos();
       maybeNotifyExportReminder();
+      await refreshTagEnrichmentState();
+      startTagEnrichmentPolling();
     }
     routeReady.value = true;
+    if (route.name === "manager") {
+      void safeMaybeStartAutoInitSync();
+    }
+  } catch (error) {
+    console.error("[manager] mount failed:", error);
+    notifyError(t("toast.appLoadFail"), error);
   } finally {
     loading.value = false;
   }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("storage", handleStorageSync);
+  if (tickTimer !== null) {
+    window.clearInterval(tickTimer);
+    tickTimer = null;
+  }
+  if (autoInitRetryTimer !== null) {
+    window.clearTimeout(autoInitRetryTimer);
+    autoInitRetryTimer = null;
+  }
+  stopTagEnrichmentPolling();
+  stopAutoInitLockHeartbeat();
+  releaseAutoInitLock();
 });
 </script>
 
@@ -937,6 +1682,89 @@ onMounted(async () => {
         @toggle-locale="toggleLocale"
         @toggle-theme="toggleTheme"
       />
+
+      <section
+        v-if="showAutoInitProgressPanel && !trashMode"
+        class="panel-surface space-y-3 rounded-lg border p-4"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p class="text-sm font-semibold">{{ t("autoInit.progressTitle") }}</p>
+            <p class="text-xs text-muted-foreground">
+              {{ autoInitStatusText }}
+              <span v-if="autoInitState.status === 'cooldown' && autoInitCooldownRemainMs > 0">
+                · {{ t("autoInit.cooldownRemain", { time: formatSeconds(autoInitCooldownRemainMs) }) }}
+              </span>
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="autoInitRunning || syncingImport"
+              @click="reopenAutoInitSetupFromUi"
+            >
+              {{ t("autoInit.openPicker") }}
+            </Button>
+            <Button
+              size="sm"
+              :disabled="
+                autoInitRunning ||
+                syncingImport ||
+                (autoInitState.status === 'cooldown' && autoInitCooldownRemainMs > 0)
+              "
+              @click="resumeAutoInitFromUi"
+            >
+              {{ t("autoInit.resume") }}
+            </Button>
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-muted-foreground">{{ t("autoInit.phase1Title") }}</span>
+            <span>
+              {{
+                t("autoInit.phase1Summary", {
+                  imported: autoInitState.phase1Imported,
+                  scanned: autoInitState.phase1Scanned,
+                  target: autoInitState.targetVideosEstimate,
+                })
+              }}
+            </span>
+          </div>
+          <Progress :model-value="autoInitPhase1Progress" />
+        </div>
+
+        <div v-if="TAG_SYNC_ENABLED" class="space-y-1.5">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-muted-foreground">{{ t("autoInit.phase2Title") }}</span>
+            <span>
+              {{
+                t("autoInit.phase2Summary", {
+                  missing: tagEnrichmentStatus?.totalMissing ?? 0,
+                  processed: tagEnrichmentStatus?.lastBatchProcessed ?? 0,
+                  bound: tagEnrichmentStatus?.lastBatchBound ?? 0,
+                })
+              }}
+            </span>
+          </div>
+          <Progress :model-value="autoInitTagProgress" />
+        </div>
+
+        <p
+          v-if="autoInitState.lastError"
+          class="text-xs text-amber-600 dark:text-amber-400 whitespace-pre-wrap"
+        >
+          {{ autoInitState.lastError }}
+        </p>
+        <p
+          v-if="TAG_SYNC_ENABLED && tagEnrichmentStatus?.lastError"
+          class="text-xs text-amber-600 dark:text-amber-400 whitespace-pre-wrap"
+        >
+          {{ tagEnrichmentStatus.lastError }}
+        </p>
+      </section>
 
       <ManagerPanel
         v-if="!trashMode"
@@ -980,6 +1808,7 @@ onMounted(async () => {
         @detail="openVideoDetail"
         @prev-video-page="prevVideoPage"
         @next-video-page="nextVideoPage"
+        @jump-video-page="goToVideoPage($event)"
         @video-page-size-change="handleVideoPageSizeChange($event)"
         @batch-copy="handleBatchMoveOrCopy('copy')"
         @batch-move="handleBatchMoveOrCopy('move')"
@@ -1046,6 +1875,19 @@ onMounted(async () => {
       @next-page="nextManageCustomTagPage"
     />
 
+    <AutoInitSetupDialog
+      :open="autoInitDialogOpen"
+      :t="t"
+      :loading="autoInitSubmitting || autoInitRunning"
+      :fetching-folders="autoInitFetchingFolders"
+      :folders="autoInitFolders"
+      :selected-folder-ids="autoInitSelectedFolderIds"
+      @update:open="autoInitDialogOpen = $event"
+      @reload="loadAutoInitFolderOptions(true)"
+      @toggle-folder="(remoteId, checked) => toggleAutoInitFolder(remoteId, checked)"
+      @start="confirmAutoInitSetup"
+    />
+
     <SyncImportDialog
       :open="syncDialogOpen"
       :t="t"
@@ -1056,11 +1898,17 @@ onMounted(async () => {
       :chunk-size="syncChunkSize"
       :include-tag-enrichment="syncIncludeTagEnrichment"
       :resume-page="syncResumePage"
+      :tag-enrichment-status="tagEnrichmentStatus"
+      :tag-enrichment-loading="tagEnrichmentLoading"
       @update:open="syncDialogOpen = $event"
       @reload="loadSyncFolderOptions(true)"
       @toggle-folder="(remoteId, checked) => toggleSyncFolder(remoteId, checked)"
       @update:chunk-size="syncChunkSize = $event"
       @update:include-tag-enrichment="syncIncludeTagEnrichment = $event"
+      @refresh-tag-enrichment="refreshTagEnrichmentState"
+      @pause-tag-enrichment="pauseTagEnrichmentFromUi"
+      @resume-tag-enrichment="resumeTagEnrichmentFromUi"
+      @run-tag-enrichment="runTagEnrichmentNowFromUi"
       @submit="submitSyncImport"
     />
 

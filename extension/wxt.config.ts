@@ -6,7 +6,7 @@ export default defineConfig({
     short_name: "BiliShelf",
     description: "Capture Bilibili videos into local folders, then search, tag, and batch-manage.",
     version: "0.1.0",
-    permissions: ["storage", "activeTab", "tabs", "scripting"],
+    permissions: ["storage", "activeTab", "tabs", "scripting", "alarms", "cookies"],
     options_page: "manager/index.html",
     icons: {
       "16": "icons/16.png",
@@ -29,9 +29,6 @@ export default defineConfig({
         }
       }
     },
-    host_permissions: [
-      "https://www.bilibili.com/*",
-      "https://api.bilibili.com/*"
-    ]
+    host_permissions: ["https://*.bilibili.com/*"]
   }
 });

@@ -4,8 +4,11 @@
   const BILI_TAG_API = "https://api.bilibili.com/x/tag/archive/tags";
   const DEFAULT_COVER = "https://i0.hdslb.com/bfs/archive/placeholder.jpg";
 
-  const BUTTON_POS_STORAGE_KEY = "bili_like_button_pos_v2";
-  const BUTTON_SIDE_STORAGE_KEY = "bili_like_button_side_v2";
+  const BUTTON_POS_STORAGE_KEY = "bili_like_button_pos_v3";
+  const BUTTON_SIDE_STORAGE_KEY = "bili_like_button_side_v3";
+  const LEGACY_BUTTON_POS_STORAGE_KEY = "bili_like_button_pos_v2";
+  const LEGACY_BUTTON_SIDE_STORAGE_KEY = "bili_like_button_side_v2";
+  const BUTTON_MIN_MARGIN = 12;
   const THEME_STORAGE_KEY = "bili_like_ext_theme";
   const LOCALE_STORAGE_KEY = "bili_like_locale";
 
@@ -17,11 +20,11 @@
 
   const I18N = {
     "title.collector": {
-      [LOCALE_ZH]: "BiliShelf 采集器",
+      [LOCALE_ZH]: "BiliShelf 收藏助手",
       [LOCALE_EN]: "BiliShelf Collector"
     },
     "subtitle.collector": {
-      [LOCALE_ZH]: "一键采集到收藏夹，回到管理中心检索与批处理",
+      [LOCALE_ZH]: "一键采集到收藏夹，回到管理中心检索与批量管理",
       [LOCALE_EN]: "Capture to folders in one click, then search and batch-manage in the manager"
     },
     "footer.credit": {
@@ -44,7 +47,7 @@
     },
     "status.noVideoTitle": { [LOCALE_ZH]: "未检测到视频", [LOCALE_EN]: "No video detected" },
     "status.noVideoDesc": {
-      [LOCALE_ZH]: "请先打开一个 Bilibili 视频页。",
+      [LOCALE_ZH]: "请先打开一个 Bilibili 视频页面。",
       [LOCALE_EN]: "Open a Bilibili video page first."
     },
     "status.unknownUploader": { [LOCALE_ZH]: "未知 UP 主", [LOCALE_EN]: "Unknown uploader" },
@@ -92,7 +95,6 @@
     "status.readingCurrentPage": { [LOCALE_ZH]: "正在读取当前页面...", [LOCALE_EN]: "Reading current page..." },
     "error.unknown": { [LOCALE_ZH]: "未知错误", [LOCALE_EN]: "Unknown error" }
   };
-
   function resolveLocaleFromBrowser() {
     const language = (
       chrome?.i18n?.getUILanguage?.() ||
@@ -148,6 +150,8 @@
   let folderModalSaveBtn = null;
   let folderModalCancelBtn = null;
   let folderModalCloseBtn = null;
+  let fullscreenObserver = null;
+  let fullscreenPollTimer = null;
 
   let suppressButtonClick = false;
   let allFolders = [];
@@ -195,15 +199,13 @@
       /播放量/i,
       /弹幕量/i,
       /点赞数/i,
-      /投硬币枚数/i,
+      /投币数/i,
       /收藏人数/i,
       /转发人数/i,
-      /视频作者/i,
-      /作者简介/i,
       /相关视频/i,
       /弹幕列表/i,
-      /\b\d+(?:\.\d+)?万\b/,
-      /\b\d+(?:\.\d+)?亿\b/
+      /\b\d+(?:\.\d+)?万\b/i,
+      /\b\d+(?:\.\d+)?亿\b/i
     ];
 
     const sourceLines = (input || "").replace(/\r\n/g, "\n").split("\n");
@@ -214,23 +216,37 @@
 
     return lines.join("\n\n").slice(0, 2000);
   }
-
   function parseTags(raw) {
     return [
       ...new Set(
         (raw || "")
-          .split(/[,，\s]+/)
+          .split(/[,\s]+/)
           .map((item) => item.trim())
           .filter(Boolean)
       )
     ];
   }
 
+  function normalizeBvidToken(raw) {
+    const value = String(raw || "").trim();
+    if (!value) return "";
+    const match = value.match(/(BV[0-9A-Za-z]+)/i);
+    return match?.[1] ? match[1].toUpperCase() : "";
+  }
+
   function pickBasePayload() {
     const canonical = attrOf('link[rel="canonical"]', "href") || location.href;
-    const bvidMatch =
-      canonical.match(/\/video\/(BV[0-9A-Za-z]+)/i) ||
-      location.pathname.match(/\/(BV[0-9A-Za-z]+)/i);
+    const canonicalBvid = normalizeBvidToken(
+      canonical.match(/\/video\/(BV[0-9A-Za-z]+)/i)?.[1] || ""
+    );
+    const pathnameBvid = normalizeBvidToken(
+      location.pathname.match(/\/(BV[0-9A-Za-z]+)/i)?.[1] || ""
+    );
+    const queryBvid = normalizeBvidToken(
+      new URLSearchParams(location.search).get("bvid")
+    );
+    const detectedBvid = canonicalBvid || pathnameBvid || queryBvid;
+    const canonicalUrl = ensureAbsoluteUrl(canonical, location.href);
 
     const uploaderHref =
       attrOf(".up-name", "href") ||
@@ -244,11 +260,13 @@
       : "";
 
     return {
-      bvid: bvidMatch?.[1] || "",
-      bvidUrl: canonical,
+      bvid: detectedBvid,
+      bvidUrl: detectedBvid
+        ? `https://www.bilibili.com/video/${detectedBvid}/`
+        : canonicalUrl,
       title:
         attrOf('meta[property="og:title"]', "content") ||
-        document.title.replace(/_哔哩哔哩_bilibili$/, "").trim(),
+        document.title.replace(/_bilibili$/i, "").trim(),
       uploader: textOf(".up-name") || textOf(".up-name--text") || "",
       uploaderSpaceUrl: normalizedUploaderHref,
       coverUrl:
@@ -421,7 +439,7 @@
 
     const icon = document.createElement("span");
     icon.className = "Vue-Toastification__icon";
-    icon.textContent = toastType === "error" ? "⚠" : toastType === "info" ? "ℹ" : "✓";
+    icon.textContent = toastType === "error" ? "x" : toastType === "info" ? "i" : "ok";
 
     const body = document.createElement("div");
     body.className = "Vue-Toastification__toast-body";
@@ -458,7 +476,7 @@
     }
 
     videoTitleEl.textContent = video.title || t("status.untitled");
-    videoMetaEl.textContent = `${video.uploader || t("status.unknownUploader")} · ${video.bvid || "-"}`;
+    videoMetaEl.textContent = `${video.uploader || t("status.unknownUploader")} - ${video.bvid || "-"}`;
     videoCoverEl.src = ensureAbsoluteUrl(video.coverUrl, DEFAULT_COVER);
   }
 
@@ -708,36 +726,129 @@
     }
   }
 
-  function readStoredButtonPosition() {
+  function readButtonPositionFromLocalStorage(key) {
     try {
-      const raw = localStorage.getItem(BUTTON_POS_STORAGE_KEY);
+      const raw = localStorage.getItem(key);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      const x = Number(parsed?.x);
-      const y = Number(parsed?.y);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-      return { x, y };
+      if (!parsed || typeof parsed !== "object") return null;
+      return parsed;
     } catch {
       return null;
     }
   }
 
-  function saveButtonPosition(x, y) {
+  function readButtonSideFromLocalStorage(key) {
     try {
-      localStorage.setItem(BUTTON_POS_STORAGE_KEY, JSON.stringify({ x, y }));
+      const value = localStorage.getItem(key);
+      return value === "left" || value === "right" ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function calcButtonRange(viewportWidth = window.innerWidth, viewportHeight = window.innerHeight) {
+    const width = floatingBtn?.offsetWidth || 56;
+    const height = floatingBtn?.offsetHeight || 56;
+    const min = BUTTON_MIN_MARGIN;
+    const maxX = Math.max(min, viewportWidth - width - min);
+    const maxY = Math.max(min, viewportHeight - height - min);
+    return {
+      min,
+      maxX,
+      maxY,
+      rangeX: Math.max(1, maxX - min),
+      rangeY: Math.max(1, maxY - min)
+    };
+  }
+
+  function clamp01(value) {
+    return Math.max(0, Math.min(1, value));
+  }
+
+  function resolveButtonPositionFromRecord(record) {
+    if (!record || typeof record !== "object") return null;
+    const currentRange = calcButtonRange();
+
+    const nx = Number(record.nx);
+    const ny = Number(record.ny);
+    if (Number.isFinite(nx) && Number.isFinite(ny)) {
+      return {
+        x: currentRange.min + clamp01(nx) * currentRange.rangeX,
+        y: currentRange.min + clamp01(ny) * currentRange.rangeY
+      };
+    }
+
+    const x = Number(record.x);
+    const y = Number(record.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+    const vw = Number(record.vw);
+    const vh = Number(record.vh);
+    if (Number.isFinite(vw) && Number.isFinite(vh) && vw > 0 && vh > 0) {
+      const oldRange = calcButtonRange(vw, vh);
+      const ratioX = clamp01((x - oldRange.min) / oldRange.rangeX);
+      const ratioY = clamp01((y - oldRange.min) / oldRange.rangeY);
+      return {
+        x: currentRange.min + ratioX * currentRange.rangeX,
+        y: currentRange.min + ratioY * currentRange.rangeY
+      };
+    }
+
+    return { x, y };
+  }
+
+  async function readStoredButtonPositionRecord() {
+    try {
+      const result = await chrome.storage.local.get([BUTTON_POS_STORAGE_KEY]);
+      const stored = result?.[BUTTON_POS_STORAGE_KEY];
+      if (stored && typeof stored === "object") {
+        return stored;
+      }
+    } catch {
+    }
+
+    return (
+      readButtonPositionFromLocalStorage(BUTTON_POS_STORAGE_KEY) ||
+      readButtonPositionFromLocalStorage(LEGACY_BUTTON_POS_STORAGE_KEY)
+    );
+  }
+
+  function saveButtonPosition(x, y) {
+    const position = clampButtonPosition(x, y);
+    const range = calcButtonRange();
+    const record = {
+      x: position.x,
+      y: position.y,
+      nx: clamp01((position.x - range.min) / range.rangeX),
+      ny: clamp01((position.y - range.min) / range.rangeY),
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+      updatedAt: Date.now()
+    };
+
+    try {
+      localStorage.setItem(BUTTON_POS_STORAGE_KEY, JSON.stringify(record));
+      localStorage.setItem(
+        LEGACY_BUTTON_POS_STORAGE_KEY,
+        JSON.stringify({ x: position.x, y: position.y })
+      );
+    } catch {
+    }
+
+    try {
+      void chrome.storage.local.set({
+        [BUTTON_POS_STORAGE_KEY]: record
+      });
     } catch {
     }
   }
 
   function clampButtonPosition(x, y) {
-    const width = floatingBtn?.offsetWidth || 56;
-    const height = floatingBtn?.offsetHeight || 56;
-    const margin = 12;
-    const maxX = window.innerWidth - width - margin;
-    const maxY = window.innerHeight - height - margin;
+    const range = calcButtonRange();
     return {
-      x: Math.min(Math.max(margin, x), Math.max(margin, maxX)),
-      y: Math.min(Math.max(margin, y), Math.max(margin, maxY))
+      x: Math.min(Math.max(range.min, x), range.maxX),
+      y: Math.min(Math.max(range.min, y), range.maxY)
     };
   }
 
@@ -754,33 +865,52 @@
     }
   }
 
-  function setButtonSide(side) {
+  function setButtonSide(side, persist = true) {
     if (!floatingBtn) return;
-    if (side === "left") {
+    const normalized = side === "left" ? "left" : "right";
+    if (normalized === "left") {
       floatingBtn.classList.add("bl-side-left");
       floatingBtn.classList.remove("bl-side-right");
     } else {
       floatingBtn.classList.add("bl-side-right");
       floatingBtn.classList.remove("bl-side-left");
     }
+    if (!persist) return;
+
     try {
-      localStorage.setItem(BUTTON_SIDE_STORAGE_KEY, side);
+      localStorage.setItem(BUTTON_SIDE_STORAGE_KEY, normalized);
+      localStorage.setItem(LEGACY_BUTTON_SIDE_STORAGE_KEY, normalized);
+    } catch {
+    }
+
+    try {
+      void chrome.storage.local.set({
+        [BUTTON_SIDE_STORAGE_KEY]: normalized
+      });
     } catch {
     }
   }
 
-  function applyStoredButtonSide() {
-    const saved = localStorage.getItem(BUTTON_SIDE_STORAGE_KEY);
-    setButtonSide(saved === "left" ? "left" : "right");
+  async function applyStoredButtonSide() {
+    let side =
+      readButtonSideFromLocalStorage(BUTTON_SIDE_STORAGE_KEY) ||
+      readButtonSideFromLocalStorage(LEGACY_BUTTON_SIDE_STORAGE_KEY) ||
+      "right";
+
+    try {
+      const result = await chrome.storage.local.get([BUTTON_SIDE_STORAGE_KEY]);
+      const stored = result?.[BUTTON_SIDE_STORAGE_KEY];
+      if (stored === "left" || stored === "right") {
+        side = stored;
+      }
+    } catch {
+    }
+
+    setButtonSide(side, false);
   }
 
   function applyInitialButtonPosition() {
     if (!floatingBtn) return;
-    const stored = readStoredButtonPosition();
-    if (stored) {
-      placeFloatingButtonAt(stored.x, stored.y, false);
-      return;
-    }
     const width = floatingBtn.offsetWidth || 56;
     const height = floatingBtn.offsetHeight || 56;
     placeFloatingButtonAt(
@@ -789,6 +919,14 @@
       false
     );
   }
+
+  async function restoreStoredButtonPosition() {
+    const record = await readStoredButtonPositionRecord();
+    const position = resolveButtonPositionFromRecord(record);
+    if (!position) return;
+    placeFloatingButtonAt(position.x, position.y, false);
+  }
+
 
   function bindFloatingButtonDrag() {
     if (!floatingBtn) return;
@@ -872,6 +1010,64 @@
     panel.style.bottom = "auto";
   }
 
+  function isLikelyFullscreenPlayback() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      return true;
+    }
+
+    const bodyClass = document.body?.className || "";
+    if (/(webfullscreen|fullscreen|player-mode-full)/i.test(bodyClass)) {
+      return true;
+    }
+
+    const playerContainer = document.querySelector(".bpx-player-container");
+    const playerScreen = String(playerContainer?.getAttribute("data-screen") || "");
+    if (playerScreen === "full" || playerScreen === "web") {
+      return true;
+    }
+
+    return false;
+  }
+
+  function updateFloatingUiVisibility() {
+    if (!root) return;
+    const shouldHide = isLikelyFullscreenPlayback();
+    root.classList.toggle("bl-fullscreen-hidden", shouldHide);
+    if (shouldHide) {
+      closePanel();
+      closeCreateFolderModal();
+    }
+  }
+
+  function startFullscreenWatch() {
+    updateFloatingUiVisibility();
+    window.addEventListener("fullscreenchange", updateFloatingUiVisibility);
+    window.addEventListener("webkitfullscreenchange", updateFloatingUiVisibility);
+
+    if (fullscreenObserver) {
+      fullscreenObserver.disconnect();
+      fullscreenObserver = null;
+    }
+    const observerTarget = document.body || document.documentElement;
+    if (observerTarget) {
+      fullscreenObserver = new MutationObserver(() => {
+        updateFloatingUiVisibility();
+      });
+      fullscreenObserver.observe(observerTarget, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+    }
+
+    if (fullscreenPollTimer !== null) {
+      window.clearInterval(fullscreenPollTimer);
+      fullscreenPollTimer = null;
+    }
+    fullscreenPollTimer = window.setInterval(() => {
+      updateFloatingUiVisibility();
+    }, 1500);
+  }
+
   async function getThemePreference() {
     try {
       const result = await chrome.storage.local.get([THEME_STORAGE_KEY]);
@@ -907,6 +1103,9 @@
         pointer-events: none;
         z-index: 999998;
         font-family: Inter, "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+      }
+      #bl-floating-root.bl-fullscreen-hidden {
+        display: none !important;
       }
       .bl-hidden { display: none !important; }
 
@@ -1242,11 +1441,12 @@
     });
 
     window.addEventListener("resize", () => {
+      updateFloatingUiVisibility();
       if (!panel.classList.contains("bl-hidden")) {
         positionPanelNearButton();
       }
       const rect = floatingBtn.getBoundingClientRect();
-      placeFloatingButtonAt(rect.left, rect.top, true);
+      placeFloatingButtonAt(rect.left, rect.top, false);
     });
   }
 
@@ -1386,9 +1586,11 @@
     if (subtitleEl) subtitleEl.textContent = t("subtitle.collector");
 
     applyInitialButtonPosition();
-    applyStoredButtonSide();
+    void restoreStoredButtonPosition();
+    void applyStoredButtonSide();
     bindFloatingButtonDrag();
     bindEvents();
+    startFullscreenWatch();
     renderVideo(null);
     renderFolders("");
     syncCreateFolderCounter();
