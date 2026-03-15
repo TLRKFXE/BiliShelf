@@ -1,4 +1,11 @@
-import type { CreateVideoPayload, Folder, Pagination, Tag, Video, VideoFilter } from "../types";
+import type {
+  CreateVideoPayload,
+  Folder,
+  Pagination,
+  Tag,
+  Video,
+  VideoFilter,
+} from "../types";
 
 const API_BASE = "/api";
 const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
@@ -30,14 +37,16 @@ type ChromeLikeRuntime = {
 };
 
 function getRuntime(): ChromeLikeRuntime | null {
-  const chromeRuntime = (globalThis as { chrome?: { runtime?: ChromeLikeRuntime } }).chrome
-    ?.runtime;
+  const chromeRuntime = (
+    globalThis as { chrome?: { runtime?: ChromeLikeRuntime } }
+  ).chrome?.runtime;
   if (chromeRuntime?.id && typeof chromeRuntime.sendMessage === "function") {
     return chromeRuntime;
   }
 
-  const browserRuntime = (globalThis as { browser?: { runtime?: ChromeLikeRuntime } }).browser
-    ?.runtime;
+  const browserRuntime = (
+    globalThis as { browser?: { runtime?: ChromeLikeRuntime } }
+  ).browser?.runtime;
   if (browserRuntime?.id && typeof browserRuntime.sendMessage === "function") {
     return browserRuntime;
   }
@@ -53,6 +62,10 @@ function shouldUseLocalExtensionApi() {
     window.location.protocol === "chrome-extension:" ||
     window.location.protocol === "moz-extension:"
   );
+}
+
+export function isExtensionLocalApiRuntime() {
+  return shouldUseLocalExtensionApi();
 }
 
 function parseRequestBody(init?: RequestInit): unknown {
@@ -83,7 +96,10 @@ function resolveExtensionRequestTimeout(path: string, method: string) {
   return EXTENSION_REQUEST_TIMEOUT_DEFAULT_MS;
 }
 
-function requestThroughExtension<T>(path: string, init?: RequestInit): Promise<T> {
+function requestThroughExtension<T>(
+  path: string,
+  init?: RequestInit
+): Promise<T> {
   const runtime = getRuntime();
   if (!runtime) {
     throw new Error("Extension runtime is unavailable");
@@ -92,12 +108,12 @@ function requestThroughExtension<T>(path: string, init?: RequestInit): Promise<T
   const payload: LocalApiRequest = {
     method: (init?.method || "GET").toUpperCase(),
     path,
-    body: parseRequestBody(init)
+    body: parseRequestBody(init),
   };
 
   const message = {
     type: LOCAL_API_MESSAGE,
-    request: payload
+    request: payload,
   };
   const timeoutMs = resolveExtensionRequestTimeout(path, payload.method);
 
@@ -111,14 +127,18 @@ function requestThroughExtension<T>(path: string, init?: RequestInit): Promise<T
     };
     const timer = window.setTimeout(() => {
       finish(() =>
-        reject(new Error(`Extension API request timeout (${payload.method} ${path})`))
+        reject(
+          new Error(`Extension API request timeout (${payload.method} ${path})`)
+        )
       );
     }, timeoutMs);
 
     const callback = (response?: unknown) => {
-      const runtimeLastError =
-        (globalThis as { chrome?: { runtime?: { lastError?: { message?: string } } } }).chrome
-          ?.runtime?.lastError?.message;
+      const runtimeLastError = (
+        globalThis as {
+          chrome?: { runtime?: { lastError?: { message?: string } } };
+        }
+      ).chrome?.runtime?.lastError?.message;
       if (runtimeLastError) {
         finish(() => reject(new Error(runtimeLastError)));
         return;
@@ -132,16 +152,17 @@ function requestThroughExtension<T>(path: string, init?: RequestInit): Promise<T
 
       finish(() =>
         reject(
-          new Error(
-            result.error || `Request failed: ${result.status ?? 500}`
-          )
+          new Error(result.error || `Request failed: ${result.status ?? 500}`)
         )
       );
     };
 
     try {
       const maybePromise = runtime.sendMessage(message, callback);
-      if (maybePromise && typeof (maybePromise as Promise<unknown>).then === "function") {
+      if (
+        maybePromise &&
+        typeof (maybePromise as Promise<unknown>).then === "function"
+      ) {
         (maybePromise as Promise<unknown>)
           .then((response) => callback(response))
           .catch((error) => finish(() => reject(error)));
@@ -164,12 +185,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const response = await fetch(`${API_BASE}${path}`, {
     headers,
-    ...init
+    ...init,
   });
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(extractErrorMessage(text) || `Request failed: ${response.status}`);
+    throw new Error(
+      extractErrorMessage(text) || `Request failed: ${response.status}`
+    );
   }
 
   if (response.status === 204) {
@@ -195,30 +218,36 @@ export async function fetchFolders() {
   return data.items;
 }
 
-export async function createFolder(payload: { name: string; description?: string }) {
+export async function createFolder(payload: {
+  name: string;
+  description?: string;
+}) {
   return request<Folder>("/folders", {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
 
-export async function updateFolder(id: number, payload: { name?: string; description?: string | null }) {
+export async function updateFolder(
+  id: number,
+  payload: { name?: string; description?: string | null }
+) {
   return request<Folder>(`/folders/${id}`, {
     method: "PATCH",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
 
 export async function deleteFolder(id: number) {
   return request<void>(`/folders/${id}`, {
-    method: "DELETE"
+    method: "DELETE",
   });
 }
 
 export async function reorderFolders(folderIds: number[]) {
   return request<{ ok: true; orderedIds: number[] }>("/folders/order", {
     method: "PATCH",
-    body: JSON.stringify({ folderIds })
+    body: JSON.stringify({ folderIds }),
   });
 }
 
@@ -230,27 +259,30 @@ export async function fetchTrashFolders() {
 export async function restoreTrashFolder(id: number, restoreVideos = true) {
   return request<{ ok: true }>(`/trash/folders/${id}/restore`, {
     method: "POST",
-    body: JSON.stringify({ restoreVideos })
+    body: JSON.stringify({ restoreVideos }),
   });
 }
 
 export async function purgeTrashFolder(id: number) {
   return request<void>(`/trash/folders/${id}`, {
-    method: "DELETE"
+    method: "DELETE",
   });
 }
 
 export async function createVideo(payload: CreateVideoPayload) {
   return request<Video>("/videos", {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
 
 export async function fetchVideoById(id: number) {
-  return request<Video & { folders?: Array<{ id: number; name: string }>; tags?: Array<{ id: number; name: string; type: "system" | "custom" }> }>(
-    `/videos/${id}`
-  );
+  return request<
+    Video & {
+      folders?: Array<{ id: number; name: string }>;
+      tags?: Array<{ id: number; name: string; type: "system" | "custom" }>;
+    }
+  >(`/videos/${id}`);
 }
 
 export async function updateVideo(
@@ -270,7 +302,7 @@ export async function updateVideo(
 ) {
   return request<Video>(`/videos/${id}`, {
     method: "PATCH",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
 
@@ -289,14 +321,21 @@ export async function fetchVideos(options: {
     searchParams.set("tags", options.tags.join(","));
   }
   if (options.filters?.title) searchParams.set("title", options.filters.title);
-  if (options.filters?.description) searchParams.set("description", options.filters.description);
-  if (options.filters?.uploader) searchParams.set("uploader", options.filters.uploader);
-  if (options.filters?.customTag) searchParams.set("customTag", options.filters.customTag);
-  if (options.filters?.systemTag) searchParams.set("systemTag", options.filters.systemTag);
-  if (options.filters?.from) searchParams.set("from", String(options.filters.from));
+  if (options.filters?.description)
+    searchParams.set("description", options.filters.description);
+  if (options.filters?.uploader)
+    searchParams.set("uploader", options.filters.uploader);
+  if (options.filters?.customTag)
+    searchParams.set("customTag", options.filters.customTag);
+  if (options.filters?.systemTag)
+    searchParams.set("systemTag", options.filters.systemTag);
+  if (options.filters?.from)
+    searchParams.set("from", String(options.filters.from));
   if (options.filters?.to) searchParams.set("to", String(options.filters.to));
 
-  return request<{ items: Video[]; pagination: Pagination }>(`/videos?${searchParams.toString()}`);
+  return request<{ items: Video[]; pagination: Pagination }>(
+    `/videos?${searchParams.toString()}`
+  );
 }
 
 export async function searchVideos(options: {
@@ -316,17 +355,27 @@ export async function searchVideos(options: {
     searchParams.set("tags", options.tags.join(","));
   }
   if (options.filters?.title) searchParams.set("title", options.filters.title);
-  if (options.filters?.description) searchParams.set("description", options.filters.description);
-  if (options.filters?.uploader) searchParams.set("uploader", options.filters.uploader);
-  if (options.filters?.customTag) searchParams.set("customTag", options.filters.customTag);
-  if (options.filters?.systemTag) searchParams.set("systemTag", options.filters.systemTag);
-  if (options.filters?.from) searchParams.set("from", String(options.filters.from));
+  if (options.filters?.description)
+    searchParams.set("description", options.filters.description);
+  if (options.filters?.uploader)
+    searchParams.set("uploader", options.filters.uploader);
+  if (options.filters?.customTag)
+    searchParams.set("customTag", options.filters.customTag);
+  if (options.filters?.systemTag)
+    searchParams.set("systemTag", options.filters.systemTag);
+  if (options.filters?.from)
+    searchParams.set("from", String(options.filters.from));
   if (options.filters?.to) searchParams.set("to", String(options.filters.to));
 
-  return request<{ items: Video[]; pagination: Pagination }>(`/videos/search?${searchParams.toString()}`);
+  return request<{ items: Video[]; pagination: Pagination }>(
+    `/videos/search?${searchParams.toString()}`
+  );
 }
 
-export async function fetchTags(options?: { search?: string; type?: "system" | "custom" }) {
+export async function fetchTags(options?: {
+  search?: string;
+  type?: "system" | "custom";
+}) {
   const baseParams = new URLSearchParams();
   if (options?.search) baseParams.set("search", options.search);
   if (options?.type) baseParams.set("type", options.type);
@@ -341,7 +390,9 @@ export async function fetchTags(options?: { search?: string; type?: "system" | "
     params.set("page", String(page));
     params.set("pageSize", String(pageSize));
 
-    const data = await request<{ items: Tag[]; pagination?: Pagination }>(`/tags?${params.toString()}`);
+    const data = await request<{ items: Tag[]; pagination?: Pagination }>(
+      `/tags?${params.toString()}`
+    );
     const items = data.items ?? [];
     allTags.push(...items);
 
@@ -359,23 +410,26 @@ export async function fetchTags(options?: { search?: string; type?: "system" | "
   return allTags;
 }
 
-export async function createTag(payload: { name: string; type?: "system" | "custom" }) {
+export async function createTag(payload: {
+  name: string;
+  type?: "system" | "custom";
+}) {
   return request<Tag>("/tags", {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
 
 export async function updateTag(id: number, payload: { name: string }) {
   return request<Tag>(`/tags/${id}`, {
     method: "PATCH",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
 
 export async function deleteTag(id: number) {
   return request<void>(`/tags/${id}`, {
-    method: "DELETE"
+    method: "DELETE",
   });
 }
 
@@ -385,15 +439,20 @@ export async function batchMoveOrCopyVideos(payload: {
   sourceFolderId?: number;
   mode: "move" | "copy";
 }) {
-  const query = payload.sourceFolderId ? `?sourceFolderId=${payload.sourceFolderId}` : "";
-  return request<{ ok: true; affected: number }>(`/videos/batch/folders${query}`, {
-    method: "POST",
-    body: JSON.stringify({
-      videoIds: payload.videoIds,
-      folderId: payload.folderId,
-      mode: payload.mode
-    })
-  });
+  const query = payload.sourceFolderId
+    ? `?sourceFolderId=${payload.sourceFolderId}`
+    : "";
+  return request<{ ok: true; affected: number }>(
+    `/videos/batch/folders${query}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        videoIds: payload.videoIds,
+        folderId: payload.folderId,
+        mode: payload.mode,
+      }),
+    }
+  );
 }
 
 export async function batchDeleteVideos(payload: {
@@ -403,27 +462,32 @@ export async function batchDeleteVideos(payload: {
 }) {
   return request<{ ok: true; affected: number }>("/videos/batch/delete", {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
 
-export async function fetchTrashVideos(options?: { page?: number; pageSize?: number }) {
+export async function fetchTrashVideos(options?: {
+  page?: number;
+  pageSize?: number;
+}) {
   const searchParams = new URLSearchParams();
   if (options?.page) searchParams.set("page", String(options.page));
   if (options?.pageSize) searchParams.set("pageSize", String(options.pageSize));
 
-  return request<{ items: Video[]; pagination: Pagination }>(`/trash/videos?${searchParams.toString()}`);
+  return request<{ items: Video[]; pagination: Pagination }>(
+    `/trash/videos?${searchParams.toString()}`
+  );
 }
 
 export async function restoreTrashVideo(id: number) {
   return request<{ ok: true }>(`/trash/videos/${id}/restore`, {
-    method: "POST"
+    method: "POST",
   });
 }
 
 export async function purgeTrashVideo(id: number) {
   return request<void>(`/trash/videos/${id}`, {
-    method: "DELETE"
+    method: "DELETE",
   });
 }
 
@@ -555,28 +619,35 @@ export type ImportLibraryResult = {
 export async function syncFromBilibili(payload: SyncFromBilibiliPayload = {}) {
   return request<SyncFromBilibiliResult>("/sync/bilibili", {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
 
-export async function fetchBilibiliSyncFolders(payload?: { cookie?: string; forceRefresh?: boolean }) {
-  return request<{ ok: true; items: SyncRemoteFolder[]; total: number }>("/sync/bilibili/folders", {
-    method: "POST",
-    body: JSON.stringify(payload ?? {})
-  });
+export async function fetchBilibiliSyncFolders(payload?: {
+  cookie?: string;
+  forceRefresh?: boolean;
+}) {
+  return request<{ ok: true; items: SyncRemoteFolder[]; total: number }>(
+    "/sync/bilibili/folders",
+    {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
+    }
+  );
 }
 
 export async function startHistoryModelSync(payload?: {
   selectedRemoteFolderIds?: number[];
   resumePageByFolder?: Record<string, number>;
 }) {
-  return request<{ ok: true; started: boolean; status: HistoryModelSyncStatus }>(
-    "/sync/bilibili/history-model/start",
-    {
-      method: "POST",
-      body: JSON.stringify(payload ?? {})
-    }
-  );
+  return request<{
+    ok: true;
+    started: boolean;
+    status: HistoryModelSyncStatus;
+  }>("/sync/bilibili/history-model/start", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
 }
 
 export async function fetchHistoryModelSyncStatus() {
@@ -589,34 +660,39 @@ export async function fetchTagEnrichmentStatus() {
 
 export async function pauseTagEnrichment() {
   return request<TagEnrichmentStatus>("/sync/bilibili/tag-enrichment/pause", {
-    method: "POST"
+    method: "POST",
   });
 }
 
 export async function resumeTagEnrichment() {
   return request<TagEnrichmentStatus>("/sync/bilibili/tag-enrichment/resume", {
-    method: "POST"
+    method: "POST",
   });
 }
 
 export async function runTagEnrichmentNow() {
   return request<TagEnrichmentStatus>("/sync/bilibili/tag-enrichment/run", {
-    method: "POST"
+    method: "POST",
   });
 }
 
 export async function fetchBidirectionalSyncSettings() {
-  return request<BidirectionalSyncSettings>("/sync/bilibili/bidirectional/settings");
+  return request<BidirectionalSyncSettings>(
+    "/sync/bilibili/bidirectional/settings"
+  );
 }
 
 export async function updateBidirectionalSyncSettings(payload: {
   biliToLocalEnabled?: boolean;
   localToBiliEnabled?: boolean;
 }) {
-  return request<BidirectionalSyncSettings>("/sync/bilibili/bidirectional/settings", {
-    method: "PATCH",
-    body: JSON.stringify(payload)
-  });
+  return request<BidirectionalSyncSettings>(
+    "/sync/bilibili/bidirectional/settings",
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }
+  );
 }
 
 export async function fetchWebDavSettings() {
@@ -632,24 +708,26 @@ export async function updateWebDavSettings(payload: {
 }) {
   return request<{ ok: true } & WebDavSettings>("/backup/webdav/settings", {
     method: "PATCH",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
 
 export async function testWebDavConnection() {
   return request<{ ok: true } & WebDavSettings>("/backup/webdav/test", {
-    method: "POST"
+    method: "POST",
   });
 }
 
 export async function uploadWebDavBackup() {
-  return request<{
-    ok: true;
-    latestFileName: string;
-    snapshotFileName: string;
-    summary: { folders: number; videos: number; tags: number };
-  } & WebDavSettings>("/backup/webdav/upload", {
-    method: "POST"
+  return request<
+    {
+      ok: true;
+      latestFileName: string;
+      snapshotFileName: string;
+      summary: { folders: number; videos: number; tags: number };
+    } & WebDavSettings
+  >("/backup/webdav/upload", {
+    method: "POST",
   });
 }
 
@@ -661,7 +739,7 @@ export async function downloadWebDavBackup(payload?: { fileName?: string }) {
     content: string;
   }>("/backup/webdav/download", {
     method: "POST",
-    body: JSON.stringify(payload ?? {})
+    body: JSON.stringify(payload ?? {}),
   });
 }
 
@@ -681,7 +759,7 @@ export async function restoreWebDavBackup(payload?: { fileName?: string }) {
     webdav: WebDavSettings;
   }>("/backup/webdav/restore", {
     method: "POST",
-    body: JSON.stringify(payload ?? {})
+    body: JSON.stringify(payload ?? {}),
   });
 }
 
@@ -694,6 +772,6 @@ export async function exportLibrary(format: "json" | "csv") {
 export async function importLibrary(payload: ImportLibraryPayload) {
   return request<ImportLibraryResult>("/import", {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }

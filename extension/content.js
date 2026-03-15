@@ -204,10 +204,99 @@
     return value ? value.trim() : "";
   }
 
-  function createNodeFromHtml(html) {
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = html.trim();
-    return wrapper.firstElementChild;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
+  function setAttributes(el, attrs) {
+    if (!attrs) return;
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value === null || value === undefined) continue;
+      el.setAttribute(key, String(value));
+    }
+  }
+
+  function appendChildren(parent, children) {
+    if (!children?.length) return;
+    for (const child of children) {
+      if (child === null || child === undefined) continue;
+      parent.appendChild(
+        typeof child === "string" ? document.createTextNode(child) : child
+      );
+    }
+  }
+
+  function createEl(tag, options = {}, children = []) {
+    const el = document.createElement(tag);
+    if (options.id) el.id = options.id;
+    if (options.className) el.className = options.className;
+    if (options.text !== undefined) el.textContent = options.text;
+    setAttributes(el, options.attrs);
+    appendChildren(el, children);
+    return el;
+  }
+
+  function createSvgEl(tag, attrs = {}, children = []) {
+    const el = document.createElementNS(SVG_NS, tag);
+    setAttributes(el, attrs);
+    appendChildren(el, children);
+    return el;
+  }
+
+  function createBrandMarkSvg(fillColor) {
+    return createSvgEl(
+      "svg",
+      { viewBox: "0 0 24 24", fill: "none" },
+      [
+        createSvgEl("path", {
+          d: "M12 4.5L19 8.5V15.5L12 19.5L5 15.5V8.5L12 4.5Z",
+          fill: fillColor
+        }),
+        createSvgEl("path", {
+          d: "M12 8L16 10.3V13.7L12 16L8 13.7V10.3L12 8Z",
+          fill: "#4C66FF"
+        }),
+        createSvgEl("path", {
+          d: "M12 4.5V19.5",
+          stroke: "#4C66FF",
+          "stroke-width": "1.5",
+          "stroke-linecap": "round"
+        }),
+        createSvgEl("path", {
+          d: "M5 8.5L19 15.5",
+          stroke: "#4C66FF",
+          "stroke-width": "1.5",
+          "stroke-linecap": "round"
+        })
+      ]
+    );
+  }
+
+  function createFloatingButtonSvg() {
+    return createSvgEl(
+      "svg",
+      { viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" },
+      [
+        createSvgEl("path", {
+          d: "M12 4.5L19 8.5V15.5L12 19.5L5 15.5V8.5L12 4.5Z",
+          fill: "currentColor"
+        }),
+        createSvgEl("path", {
+          d: "M12 8L16 10.3V13.7L12 16L8 13.7V10.3L12 8Z",
+          fill: "#4C66FF"
+        }),
+        createSvgEl("path", {
+          d: "M12 4.5V19.5",
+          stroke: "#4C66FF",
+          "stroke-width": "1.5",
+          "stroke-linecap": "round"
+        }),
+        createSvgEl("path", {
+          d: "M5 8.5L19 15.5",
+          stroke: "#4C66FF",
+          "stroke-width": "1.5",
+          "stroke-linecap": "round"
+        })
+      ]
+    );
   }
 
   function ensureAbsoluteUrl(input, fallback = "") {
@@ -747,32 +836,34 @@
       folder.name.toLowerCase().includes(lower)
     );
 
-    folderListEl.innerHTML = "";
+    folderListEl.replaceChildren();
     if (visible.length === 0) {
       folderListEl.appendChild(
-        createNodeFromHtml(`<div class="bl-empty">${t("status.noFolders")}</div>`)
+        createEl("div", { className: "bl-empty", text: t("status.noFolders") })
       );
       renderSelectedCount();
       return;
     }
 
     for (const folder of visible) {
-      const checked = selectedFolderIds.has(folder.id) ? "checked" : "";
-      const node = createNodeFromHtml(`
-        <label class="bl-folder-item">
-          <input type="checkbox" data-folder-id="${folder.id}" ${checked} />
-          <div class="bl-folder-content">
-            <p class="bl-folder-name"></p>
-            <p class="bl-folder-meta"></p>
-          </div>
-        </label>
-      `);
-      node.querySelector(".bl-folder-name").textContent = folder.name;
-      node.querySelector(".bl-folder-meta").textContent = t("status.videosCount", {
-        count: folder.itemCount ?? 0
+      const node = createEl("label", { className: "bl-folder-item" });
+      const checkbox = createEl("input", {
+        attrs: {
+          type: "checkbox",
+          "data-folder-id": String(folder.id)
+        }
       });
+      checkbox.checked = selectedFolderIds.has(folder.id);
+      const content = createEl("div", { className: "bl-folder-content" }, [
+        createEl("p", { className: "bl-folder-name", text: folder.name }),
+        createEl("p", {
+          className: "bl-folder-meta",
+          text: t("status.videosCount", { count: folder.itemCount ?? 0 })
+        })
+      ]);
+      node.appendChild(checkbox);
+      node.appendChild(content);
 
-      const checkbox = node.querySelector("input");
       checkbox?.addEventListener("change", (event) => {
         const target = event.target;
         const id = Number(target?.dataset?.folderId);
@@ -1727,117 +1818,227 @@
     root = document.createElement("div");
     root.id = "bl-floating-root";
 
-    panel = createNodeFromHtml(`
-      <div id="bl-floating-panel" class="bl-hidden" data-theme="light">
-        <div class="bl-header">
-          <div class="bl-title-wrap">
-            <h2 class="bl-title">
-              <span class="bl-title-row">
-                <span class="bl-brand-mark" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none">
-                    <path d="M12 4.5L19 8.5V15.5L12 19.5L5 15.5V8.5L12 4.5Z" fill="white"></path>
-                    <path d="M12 8L16 10.3V13.7L12 16L8 13.7V10.3L12 8Z" fill="#4C66FF"></path>
-                    <path d="M12 4.5V19.5" stroke="#4C66FF" stroke-width="1.5" stroke-linecap="round"></path>
-                    <path d="M5 8.5L19 15.5" stroke="#4C66FF" stroke-width="1.5" stroke-linecap="round"></path>
-                  </svg>
-                </span>
-                <span>${t("title.collector")}</span>
-              </span>
-            </h2>
-            <p class="bl-subtitle">${t("subtitle.collector")}</p>
-          </div>
-          <button id="bl-close-btn" class="bl-btn bl-btn-outline" type="button">${t("button.close")}</button>
-        </div>
+    panel = createEl(
+      "div",
+      {
+        id: "bl-floating-panel",
+        className: "bl-hidden",
+        attrs: { "data-theme": "light" }
+      },
+      [
+        createEl("div", { className: "bl-header" }, [
+          createEl("div", { className: "bl-title-wrap" }, [
+            createEl("h2", { className: "bl-title" }, [
+              createEl("span", { className: "bl-title-row" }, [
+                createEl(
+                  "span",
+                  { className: "bl-brand-mark", attrs: { "aria-hidden": "true" } },
+                  [createBrandMarkSvg("white")]
+                ),
+                createEl("span", { text: t("title.collector") })
+              ])
+            ]),
+            createEl("p", {
+              className: "bl-subtitle",
+              text: t("subtitle.collector")
+            })
+          ]),
+          createEl("button", {
+            id: "bl-close-btn",
+            className: "bl-btn bl-btn-outline",
+            attrs: { type: "button" },
+            text: t("button.close")
+          })
+        ]),
+        createEl("section", { className: "bl-video-card" }, [
+          createEl("img", {
+            id: "bl-video-cover",
+            className: "bl-video-cover",
+            attrs: { src: DEFAULT_COVER, alt: t("status.coverAlt") }
+          }),
+          createEl("div", {}, [
+            createEl("p", {
+              id: "bl-video-title",
+              className: "bl-video-title",
+              text: t("status.noVideoTitle")
+            }),
+            createEl("p", {
+              id: "bl-video-meta",
+              className: "bl-video-meta",
+              text: "-"
+            })
+          ])
+        ]),
+        createEl("section", { className: "bl-card" }, [
+          createEl("div", { className: "bl-card-head" }, [
+            createEl("span", {
+              className: "bl-label",
+              text: t("section.folders")
+            })
+          ]),
+          createEl("div", { className: "bl-folder-toolbar" }, [
+            createEl("input", {
+              id: "bl-folder-search",
+              className: "bl-input",
+              attrs: { placeholder: t("field.searchFolders") }
+            }),
+            createEl("button", {
+              id: "bl-folder-create-open",
+              className: "bl-btn bl-btn-secondary",
+              attrs: { type: "button" },
+              text: t("button.newFolder")
+            })
+          ]),
+          createEl("div", { className: "bl-folder-actions" }, [
+            createEl("div", { className: "bl-folder-actions-left" }, [
+              createEl("button", {
+                id: "bl-select-all-folders",
+                className: "bl-btn bl-btn-outline",
+                attrs: { type: "button" },
+                text: t("button.selectAll")
+              }),
+              createEl("button", {
+                id: "bl-clear-folders",
+                className: "bl-btn bl-btn-outline",
+                attrs: { type: "button" },
+                text: t("button.clear")
+              })
+            ]),
+            createEl("span", {
+              id: "bl-selected-count",
+              className: "bl-selected-count",
+              text: t("status.selectedCount", { count: 0 })
+            })
+          ]),
+          createEl("div", { id: "bl-folder-list", className: "bl-folder-list" })
+        ]),
+        createEl("section", { className: "bl-card" }, [
+          createEl("div", { className: "bl-card-head" }, [
+            createEl("span", {
+              className: "bl-label",
+              text: t("section.customTags")
+            })
+          ]),
+          createEl("input", {
+            id: "bl-custom-tags",
+            className: "bl-input",
+            attrs: { placeholder: t("field.customTags") }
+          })
+        ]),
+        createEl("div", { className: "bl-footer" }, [
+          createEl("button", {
+            id: "bl-save-btn",
+            className: "bl-btn bl-btn-primary",
+            attrs: { type: "button" },
+            text: t("button.save")
+          })
+        ]),
+        createEl("p", { className: "bl-credit", text: t("footer.credit") })
+      ]
+    );
 
-        <section class="bl-video-card">
-          <img id="bl-video-cover" class="bl-video-cover" src="${DEFAULT_COVER}" alt="${t("status.coverAlt")}" />
-          <div>
-            <p id="bl-video-title" class="bl-video-title">${t("status.noVideoTitle")}</p>
-            <p id="bl-video-meta" class="bl-video-meta">-</p>
-          </div>
-        </section>
+    modal = createEl(
+      "div",
+      {
+        id: "bl-create-folder-modal",
+        className: "bl-hidden",
+        attrs: { "data-theme": "light" }
+      },
+      [
+        createEl("div", { className: "bl-modal-panel" }, [
+          createEl("div", { className: "bl-modal-header" }, [
+            createEl("h3", {
+              className: "bl-modal-title",
+              text: t("modal.createFolder")
+            }),
+            createEl("button", {
+              id: "bl-modal-folder-close",
+              className: "bl-btn bl-btn-outline",
+              attrs: { type: "button" },
+              text: t("button.close")
+            })
+          ]),
+          createEl("div", { className: "bl-form-item" }, [
+            createEl("div", { className: "bl-form-row" }, [
+              createEl("span", { className: "bl-form-label" }, [
+                t("modal.name"),
+                " ",
+                createEl("span", {
+                  attrs: { style: "color:#ef4444" },
+                  text: "*"
+                })
+              ]),
+              createEl("span", {
+                id: "bl-folder-name-count",
+                className: "bl-form-count",
+                text: "0/20"
+              })
+            ]),
+            createEl("input", {
+              id: "bl-modal-folder-name",
+              className: "bl-input",
+              attrs: {
+                maxlength: "20",
+                placeholder: t("modal.folderNamePlaceholder")
+              }
+            })
+          ]),
+          createEl("div", { className: "bl-form-item" }, [
+            createEl("div", { className: "bl-form-row" }, [
+              createEl("span", {
+                className: "bl-form-label",
+                text: t("modal.description")
+              }),
+              createEl("span", {
+                id: "bl-folder-desc-count",
+                className: "bl-form-count",
+                text: "0/200"
+              })
+            ]),
+            createEl("textarea", {
+              id: "bl-modal-folder-desc",
+              className: "bl-textarea",
+              attrs: {
+                maxlength: "200",
+                placeholder: t("modal.folderDescPlaceholder")
+              }
+            })
+          ]),
+          createEl("div", { className: "bl-modal-actions" }, [
+            createEl("button", {
+              id: "bl-modal-folder-cancel",
+              className: "bl-btn bl-btn-outline",
+              attrs: { type: "button" },
+              text: t("button.cancel")
+            }),
+            createEl("button", {
+              id: "bl-modal-folder-save",
+              className: "bl-btn bl-btn-primary",
+              attrs: { type: "button" },
+              text: t("button.create")
+            })
+          ])
+        ])
+      ]
+    );
 
-        <section class="bl-card">
-          <div class="bl-card-head">
-            <span class="bl-label">${t("section.folders")}</span>
-          </div>
+    floatingBtn = createEl(
+      "button",
+      {
+        id: "bl-floating-btn",
+        attrs: {
+          "data-theme": "light",
+          title: t("title.collector"),
+          "aria-label": t("title.collector")
+        }
+      },
+      [createFloatingButtonSvg()]
+    );
 
-          <div class="bl-folder-toolbar">
-            <input id="bl-folder-search" class="bl-input" placeholder="${t("field.searchFolders")}" />
-            <button id="bl-folder-create-open" class="bl-btn bl-btn-secondary" type="button">${t("button.newFolder")}</button>
-          </div>
-
-          <div class="bl-folder-actions">
-            <div class="bl-folder-actions-left">
-              <button id="bl-select-all-folders" class="bl-btn bl-btn-outline" type="button">${t("button.selectAll")}</button>
-              <button id="bl-clear-folders" class="bl-btn bl-btn-outline" type="button">${t("button.clear")}</button>
-            </div>
-            <span id="bl-selected-count" class="bl-selected-count">${t("status.selectedCount", { count: 0 })}</span>
-          </div>
-
-          <div id="bl-folder-list" class="bl-folder-list"></div>
-        </section>
-
-        <section class="bl-card">
-          <div class="bl-card-head">
-            <span class="bl-label">${t("section.customTags")}</span>
-          </div>
-          <input id="bl-custom-tags" class="bl-input" placeholder="${t("field.customTags")}" />
-        </section>
-
-        <div class="bl-footer">
-          <button id="bl-save-btn" class="bl-btn bl-btn-primary" type="button">${t("button.save")}</button>
-        </div>
-        <p class="bl-credit">${t("footer.credit")}</p>
-      </div>
-    `);
-
-    modal = createNodeFromHtml(`
-      <div id="bl-create-folder-modal" class="bl-hidden" data-theme="light">
-        <div class="bl-modal-panel">
-          <div class="bl-modal-header">
-            <h3 class="bl-modal-title">${t("modal.createFolder")}</h3>
-            <button id="bl-modal-folder-close" class="bl-btn bl-btn-outline" type="button">${t("button.close")}</button>
-          </div>
-
-          <div class="bl-form-item">
-            <div class="bl-form-row">
-              <span class="bl-form-label">${t("modal.name")} <span style="color:#ef4444">*</span></span>
-              <span id="bl-folder-name-count" class="bl-form-count">0/20</span>
-            </div>
-            <input id="bl-modal-folder-name" maxlength="20" class="bl-input" placeholder="${t("modal.folderNamePlaceholder")}" />
-          </div>
-
-          <div class="bl-form-item">
-            <div class="bl-form-row">
-              <span class="bl-form-label">${t("modal.description")}</span>
-              <span id="bl-folder-desc-count" class="bl-form-count">0/200</span>
-            </div>
-            <textarea id="bl-modal-folder-desc" maxlength="200" class="bl-textarea" placeholder="${t("modal.folderDescPlaceholder")}"></textarea>
-          </div>
-
-          <div class="bl-modal-actions">
-            <button id="bl-modal-folder-cancel" class="bl-btn bl-btn-outline" type="button">${t("button.cancel")}</button>
-            <button id="bl-modal-folder-save" class="bl-btn bl-btn-primary" type="button">${t("button.create")}</button>
-          </div>
-        </div>
-      </div>
-    `);
-
-    floatingBtn = createNodeFromHtml(`
-      <button id="bl-floating-btn" data-theme="light" title="${t("title.collector")}" aria-label="${t("title.collector")}">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 4.5L19 8.5V15.5L12 19.5L5 15.5V8.5L12 4.5Z" fill="currentColor"></path>
-          <path d="M12 8L16 10.3V13.7L12 16L8 13.7V10.3L12 8Z" fill="#4C66FF"></path>
-          <path d="M12 4.5V19.5" stroke="#4C66FF" stroke-width="1.5" stroke-linecap="round"></path>
-          <path d="M5 8.5L19 15.5" stroke="#4C66FF" stroke-width="1.5" stroke-linecap="round"></path>
-        </svg>
-      </button>
-    `);
-
-    toastRoot = createNodeFromHtml(`
-      <div class="bl-toast-root" aria-live="polite" aria-atomic="true"></div>
-    `);
+    toastRoot = createEl("div", {
+      className: "bl-toast-root",
+      attrs: { "aria-live": "polite", "aria-atomic": "true" }
+    });
 
     root.appendChild(panel);
     root.appendChild(modal);

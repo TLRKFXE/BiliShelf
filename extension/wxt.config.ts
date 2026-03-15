@@ -23,7 +23,7 @@ export default defineConfig({
     },
     browser_specific_settings: {
       gecko: {
-        id: "bilishelf@tlrk.dev",
+        id: "bilishelf-dev-20260315@tlrk.dev",
         data_collection_permissions: {
           required: ["none"]
         }

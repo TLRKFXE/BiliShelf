@@ -28,6 +28,7 @@ import { Progress } from "@/components/ui/progress";
 const props = defineProps<{
   t: (key: string, vars?: Record<string, string | number>) => string;
   trashMode: boolean;
+  showSyncSettings: boolean;
   currentViewLabel: string;
   currentScopeLabel: string;
   localeToggleText: string;
@@ -139,7 +140,7 @@ function submitExport(format: "json" | "csv") {
         {{ props.t("header.manageTags") }}
       </Button>
       <Button
-        v-if="!props.trashMode"
+        v-if="!props.trashMode && props.showSyncSettings"
         size="sm"
         variant="outline"
         class="justify-start"

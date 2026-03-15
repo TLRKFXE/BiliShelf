@@ -492,6 +492,17 @@ function isRiskControlError(message: string) {
   return text.includes("(412)") || text.includes(" 412");
 }
 
+function isLoginRequiredError(message: string) {
+  const text = normalizeText(message).toLowerCase();
+  return (
+    text === "bilibili_login_required" ||
+    text.includes("账号未登录") ||
+    text.includes("未登录") ||
+    text.includes("not login") ||
+    text.includes("login required")
+  );
+}
+
 async function fetchBiliJson<T>(url: string, cookie?: string): Promise<T> {
   const maxAttempts = 4;
   let lastError: Error | null = null;
@@ -937,7 +948,7 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (message === "BILIBILI_LOGIN_REQUIRED") {
+      if (isLoginRequiredError(message)) {
         return reply.code(401).send({
           statusCode: 401,
           error: "Unauthorized",
@@ -1122,7 +1133,7 @@ export const syncRoutes: FastifyPluginAsync = async (app) => {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (message === "BILIBILI_LOGIN_REQUIRED") {
+      if (isLoginRequiredError(message)) {
         return reply.code(401).send({
           statusCode: 401,
           error: "Unauthorized",

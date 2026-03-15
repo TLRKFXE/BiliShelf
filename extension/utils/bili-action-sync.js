@@ -23,7 +23,9 @@ export function isCollectorUiUrl(rawUrl) {
   const parsed = safeParseUrl(rawUrl);
   if (!parsed) return false;
   const path = parsed.pathname || "";
-  return /^\/video\/BV[0-9A-Za-z]+/i.test(path) || /^\/list\/watchlater/i.test(path);
+  return (
+    /^\/video\/BV[0-9A-Za-z]+/i.test(path) || /^\/list\/watchlater/i.test(path)
+  );
 }
 
 export function isActionSyncPageUrl(rawUrl) {
@@ -46,14 +48,18 @@ export function containsFavoriteActionKeyword(text) {
   const normalized = String(text || "").toLowerCase();
   if (!normalized) return false;
 
-  const hasStrongAction = /(?:取消收藏|移除|删除|移动|复制|unfavorite|remove|delete|move|copy)/i.test(normalized);
+  const hasStrongAction =
+    /(?:取消收藏|移除|删除|移动|复制|unfavorite|remove|delete|move|copy)/i.test(
+      normalized
+    );
   if (hasStrongAction) return true;
 
   const hasFavorite = /(?:收藏|favorite|fav)/i.test(normalized);
   if (!hasFavorite) return false;
 
   // "收藏夹" is usually a noun label rather than an action button.
-  const hasFolderNoun = /收藏夹/i.test(normalized) || /favorite\s*folder/i.test(normalized);
+  const hasFolderNoun =
+    /收藏夹/i.test(normalized) || /favorite\s*folder/i.test(normalized);
   if (hasFolderNoun) return false;
 
   return true;

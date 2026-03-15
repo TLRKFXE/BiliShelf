@@ -59,7 +59,6 @@ export function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_folder_items_folder_id ON folder_items(folder_id);
     CREATE INDEX IF NOT EXISTS idx_folder_items_video_id ON folder_items(video_id);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_remote_media_unique ON folders(remote_media_id);
     CREATE INDEX IF NOT EXISTS idx_videos_partition ON videos(partition);
     CREATE INDEX IF NOT EXISTS idx_video_tags_video_id ON video_tags(video_id);
     CREATE INDEX IF NOT EXISTS idx_video_tags_tag_id ON video_tags(tag_id);

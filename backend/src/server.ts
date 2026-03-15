@@ -8,7 +8,7 @@ async function start() {
 
   try {
     await app.listen({
-      host: env.HOST,
+      host: "127.0.0.1",
       port: env.PORT
     });
   } catch (error) {

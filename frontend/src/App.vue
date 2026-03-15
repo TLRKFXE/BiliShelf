@@ -23,9 +23,7 @@ import {
   useLibraryStore,
 } from "./stores/library";
 import { useAppUiStore } from "./stores/app-ui";
-import {
-  parseKeyword as parseKeywordFromUtils,
-} from "./lib/search-keyword";
+import { parseKeyword as parseKeywordFromUtils } from "./lib/search-keyword";
 import { MANAGER_I18N } from "./lib/manager-i18n";
 import { useAppToast } from "./composables/use-app-toast";
 import { useConfirmDialog } from "./composables/use-confirm-dialog";
@@ -45,6 +43,7 @@ import {
   fetchBidirectionalSyncSettings,
   fetchWebDavSettings,
   fetchBilibiliSyncFolders,
+  isExtensionLocalApiRuntime,
   importLibrary,
   downloadWebDavBackup,
   pauseTagEnrichment,
@@ -174,12 +173,16 @@ const bidirectionalSyncSaving = ref(false);
 const webdavDialogOpen = ref(false);
 const webdavSettings = ref<WebDavSettings | null>(null);
 const webdavBusy = ref(false);
-const TAG_SYNC_ENABLED = true;
+const EXTENSION_LOCAL_API_RUNTIME = isExtensionLocalApiRuntime();
+const TAG_SYNC_ENABLED = EXTENSION_LOCAL_API_RUNTIME;
+const BILIBILI_LISTENER_SETTINGS_ENABLED = EXTENSION_LOCAL_API_RUNTIME;
 const autoInitRunning = ref(false);
 const AUTO_INIT_STATE_KEY = "bilishelf-auto-init-v3";
 const AUTO_INIT_LOCK_KEY = "bilishelf-auto-init-v3.lock";
 const AUTO_INIT_LOCK_TTL_MS = 90_000;
-const AUTO_INIT_PROBE_SCHEDULE_MS = [30_000, 45_000, 60_000, 90_000, 120_000, 180_000, 300_000];
+const AUTO_INIT_PROBE_SCHEDULE_MS = [
+  30_000, 45_000, 60_000, 90_000, 120_000, 180_000, 300_000,
+];
 const AUTO_INIT_STATE_TIMEOUT_MS = 6 * 60 * 1000;
 const SYNC_CURSOR_STORAGE_KEY = "bilishelf-sync-cursors-v1";
 const SYNC_CHUNK_DELAY_MS = 1100;
@@ -189,7 +192,9 @@ const EXPORT_REMINDER_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const LAST_EXPORT_AT_KEY = "bilishelf-last-export-at";
 const LAST_EXPORT_REMINDER_DAY_KEY = "bilishelf-last-export-reminder-day";
 const importFileInput = ref<HTMLInputElement | null>(null);
-const autoInitOwnerId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const autoInitOwnerId = `tab-${Date.now()}-${Math.random()
+  .toString(36)
+  .slice(2, 8)}`;
 const tickNow = ref(Date.now());
 let autoInitHeartbeatTimer: number | null = null;
 let tagEnrichmentPollTimer: number | null = null;
@@ -200,25 +205,23 @@ const SYNC_SPEED_PROFILES = {
   stable: {
     pagesPerRound: 1,
     delayMs: 900,
-    jitterMs: 280
+    jitterMs: 280,
   },
   balanced: {
     pagesPerRound: 2,
     delayMs: 520,
-    jitterMs: 180
+    jitterMs: 180,
   },
   fast: {
     pagesPerRound: 3,
     delayMs: 320,
-    jitterMs: 120
-  }
+    jitterMs: 120,
+  },
 } as const;
 
 const { notifySuccess, notifyError } = useAppToast(t);
-const { detailOpen, detailLoading, detailVideo, openVideoDetail } = useVideoDetail(
-  t,
-  notifyError
-);
+const { detailOpen, detailLoading, detailVideo, openVideoDetail } =
+  useVideoDetail(t, notifyError);
 const detailSaving = ref(false);
 const isBusy = computed(() => loading.value || detailLoading.value);
 const progressValue = useLoadingProgress(isBusy);
@@ -259,11 +262,12 @@ const {
   videoPageSize,
 });
 
-const { prevManageCustomTagPage, nextManageCustomTagPage } = useManageTagsDialog({
-  toolsOpen,
-  manageCustomTagPage,
-  manageCustomTagTotalPages,
-});
+const { prevManageCustomTagPage, nextManageCustomTagPage } =
+  useManageTagsDialog({
+    toolsOpen,
+    manageCustomTagPage,
+    manageCustomTagTotalPages,
+  });
 
 async function refreshFolders() {
   try {
@@ -292,9 +296,7 @@ async function refreshTags() {
 async function refreshVideos() {
   if (trashMode.value) return;
   try {
-    const { extracted, globalKeyword } = parseKeywordFromUtils(
-      keyword.value
-    );
+    const { extracted, globalKeyword } = parseKeywordFromUtils(keyword.value);
     await refreshVideosData({ extracted, globalKeyword });
   } catch (error) {
     console.error(error);
@@ -495,8 +497,7 @@ function readSyncCursorMap() {
 function writeSyncCursorMap(map: Record<string, number>) {
   try {
     window.localStorage.setItem(SYNC_CURSOR_STORAGE_KEY, JSON.stringify(map));
-  } catch {
-  }
+  } catch {}
 }
 
 const syncCursorMap = ref<Record<string, number>>(readSyncCursorMap());
@@ -526,7 +527,7 @@ function setSyncResumePage(folderId: number, page: number | null) {
   if (page && Number.isFinite(page) && page > 1) {
     syncCursorMap.value = {
       ...syncCursorMap.value,
-      [key]: Math.trunc(page)
+      [key]: Math.trunc(page),
     };
   } else if (Object.prototype.hasOwnProperty.call(syncCursorMap.value, key)) {
     const next = { ...syncCursorMap.value };
@@ -560,7 +561,7 @@ function getDefaultAutoInitState(): AutoInitState {
     phase1Imported: 0,
     phase1Scanned: 0,
     targetVideosEstimate: 0,
-    lastError: ""
+    lastError: "",
   };
 }
 
@@ -571,13 +572,21 @@ function readAutoInitState() {
     const parsed = JSON.parse(raw) as Partial<AutoInitState>;
     const base = getDefaultAutoInitState();
     return {
-      status: (["idle", "running", "cooldown", "completed", "failed"] as AutoInitStatus[]).includes(
-        parsed.status as AutoInitStatus
-      )
+      status: (
+        [
+          "idle",
+          "running",
+          "cooldown",
+          "completed",
+          "failed",
+        ] as AutoInitStatus[]
+      ).includes(parsed.status as AutoInitStatus)
         ? (parsed.status as AutoInitStatus)
         : base.status,
       folderIds: Array.isArray(parsed.folderIds)
-        ? parsed.folderIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+        ? parsed.folderIds
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id) && id > 0)
         : [],
       folderIndex: Math.max(0, Math.trunc(Number(parsed.folderIndex ?? 0))),
       riskStreak: Math.max(0, Math.trunc(Number(parsed.riskStreak ?? 0))),
@@ -593,10 +602,16 @@ function readAutoInitState() {
         parsed.updatedAt && Number.isFinite(Number(parsed.updatedAt))
           ? Number(parsed.updatedAt)
           : base.updatedAt,
-      phase1Imported: Math.max(0, Math.trunc(Number(parsed.phase1Imported ?? 0))),
+      phase1Imported: Math.max(
+        0,
+        Math.trunc(Number(parsed.phase1Imported ?? 0))
+      ),
       phase1Scanned: Math.max(0, Math.trunc(Number(parsed.phase1Scanned ?? 0))),
-      targetVideosEstimate: Math.max(0, Math.trunc(Number(parsed.targetVideosEstimate ?? 0))),
-      lastError: String(parsed.lastError ?? "")
+      targetVideosEstimate: Math.max(
+        0,
+        Math.trunc(Number(parsed.targetVideosEstimate ?? 0))
+      ),
+      lastError: String(parsed.lastError ?? ""),
     } as AutoInitState;
   } catch {
     return getDefaultAutoInitState();
@@ -614,7 +629,7 @@ function writeAutoInitState(
       ? patch(current)
       : {
           ...current,
-          ...patch
+          ...patch,
         };
   next.updatedAt = Date.now();
   window.localStorage.setItem(AUTO_INIT_STATE_KEY, JSON.stringify(next));
@@ -632,7 +647,11 @@ function formatSeconds(totalMs: number) {
 
 function looksLikeRiskControlError(message: string) {
   const text = String(message || "").toLowerCase();
-  return text.includes("(412)") || text.includes(" 412") || text.includes("risk-control");
+  return (
+    text.includes("(412)") ||
+    text.includes(" 412") ||
+    text.includes("risk-control")
+  );
 }
 
 const autoInitPhase1Progress = computed(() => {
@@ -654,7 +673,11 @@ const autoInitTagProgress = computed(() => {
 });
 
 const autoInitCooldownRemainMs = computed(() => {
-  if (autoInitState.value.status !== "cooldown" || !autoInitState.value.nextRetryAt) return 0;
+  if (
+    autoInitState.value.status !== "cooldown" ||
+    !autoInitState.value.nextRetryAt
+  )
+    return 0;
   return Math.max(0, autoInitState.value.nextRetryAt - tickNow.value);
 });
 
@@ -670,7 +693,8 @@ const autoInitStatusText = computed(() => {
 const showAutoInitProgressPanel = computed(() => {
   if (trashMode.value) return false;
   const hasPhaseState =
-    autoInitState.value.status !== "idle" || autoInitState.value.folderIds.length > 0;
+    autoInitState.value.status !== "idle" ||
+    autoInitState.value.folderIds.length > 0;
   const hasTagBacklog = (tagEnrichmentStatus.value?.totalMissing ?? 0) > 0;
   return hasPhaseState || hasTagBacklog;
 });
@@ -690,7 +714,11 @@ function readAutoInitLock() {
     const raw = window.localStorage.getItem(AUTO_INIT_LOCK_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { owner: string; expiresAt: number };
-    if (!parsed || typeof parsed.owner !== "string" || !Number.isFinite(parsed.expiresAt)) {
+    if (
+      !parsed ||
+      typeof parsed.owner !== "string" ||
+      !Number.isFinite(parsed.expiresAt)
+    ) {
       return null;
     }
     return parsed;
@@ -702,13 +730,17 @@ function readAutoInitLock() {
 function tryAcquireAutoInitLock() {
   const ts = Date.now();
   const existing = readAutoInitLock();
-  if (existing && existing.expiresAt > ts && existing.owner !== autoInitOwnerId) {
+  if (
+    existing &&
+    existing.expiresAt > ts &&
+    existing.owner !== autoInitOwnerId
+  ) {
     return false;
   }
 
   const lock = {
     owner: autoInitOwnerId,
-    expiresAt: ts + AUTO_INIT_LOCK_TTL_MS
+    expiresAt: ts + AUTO_INIT_LOCK_TTL_MS,
   };
   window.localStorage.setItem(AUTO_INIT_LOCK_KEY, JSON.stringify(lock));
   const confirmed = readAutoInitLock();
@@ -722,7 +754,7 @@ function renewAutoInitLock() {
     AUTO_INIT_LOCK_KEY,
     JSON.stringify({
       owner: autoInitOwnerId,
-      expiresAt: Date.now() + AUTO_INIT_LOCK_TTL_MS
+      expiresAt: Date.now() + AUTO_INIT_LOCK_TTL_MS,
     })
   );
   return true;
@@ -737,7 +769,9 @@ function releaseAutoInitLock() {
 
 function getAutoInitCooldownMs(riskStreak: number) {
   const index = Math.max(0, Math.trunc(riskStreak) - 1);
-  return AUTO_INIT_PROBE_SCHEDULE_MS[Math.min(index, AUTO_INIT_PROBE_SCHEDULE_MS.length - 1)];
+  return AUTO_INIT_PROBE_SCHEDULE_MS[
+    Math.min(index, AUTO_INIT_PROBE_SCHEDULE_MS.length - 1)
+  ];
 }
 
 async function probeBilibiliRiskRecovery() {
@@ -746,14 +780,14 @@ async function probeBilibiliRiskRecovery() {
     return {
       ready: true as const,
       riskBlocked: false,
-      message: ""
+      message: "",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
       ready: false as const,
       riskBlocked: looksLikeRiskControlError(message),
-      message
+      message,
     };
   }
 }
@@ -761,8 +795,7 @@ async function probeBilibiliRiskRecovery() {
 function markExportFinishedAt(timestamp = Date.now()) {
   try {
     window.localStorage.setItem(LAST_EXPORT_AT_KEY, String(timestamp));
-  } catch {
-  }
+  } catch {}
 }
 
 function maybeNotifyExportReminder() {
@@ -772,23 +805,29 @@ function maybeNotifyExportReminder() {
   const now = Date.now();
   const dayLabel = new Date(now).toISOString().slice(0, 10);
   try {
-    const lastReminderDay = window.localStorage.getItem(LAST_EXPORT_REMINDER_DAY_KEY);
+    const lastReminderDay = window.localStorage.getItem(
+      LAST_EXPORT_REMINDER_DAY_KEY
+    );
     if (lastReminderDay === dayLabel) return;
 
-    const lastExportAtRaw = Number(window.localStorage.getItem(LAST_EXPORT_AT_KEY) ?? 0);
+    const lastExportAtRaw = Number(
+      window.localStorage.getItem(LAST_EXPORT_AT_KEY) ?? 0
+    );
     const lastExportAt = Number.isFinite(lastExportAtRaw) ? lastExportAtRaw : 0;
-    if (lastExportAt > 0 && now - lastExportAt < EXPORT_REMINDER_INTERVAL_MS) return;
+    if (lastExportAt > 0 && now - lastExportAt < EXPORT_REMINDER_INTERVAL_MS)
+      return;
 
     window.localStorage.setItem(LAST_EXPORT_REMINDER_DAY_KEY, dayLabel);
-    notifyError(
-      t("toast.exportReminderTitle"),
-      t("toast.exportReminderDesc")
-    );
-  } catch {
-  }
+    notifyError(t("toast.exportReminderTitle"), t("toast.exportReminderDesc"));
+  } catch {}
 }
 
 async function refreshTagEnrichmentState() {
+  if (!TAG_SYNC_ENABLED) {
+    tagEnrichmentStatus.value = null;
+    tagEnrichmentLoading.value = false;
+    return;
+  }
   tagEnrichmentLoading.value = true;
   try {
     tagEnrichmentStatus.value = await fetchTagEnrichmentStatus();
@@ -800,6 +839,7 @@ async function refreshTagEnrichmentState() {
 }
 
 async function pauseTagEnrichmentFromUi() {
+  if (!TAG_SYNC_ENABLED) return;
   if (tagEnrichmentLoading.value) return;
   tagEnrichmentLoading.value = true;
   try {
@@ -813,6 +853,7 @@ async function pauseTagEnrichmentFromUi() {
 }
 
 async function resumeTagEnrichmentFromUi() {
+  if (!TAG_SYNC_ENABLED) return;
   if (tagEnrichmentLoading.value) return;
   tagEnrichmentLoading.value = true;
   try {
@@ -826,6 +867,7 @@ async function resumeTagEnrichmentFromUi() {
 }
 
 async function runTagEnrichmentNowFromUi() {
+  if (!TAG_SYNC_ENABLED) return;
   if (tagEnrichmentLoading.value) return;
   tagEnrichmentLoading.value = true;
   try {
@@ -839,6 +881,10 @@ async function runTagEnrichmentNowFromUi() {
 }
 
 async function refreshBidirectionalSyncSettings() {
+  if (!BILIBILI_LISTENER_SETTINGS_ENABLED) {
+    bidirectionalSyncSettings.value = null;
+    return;
+  }
   try {
     bidirectionalSyncSettings.value = await fetchBidirectionalSyncSettings();
   } catch (error) {
@@ -847,6 +893,7 @@ async function refreshBidirectionalSyncSettings() {
 }
 
 function openBidirectionalSyncSettingsDialog() {
+  if (!BILIBILI_LISTENER_SETTINGS_ENABLED) return;
   bidirectionalSyncDialogOpen.value = true;
   void refreshBidirectionalSyncSettings();
 }
@@ -854,10 +901,13 @@ function openBidirectionalSyncSettingsDialog() {
 async function saveBidirectionalSyncSettings(payload: {
   biliToLocalEnabled: boolean;
 }) {
+  if (!BILIBILI_LISTENER_SETTINGS_ENABLED) return;
   if (bidirectionalSyncSaving.value) return;
   bidirectionalSyncSaving.value = true;
   try {
-    bidirectionalSyncSettings.value = await updateBidirectionalSyncSettings(payload);
+    bidirectionalSyncSettings.value = await updateBidirectionalSyncSettings(
+      payload
+    );
     notifySuccess(t("toast.syncSettingsSaved"));
     bidirectionalSyncDialogOpen.value = false;
   } catch (error) {
@@ -931,7 +981,7 @@ async function uploadWebDavFromUi() {
       t("toast.webdavUploadDone"),
       t("toast.webdavUploadSummary", {
         videos: result.summary.videos,
-        tags: result.summary.tags
+        tags: result.summary.tags,
       })
     );
   } catch (error) {
@@ -969,7 +1019,7 @@ async function restoreWebDavFromUi() {
       t("toast.webdavRestoreSummary", {
         videos: result.summary.videosUpserted,
         links: result.summary.folderLinksAdded,
-        tags: result.summary.tagsBound
+        tags: result.summary.tagsBound,
       })
     );
   } catch (error) {
@@ -980,7 +1030,9 @@ async function restoreWebDavFromUi() {
 }
 
 function startTagEnrichmentPolling() {
-  if (tagEnrichmentPollTimer !== null) window.clearInterval(tagEnrichmentPollTimer);
+  if (!TAG_SYNC_ENABLED) return;
+  if (tagEnrichmentPollTimer !== null)
+    window.clearInterval(tagEnrichmentPollTimer);
   tagEnrichmentPollTimer = window.setInterval(() => {
     if (route.name !== "manager") return;
     void refreshTagEnrichmentState();
@@ -1019,10 +1071,14 @@ async function loadAutoInitFolderOptions(force = false) {
   autoInitFetchingFolders.value = true;
   try {
     const result = await fetchBilibiliSyncFolders();
-    autoInitFolders.value = (result.items ?? []).filter((folder) => folder.mediaCount > 0);
-    const available = new Set(autoInitFolders.value.map((item) => item.remoteId));
-    autoInitSelectedFolderIds.value = autoInitSelectedFolderIds.value.filter((id) =>
-      available.has(id)
+    autoInitFolders.value = (result.items ?? []).filter(
+      (folder) => folder.mediaCount > 0
+    );
+    const available = new Set(
+      autoInitFolders.value.map((item) => item.remoteId)
+    );
+    autoInitSelectedFolderIds.value = autoInitSelectedFolderIds.value.filter(
+      (id) => available.has(id)
     );
   } catch (error) {
     console.error(error);
@@ -1044,28 +1100,47 @@ function maybePromptAutoInitSetupDialog() {
   const state = readAutoInitState();
   autoInitState.value = state;
   const isFreshLibrary = total.value === 0 && folders.value.length === 0;
-  if (state.status === "idle" && state.folderIds.length === 0 && isFreshLibrary) {
+  if (
+    state.status === "idle" &&
+    state.folderIds.length === 0 &&
+    isFreshLibrary
+  ) {
     openAutoInitDialog();
   }
 }
 
 function toggleAutoInitFolder(remoteId: number, checked: boolean) {
   if (!checked) {
-    autoInitSelectedFolderIds.value = autoInitSelectedFolderIds.value.filter((id) => id !== remoteId);
+    autoInitSelectedFolderIds.value = autoInitSelectedFolderIds.value.filter(
+      (id) => id !== remoteId
+    );
     return;
   }
-  autoInitSelectedFolderIds.value = [...new Set([...autoInitSelectedFolderIds.value, remoteId])];
+  autoInitSelectedFolderIds.value = [
+    ...new Set([...autoInitSelectedFolderIds.value, remoteId]),
+  ];
 }
 
-function estimateTargetVideosByFolders(folderIds: number[], candidates: SyncRemoteFolder[]) {
+function estimateTargetVideosByFolders(
+  folderIds: number[],
+  candidates: SyncRemoteFolder[]
+) {
   const selectedSet = new Set(folderIds);
   return candidates
     .filter((folder) => selectedSet.has(folder.remoteId))
-    .reduce((sum, folder) => sum + Math.max(0, Number(folder.mediaCount || 0)), 0);
+    .reduce(
+      (sum, folder) => sum + Math.max(0, Number(folder.mediaCount || 0)),
+      0
+    );
 }
 
-function startUnifiedFavoritesSync(folderIds: number[], targetVideosEstimate: number) {
-  const normalizedIds = [...new Set(folderIds.filter((id) => Number.isFinite(id) && id > 0))];
+function startUnifiedFavoritesSync(
+  folderIds: number[],
+  targetVideosEstimate: number
+) {
+  const normalizedIds = [
+    ...new Set(folderIds.filter((id) => Number.isFinite(id) && id > 0)),
+  ];
   writeAutoInitState({
     status: "running",
     folderIds: normalizedIds,
@@ -1075,7 +1150,7 @@ function startUnifiedFavoritesSync(folderIds: number[], targetVideosEstimate: nu
     phase1Imported: 0,
     phase1Scanned: 0,
     targetVideosEstimate: Math.max(0, Math.trunc(targetVideosEstimate)),
-    lastError: ""
+    lastError: "",
   });
   autoInitDialogOpen.value = false;
   syncDialogOpen.value = false;
@@ -1094,7 +1169,10 @@ async function confirmAutoInitSetup() {
   );
   autoInitSubmitting.value = true;
   try {
-    startUnifiedFavoritesSync(autoInitSelectedFolderIds.value, targetVideosEstimate);
+    startUnifiedFavoritesSync(
+      autoInitSelectedFolderIds.value,
+      targetVideosEstimate
+    );
   } finally {
     autoInitSubmitting.value = false;
   }
@@ -1102,19 +1180,28 @@ async function confirmAutoInitSetup() {
 
 async function openSyncImportDialog() {
   syncDialogOpen.value = true;
+  if (!TAG_SYNC_ENABLED) {
+    await loadSyncFolderOptions();
+    return;
+  }
   await Promise.all([loadSyncFolderOptions(), refreshTagEnrichmentState()]);
 }
 
 function toggleSyncFolder(remoteId: number, checked: boolean) {
   if (!checked) {
-    syncSelectedFolderIds.value = syncSelectedFolderIds.value.filter((id) => id !== remoteId);
+    syncSelectedFolderIds.value = syncSelectedFolderIds.value.filter(
+      (id) => id !== remoteId
+    );
     return;
   }
-  syncSelectedFolderIds.value = [...new Set([...syncSelectedFolderIds.value, remoteId])];
+  syncSelectedFolderIds.value = [
+    ...new Set([...syncSelectedFolderIds.value, remoteId]),
+  ];
 }
 
 async function submitSyncImport() {
-  if (syncingImport.value || exportingLibrary.value || autoInitRunning.value) return;
+  if (syncingImport.value || exportingLibrary.value || autoInitRunning.value)
+    return;
   if (syncSelectedFolderIds.value.length === 0) {
     notifyError(t("toast.autoInitPickFolder"));
     return;
@@ -1148,17 +1235,20 @@ async function runFavoritesSyncLikeHistory(
 ): Promise<FolderSyncRunResult> {
   syncingImport.value = true;
   try {
-    const uniqueFolderIds = [...new Set(selectedRemoteFolderIds.filter((id) => id > 0))];
-    const resumePageByFolder = options.resumePageByFolder ?? buildResumePageByFolder(uniqueFolderIds);
+    const uniqueFolderIds = [
+      ...new Set(selectedRemoteFolderIds.filter((id) => id > 0)),
+    ];
+    const resumePageByFolder =
+      options.resumePageByFolder ?? buildResumePageByFolder(uniqueFolderIds);
     let startResult = await startHistoryModelSync({
       selectedRemoteFolderIds: uniqueFolderIds,
-      resumePageByFolder
+      resumePageByFolder,
     });
     if (!startResult.started && !startResult.status.running) {
       await sleepMs(180);
       startResult = await startHistoryModelSync({
         selectedRemoteFolderIds: uniqueFolderIds,
-        resumePageByFolder
+        resumePageByFolder,
       });
     }
     if (!startResult.started && !startResult.status.running) {
@@ -1195,9 +1285,12 @@ async function runFavoritesSyncLikeHistory(
       const nextPage = resumeMap[String(folderId)] ?? null;
       setSyncResumePage(folderId, nextPage);
     }
-    const singleFolderId = uniqueFolderIds.length === 1 ? uniqueFolderIds[0] : null;
+    const singleFolderId =
+      uniqueFolderIds.length === 1 ? uniqueFolderIds[0] : null;
     const singleFolderNextPage =
-      singleFolderId !== null ? (resumeMap[String(singleFolderId)] ?? null) : null;
+      singleFolderId !== null
+        ? resumeMap[String(singleFolderId)] ?? null
+        : null;
     const errorsOmittedTotal = 0;
     const allErrors = status.errors ?? [];
     if (status.lastError && allErrors.length === 0) {
@@ -1216,7 +1309,9 @@ async function runFavoritesSyncLikeHistory(
     }
 
     await refreshFoldersVideosAndTags();
-    await refreshTagEnrichmentState();
+    if (TAG_SYNC_ENABLED) {
+      await refreshTagEnrichmentState();
+    }
 
     const visibleErrors = Array.from(
       new Set(
@@ -1234,9 +1329,13 @@ async function runFavoritesSyncLikeHistory(
     const systemError = allErrors.find((item) => item.folder === "__sync__");
     const errorDesc = [
       visibleErrors,
-      errorsOmittedTotal > 0 ? t("toast.syncHiddenErrors", { count: errorsOmittedTotal }) : "",
-      hiddenCount > 0 ? t("toast.syncHiddenErrors", { count: hiddenCount }) : "",
-      systemError?.message || ""
+      errorsOmittedTotal > 0
+        ? t("toast.syncHiddenErrors", { count: errorsOmittedTotal })
+        : "",
+      hiddenCount > 0
+        ? t("toast.syncHiddenErrors", { count: hiddenCount })
+        : "",
+      systemError?.message || "",
     ]
       .filter(Boolean)
       .join(" | ");
@@ -1245,7 +1344,10 @@ async function runFavoritesSyncLikeHistory(
     const noProgress = videosImported === 0 && videosScanned === 0;
     if (options.notify) {
       if (fullyFailed) {
-        notifyError(t("toast.syncFail"), errorDesc || t("common.requestFailed"));
+        notifyError(
+          t("toast.syncFail"),
+          errorDesc || t("common.requestFailed")
+        );
       } else if (!noProgress) {
         if (options.closeDialogOnSuccess) {
           syncDialogOpen.value = false;
@@ -1254,7 +1356,7 @@ async function runFavoritesSyncLikeHistory(
           t("toast.syncDone"),
           t("toast.syncSummary", {
             folders: foldersSynced,
-            videos: videosImported
+            videos: videosImported,
           })
         );
         if (allErrors.length > 0) {
@@ -1269,13 +1371,16 @@ async function runFavoritesSyncLikeHistory(
       videosScanned,
       riskBlocked,
       noProgress,
-      hasMorePage: Number.isFinite(Number(singleFolderNextPage)) && Number(singleFolderNextPage) > 1,
+      hasMorePage:
+        Number.isFinite(Number(singleFolderNextPage)) &&
+        Number(singleFolderNextPage) > 1,
       nextPage:
-        Number.isFinite(Number(singleFolderNextPage)) && Number(singleFolderNextPage) > 1
+        Number.isFinite(Number(singleFolderNextPage)) &&
+        Number(singleFolderNextPage) > 1
           ? Math.trunc(Number(singleFolderNextPage))
           : null,
       errors: allErrors,
-      errorsOmittedTotal
+      errorsOmittedTotal,
     };
   } catch (error) {
     console.error(error);
@@ -1291,7 +1396,7 @@ async function runFavoritesSyncLikeHistory(
       hasMorePage: false,
       nextPage: null,
       errors: [{ folder: "__sync__", message }],
-      errorsOmittedTotal: 0
+      errorsOmittedTotal: 0,
     };
   } finally {
     syncingImport.value = false;
@@ -1299,7 +1404,8 @@ async function runFavoritesSyncLikeHistory(
 }
 
 function startAutoInitLockHeartbeat() {
-  if (autoInitHeartbeatTimer !== null) window.clearInterval(autoInitHeartbeatTimer);
+  if (autoInitHeartbeatTimer !== null)
+    window.clearInterval(autoInitHeartbeatTimer);
   autoInitHeartbeatTimer = window.setInterval(() => {
     renewAutoInitLock();
   }, Math.max(20_000, Math.floor(AUTO_INIT_LOCK_TTL_MS / 2)));
@@ -1323,7 +1429,9 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
 
   const state = readAutoInitState();
   autoInitState.value = state;
-  let normalizedIds = state.folderIds.filter((id) => Number.isFinite(id) && id > 0);
+  let normalizedIds = state.folderIds.filter(
+    (id) => Number.isFinite(id) && id > 0
+  );
   const staleCompletedState =
     state.status === "completed" &&
     normalizedIds.length > 0 &&
@@ -1334,7 +1442,11 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
     normalizedIds = [];
   }
   if (state.status === "completed") return;
-  if (state.status === "cooldown" && state.nextRetryAt && Date.now() < state.nextRetryAt) {
+  if (
+    state.status === "cooldown" &&
+    state.nextRetryAt &&
+    Date.now() < state.nextRetryAt
+  ) {
     return;
   }
   if (state.status === "cooldown") {
@@ -1352,7 +1464,9 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
           phase1Imported: Math.max(0, state.phase1Imported || 0),
           phase1Scanned: Math.max(0, state.phase1Scanned || 0),
           targetVideosEstimate: Math.max(0, state.targetVideosEstimate || 0),
-          lastError: probe.message || "Risk-control is still active. Waiting for next probe."
+          lastError:
+            probe.message ||
+            "Risk-control is still active. Waiting for next probe.",
         });
         return;
       }
@@ -1368,7 +1482,7 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
         phase1Imported: Math.max(0, state.phase1Imported || 0),
         phase1Scanned: Math.max(0, state.phase1Scanned || 0),
         targetVideosEstimate: Math.max(0, state.targetVideosEstimate || 0),
-        lastError: probe.message || "Probe failed before sync resume."
+        lastError: probe.message || "Probe failed before sync resume.",
       });
       return;
     }
@@ -1385,9 +1499,12 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
       writeAutoInitState({
         status: "running",
         folderIds: normalizedIds,
-        folderIndex: Math.max(0, Math.min(state.folderIndex, normalizedIds.length)),
+        folderIndex: Math.max(
+          0,
+          Math.min(state.folderIndex, normalizedIds.length)
+        ),
         nextRetryAt: null,
-        lastError: ""
+        lastError: "",
       });
     } else {
       return;
@@ -1405,13 +1522,16 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
   autoInitRunning.value = true;
   try {
     const latestState = readAutoInitState();
-    const startIndex = Math.max(0, Math.min(latestState.folderIndex, normalizedIds.length));
+    const startIndex = Math.max(
+      0,
+      Math.min(latestState.folderIndex, normalizedIds.length)
+    );
     writeAutoInitState({
       status: "running",
       folderIds: normalizedIds,
       folderIndex: startIndex,
       nextRetryAt: null,
-      lastError: ""
+      lastError: "",
     });
 
     let totalImported = Math.max(0, state.phase1Imported);
@@ -1420,7 +1540,7 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
       const folderId = normalizedIds[index];
       const result = await runFavoritesSyncLikeHistory([folderId], {
         notify: false,
-        closeDialogOnSuccess: false
+        closeDialogOnSuccess: false,
       });
       totalImported += result.videosImported;
       totalScanned += result.videosScanned;
@@ -1438,7 +1558,7 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
           phase1Imported: totalImported,
           phase1Scanned: totalScanned,
           targetVideosEstimate: Math.max(0, latest.targetVideosEstimate || 0),
-          lastError: result.errors[0]?.message || "risk-control (412)"
+          lastError: result.errors[0]?.message || "risk-control (412)",
         });
         notifyError(t("toast.autoInitCooling"), t("toast.autoInitCoolingDesc"));
         return;
@@ -1455,9 +1575,12 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
           phase1Imported: totalImported,
           phase1Scanned: totalScanned,
           targetVideosEstimate: Math.max(0, latest.targetVideosEstimate || 0),
-          lastError: result.errors[0]?.message || "sync failed"
+          lastError: result.errors[0]?.message || "sync failed",
         });
-        notifyError(t("toast.autoInitFail"), result.errors[0]?.message || t("common.requestFailed"));
+        notifyError(
+          t("toast.autoInitFail"),
+          result.errors[0]?.message || t("common.requestFailed")
+        );
         return;
       }
 
@@ -1471,7 +1594,7 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
         phase1Imported: totalImported,
         phase1Scanned: totalScanned,
         targetVideosEstimate: Math.max(0, latest.targetVideosEstimate || 0),
-        lastError: ""
+        lastError: "",
       });
       await sleepMs(640 + Math.floor(Math.random() * 260));
     }
@@ -1486,9 +1609,11 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
       phase1Imported: totalImported,
       phase1Scanned: totalScanned,
       targetVideosEstimate: Math.max(0, latest.targetVideosEstimate || 0),
-      lastError: ""
+      lastError: "",
     });
-    await refreshTagEnrichmentState();
+    if (TAG_SYNC_ENABLED) {
+      await refreshTagEnrichmentState();
+    }
     notifySuccess(
       t("toast.autoInitDone"),
       t("toast.autoInitDoneDesc", { videos: totalImported })
@@ -1499,7 +1624,7 @@ async function maybeStartAutoInitSync(options: { force?: boolean } = {}) {
       ...current,
       status: "failed",
       nextRetryAt: null,
-      lastError: message
+      lastError: message,
     }));
     notifyError(t("toast.autoInitFail"), message);
     console.error("[auto-init] failed:", error);
@@ -1533,7 +1658,8 @@ function reopenAutoInitSetupFromUi() {
 }
 
 async function handleExport(format: "json" | "csv") {
-  if (syncingImport.value || exportingLibrary.value || importingLibrary.value) return;
+  if (syncingImport.value || exportingLibrary.value || importingLibrary.value)
+    return;
   exportingLibrary.value = true;
   try {
     const payload = await exportLibrary(format);
@@ -1546,7 +1672,7 @@ async function handleExport(format: "json" | "csv") {
       t("toast.exportDone"),
       t("toast.exportSummary", {
         videos: payload.summary.videos,
-        tags: payload.summary.tags
+        tags: payload.summary.tags,
       })
     );
   } catch (error) {
@@ -1558,11 +1684,15 @@ async function handleExport(format: "json" | "csv") {
 }
 
 function openImportFileDialog() {
-  if (syncingImport.value || exportingLibrary.value || importingLibrary.value) return;
+  if (syncingImport.value || exportingLibrary.value || importingLibrary.value)
+    return;
   importFileInput.value?.click();
 }
 
-function detectImportFormat(fileName: string, content: string): "json" | "csv" | null {
+function detectImportFormat(
+  fileName: string,
+  content: string
+): "json" | "csv" | null {
   const lower = fileName.toLowerCase();
   if (lower.endsWith(".json")) return "json";
   if (lower.endsWith(".csv")) return "csv";
@@ -1578,7 +1708,8 @@ async function handleImportFilePicked(event: Event) {
   const file = input.files?.[0];
   input.value = "";
   if (!file) return;
-  if (syncingImport.value || exportingLibrary.value || importingLibrary.value) return;
+  if (syncingImport.value || exportingLibrary.value || importingLibrary.value)
+    return;
 
   importingLibrary.value = true;
   try {
@@ -1590,7 +1721,7 @@ async function handleImportFilePicked(event: Event) {
 
     const result = await importLibrary({
       format,
-      content
+      content,
     });
     await refreshFoldersVideosAndTags();
     await refreshTrash();
@@ -1600,7 +1731,7 @@ async function handleImportFilePicked(event: Event) {
       t("toast.importSummary", {
         videos: result.summary.videosUpserted,
         links: result.summary.folderLinksAdded,
-        tags: result.summary.tagsBound
+        tags: result.summary.tagsBound,
       })
     );
   } catch (error) {
@@ -1766,7 +1897,9 @@ onMounted(async () => {
   loading.value = true;
   try {
     await libraryStore.ensureBootstrapped();
-    await refreshBidirectionalSyncSettings();
+    if (BILIBILI_LISTENER_SETTINGS_ENABLED) {
+      await refreshBidirectionalSyncSettings();
+    }
     if (
       selectedFolderId.value !== null &&
       !folders.value.some((folder) => folder.id === selectedFolderId.value)
@@ -1778,8 +1911,10 @@ onMounted(async () => {
     } else {
       await refreshVideos();
       maybeNotifyExportReminder();
-      await refreshTagEnrichmentState();
-      startTagEnrichmentPolling();
+      if (TAG_SYNC_ENABLED) {
+        await refreshTagEnrichmentState();
+        startTagEnrichmentPolling();
+      }
     }
     routeReady.value = true;
     if (route.name === "manager") {
@@ -1828,6 +1963,7 @@ onBeforeUnmount(() => {
       <ManagerHeader
         :t="t"
         :trash-mode="trashMode"
+        :show-sync-settings="BILIBILI_LISTENER_SETTINGS_ENABLED"
         :current-view-label="headerCurrentViewLabel"
         :current-scope-label="headerCurrentScopeLabel"
         :locale-toggle-text="localeToggleText"
@@ -1854,11 +1990,23 @@ onBeforeUnmount(() => {
       >
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p class="text-sm font-semibold">{{ t("autoInit.progressTitle") }}</p>
+            <p class="text-sm font-semibold">
+              {{ t("autoInit.progressTitle") }}
+            </p>
             <p class="text-xs text-muted-foreground">
               {{ autoInitStatusText }}
-              <span v-if="autoInitState.status === 'cooldown' && autoInitCooldownRemainMs > 0">
-                · {{ t("autoInit.cooldownRemain", { time: formatSeconds(autoInitCooldownRemainMs) }) }}
+              <span
+                v-if="
+                  autoInitState.status === 'cooldown' &&
+                  autoInitCooldownRemainMs > 0
+                "
+              >
+                ·
+                {{
+                  t("autoInit.cooldownRemain", {
+                    time: formatSeconds(autoInitCooldownRemainMs),
+                  })
+                }}
               </span>
             </p>
           </div>
@@ -1876,7 +2024,8 @@ onBeforeUnmount(() => {
               :disabled="
                 autoInitRunning ||
                 syncingImport ||
-                (autoInitState.status === 'cooldown' && autoInitCooldownRemainMs > 0)
+                (autoInitState.status === 'cooldown' &&
+                  autoInitCooldownRemainMs > 0)
               "
               @click="resumeAutoInitFromUi"
             >
@@ -1887,7 +2036,9 @@ onBeforeUnmount(() => {
 
         <div class="space-y-1.5">
           <div class="flex items-center justify-between text-xs">
-            <span class="text-muted-foreground">{{ t("autoInit.phase1Title") }}</span>
+            <span class="text-muted-foreground">{{
+              t("autoInit.phase1Title")
+            }}</span>
             <span>
               {{
                 t("autoInit.phase1Summary", {
@@ -1903,7 +2054,9 @@ onBeforeUnmount(() => {
 
         <div v-if="TAG_SYNC_ENABLED" class="space-y-1.5">
           <div class="flex items-center justify-between text-xs">
-            <span class="text-muted-foreground">{{ t("autoInit.phase2Title") }}</span>
+            <span class="text-muted-foreground">{{
+              t("autoInit.phase2Title")
+            }}</span>
             <span>
               {{
                 t("autoInit.phase2Summary", {
@@ -1927,7 +2080,9 @@ onBeforeUnmount(() => {
             <Button
               size="sm"
               variant="outline"
-              :disabled="tagEnrichmentLoading || (tagEnrichmentStatus?.paused ?? true)"
+              :disabled="
+                tagEnrichmentLoading || (tagEnrichmentStatus?.paused ?? true)
+              "
               @click="pauseTagEnrichmentFromUi"
             >
               {{ t("sync.pauseTagEnrich") }}
@@ -1935,14 +2090,18 @@ onBeforeUnmount(() => {
             <Button
               size="sm"
               variant="outline"
-              :disabled="tagEnrichmentLoading || !(tagEnrichmentStatus?.paused ?? false)"
+              :disabled="
+                tagEnrichmentLoading || !(tagEnrichmentStatus?.paused ?? false)
+              "
               @click="resumeTagEnrichmentFromUi"
             >
               {{ t("sync.resumeTagEnrich") }}
             </Button>
             <Button
               size="sm"
-              :disabled="tagEnrichmentLoading || (tagEnrichmentStatus?.paused ?? false)"
+              :disabled="
+                tagEnrichmentLoading || (tagEnrichmentStatus?.paused ?? false)
+              "
               @click="runTagEnrichmentNowFromUi"
             >
               {{ t("sync.runTagEnrichNow") }}
@@ -2037,7 +2196,9 @@ onBeforeUnmount(() => {
         @clear-trash-folder-selection="clearTrashFolderSelection"
         @batch-restore-trash-folders="batchRestoreTrashFolders"
         @batch-purge-trash-folders="batchPurgeTrashFolders"
-        @set-trash-folder-selection="setTrashFolderSelection($event.id, $event.checked)"
+        @set-trash-folder-selection="
+          setTrashFolderSelection($event.id, $event.checked)
+        "
         @prev-trash-folder-page="prevTrashFolderPage"
         @next-trash-folder-page="nextTrashFolderPage"
         @trash-folder-page-size-change="handleTrashFolderPageSizeChange($event)"
@@ -2047,7 +2208,9 @@ onBeforeUnmount(() => {
         @clear-trash-video-selection="clearTrashVideoSelection"
         @batch-restore-trash-videos="batchRestoreTrashVideos"
         @batch-purge-trash-videos="batchPurgeTrashVideos"
-        @set-trash-video-selection="setTrashVideoSelection($event.id, $event.checked)"
+        @set-trash-video-selection="
+          setTrashVideoSelection($event.id, $event.checked)
+        "
         @prev-trash-video-page="prevTrashVideoPage"
         @next-trash-video-page="nextTrashVideoPage"
         @trash-video-page-size-change="handleTrashVideoPageSizeChange($event)"
@@ -2082,7 +2245,9 @@ onBeforeUnmount(() => {
       :selected-folder-ids="autoInitSelectedFolderIds"
       @update:open="autoInitDialogOpen = $event"
       @reload="loadAutoInitFolderOptions(true)"
-      @toggle-folder="(remoteId, checked) => toggleAutoInitFolder(remoteId, checked)"
+      @toggle-folder="
+        (remoteId, checked) => toggleAutoInitFolder(remoteId, checked)
+      "
       @start="confirmAutoInitSetup"
     />
 
@@ -2124,7 +2289,9 @@ onBeforeUnmount(() => {
       :tag-enrichment-loading="tagEnrichmentLoading"
       @update:open="syncDialogOpen = $event"
       @reload="loadSyncFolderOptions(true)"
-      @toggle-folder="(remoteId, checked) => toggleSyncFolder(remoteId, checked)"
+      @toggle-folder="
+        (remoteId, checked) => toggleSyncFolder(remoteId, checked)
+      "
       @update:chunk-size="syncChunkSize = $event"
       @update:include-tag-enrichment="syncIncludeTagEnrichment = $event"
       @refresh-tag-enrichment="refreshTagEnrichmentState"

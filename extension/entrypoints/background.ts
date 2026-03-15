@@ -160,6 +160,7 @@ const FAVORITES_PAGE_GAP_JITTER_MS = 120;
 const WEBDAV_REQUEST_TIMEOUT_MS = 45_000;
 const WEBDAV_LATEST_FILE_NAME = "bilishelf-latest.json";
 const WEBDAV_MAX_DOWNLOAD_SIZE = 30 * 1024 * 1024;
+const SLOW_API_THRESHOLD_MS = 400;
 
 type SyncFetchStage = "nav" | "folders" | "folderVideos";
 type FetchSource = "extension" | "page";
@@ -211,6 +212,14 @@ type FavoritesSyncProgress = {
   folderIndex: number;
   folderTotal: number;
   message: string;
+};
+
+type CookieLike = { name?: unknown; value?: unknown };
+type CookiesApi = {
+  getAll: (
+    details: { domain?: string },
+    callback?: (cookies: CookieLike[]) => void
+  ) => Promise<CookieLike[]> | void;
 };
 
 const defaultTagEnrichmentMeta = (): TagEnrichmentMeta => ({
@@ -1320,17 +1329,48 @@ async function requestWebDav(
   return response;
 }
 
+function getAllCookies(api: CookiesApi, details: { domain?: string }): Promise<CookieLike[]> {
+  return new Promise<CookieLike[]>((resolve, reject) => {
+    let settled = false;
+    const finish = (cookies: unknown) => {
+      if (settled) return;
+      settled = true;
+      resolve(Array.isArray(cookies) ? cookies : []);
+    };
+
+    try {
+      const maybePromise = api.getAll(details, (cookies) => finish(cookies));
+      if (maybePromise && typeof (maybePromise as Promise<CookieLike[]>).then === "function") {
+        (maybePromise as Promise<CookieLike[]>)
+          .then((cookies) => finish(cookies))
+          .catch((error) => {
+            if (settled) return;
+            settled = true;
+            reject(error);
+          });
+      }
+    } catch (error) {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    }
+  });
+}
+
 async function getBiliCookieHeader(forceRefresh = false) {
   const nowTs = Date.now();
   if (!forceRefresh && biliCookieHeaderCache && biliCookieHeaderCache.expiresAt > nowTs) {
     return biliCookieHeaderCache.value;
   }
 
-  if (!chrome.cookies?.getAll) {
+  const cookiesApi =
+    (globalThis as { chrome?: { cookies?: { getAll?: CookiesApi["getAll"] } } }).chrome?.cookies ??
+    (globalThis as { browser?: { cookies?: { getAll?: CookiesApi["getAll"] } } }).browser?.cookies;
+  if (!cookiesApi?.getAll) {
     return "";
   }
 
-  const cookies = await chrome.cookies.getAll({ domain: "bilibili.com" });
+  const cookies = await getAllCookies(cookiesApi, { domain: "bilibili.com" });
   const validPairs = cookies
     .map((item) => ({
       name: normalizeText(item.name),
@@ -3277,64 +3317,66 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
   const path = url.pathname;
   const params = url.searchParams;
   const body = (request.body ?? {}) as Record<string, unknown>;
-
-  // Fast-path status endpoints must bypass withState queue, otherwise
-  // long-running sync tasks block polling and trigger frontend timeouts.
-  if (method === "GET" && path === "/sync/bilibili/history-model/status") {
-    return ok(getFavoritesSyncStatus());
-  }
-
-  if (method === "POST" && path === "/sync/bilibili/history-model/start") {
-    const selectedRemoteFolderIds = Array.isArray(body.selectedRemoteFolderIds)
-      ? body.selectedRemoteFolderIds
-          .map((item) => toInt(item))
-          .filter((item) => item > 0)
-      : [];
-    const resumePageByFolderRaw =
-      body.resumePageByFolder && typeof body.resumePageByFolder === "object"
-        ? (body.resumePageByFolder as Record<string, unknown>)
-        : {};
-    const resumePageByFolder: Record<string, number> = {};
-    for (const [remoteIdRaw, pageRaw] of Object.entries(resumePageByFolderRaw)) {
-      const remoteId = toInt(remoteIdRaw);
-      const page = toInt(pageRaw);
-      if (remoteId > 0 && page > 1) {
-        resumePageByFolder[String(remoteId)] = page;
-      }
-    }
-    const started = startFavoritesSyncTask({
-      selectedRemoteFolderIds,
-      resumePageByFolder
-    });
-    return ok({
-      ok: true,
-      started,
-      status: getFavoritesSyncStatus()
-    });
-  }
-
-  if (isWriteRequestBlockedByFavoritesSync(method, path)) {
-    return fail(
-      423,
-      "Favorites sync is running. Wait for completion (or stop sync) before modifying local folders/videos."
-    );
-  }
-
-  if (method === "GET") {
-    const snapshot = await readState();
-    const fastReadResult = handleReadOnlyApi(snapshot, path, params);
-    if (fastReadResult) return fastReadResult;
-  }
+  const startedAt = Date.now();
 
   try {
-    return await withState(async (state) => {
-      if (method === "GET" && path === "/health") {
-        return ok({ ok: true });
-      }
+    // Fast-path status endpoints must bypass withState queue, otherwise
+    // long-running sync tasks block polling and trigger frontend timeouts.
+    if (method === "GET" && path === "/sync/bilibili/history-model/status") {
+      return ok(getFavoritesSyncStatus());
+    }
 
-      if (method === "GET" && path === "/sync/bilibili/tag-enrichment/status") {
-        return ok(getTagEnrichmentStatus(state));
+    if (method === "POST" && path === "/sync/bilibili/history-model/start") {
+      const selectedRemoteFolderIds = Array.isArray(body.selectedRemoteFolderIds)
+        ? body.selectedRemoteFolderIds
+            .map((item) => toInt(item))
+            .filter((item) => item > 0)
+        : [];
+      const resumePageByFolderRaw =
+        body.resumePageByFolder && typeof body.resumePageByFolder === "object"
+          ? (body.resumePageByFolder as Record<string, unknown>)
+          : {};
+      const resumePageByFolder: Record<string, number> = {};
+      for (const [remoteIdRaw, pageRaw] of Object.entries(resumePageByFolderRaw)) {
+        const remoteId = toInt(remoteIdRaw);
+        const page = toInt(pageRaw);
+        if (remoteId > 0 && page > 1) {
+          resumePageByFolder[String(remoteId)] = page;
+        }
       }
+      const started = startFavoritesSyncTask({
+        selectedRemoteFolderIds,
+        resumePageByFolder
+      });
+      return ok({
+        ok: true,
+        started,
+        status: getFavoritesSyncStatus()
+      });
+    }
+
+    if (isWriteRequestBlockedByFavoritesSync(method, path)) {
+      return fail(
+        423,
+        "Favorites sync is running. Wait for completion (or stop sync) before modifying local folders/videos."
+      );
+    }
+
+    if (method === "GET") {
+      const snapshot = await readState();
+      const fastReadResult = handleReadOnlyApi(snapshot, path, params);
+      if (fastReadResult) return fastReadResult;
+    }
+
+    try {
+      return await withState(async (state) => {
+        if (method === "GET" && path === "/health") {
+          return ok({ ok: true });
+        }
+
+        if (method === "GET" && path === "/sync/bilibili/tag-enrichment/status") {
+          return ok(getTagEnrichmentStatus(state));
+        }
 
       if (method === "POST" && path === "/sync/bilibili/tag-enrichment/pause") {
         if (!TAG_SYNC_ENABLED) {
@@ -4268,12 +4310,53 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         if (mode === "folderOnly") {
           const folderId = toInt(body.folderId);
           if (!folderId) return fail(400, "folderId is required");
-          state.folderItems = state.folderItems.filter((item) => {
-            const shouldRemove = item.folderId === folderId && videoIds.includes(item.videoId);
-            if (shouldRemove) affected += 1;
-            return !shouldRemove;
-          });
-          markOrphanVideosDeleted(state);
+          const scopedVideoIds = Array.from(
+            new Set(
+              state.folderItems
+                .filter((item) => item.folderId === folderId && videoIds.includes(item.videoId))
+                .map((item) => item.videoId)
+            )
+          );
+          if (scopedVideoIds.length === 0) {
+            return ok({ ok: true, affected: 0 });
+          }
+          const scopedVideoIdSet = new Set(scopedVideoIds);
+
+          const folderCountByVideo = new Map<number, number>();
+          for (const item of state.folderItems) {
+            if (!scopedVideoIdSet.has(item.videoId)) continue;
+            folderCountByVideo.set(
+              item.videoId,
+              (folderCountByVideo.get(item.videoId) ?? 0) + 1
+            );
+          }
+
+          const toSoftDelete = scopedVideoIds.filter(
+            (videoId) => (folderCountByVideo.get(videoId) ?? 0) <= 1
+          );
+          const toDetachOnly = scopedVideoIds.filter(
+            (videoId) => (folderCountByVideo.get(videoId) ?? 0) > 1
+          );
+          const toSoftDeleteSet = new Set(toSoftDelete);
+          const toDetachOnlySet = new Set(toDetachOnly);
+
+          if (toSoftDelete.length > 0) {
+            const deletedAt = now();
+            for (const video of state.videos) {
+              if (!toSoftDeleteSet.has(video.id)) continue;
+              if (video.deletedAt !== null) continue;
+              video.deletedAt = deletedAt;
+              video.updatedAt = deletedAt;
+            }
+          }
+
+          if (toDetachOnly.length > 0) {
+            state.folderItems = state.folderItems.filter(
+              (item) => !(item.folderId === folderId && toDetachOnlySet.has(item.videoId))
+            );
+          }
+
+          affected = scopedVideoIds.length;
         } else {
           for (const video of state.videos) {
             if (!videoIds.includes(video.id)) continue;
@@ -4293,6 +4376,10 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         const pageSize = params.get("pageSize");
         const type = params.get("type");
         const search = normalizeText(params.get("search"));
+        const startedAt = Date.now();
+        const tagCount = state.tags.length;
+        const videoTagCount = state.videoTags.length;
+        const videoCount = state.videos.length;
 
         const items = state.tags
           .filter((tag) => tag.archivedAt === null)
@@ -4316,6 +4403,12 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           });
 
         const data = paginate(items, page, pageSize);
+        const elapsedMs = Date.now() - startedAt;
+        if (elapsedMs > 400) {
+          console.warn(
+            `[tags] computed in ${elapsedMs}ms (tags=${tagCount}, videoTags=${videoTagCount}, videos=${videoCount}, page=${page ?? "1"}, pageSize=${pageSize ?? "30"})`
+          );
+        }
         return ok(data);
       }
 
@@ -4426,8 +4519,22 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         const videoId = toInt(restoreVideoMatch[1]);
         const video = state.videos.find((row) => row.id === videoId && row.deletedAt !== null);
         if (!video) return fail(404, "Video not found");
+        const restoredAt = now();
         video.deletedAt = null;
-        video.updatedAt = now();
+        video.updatedAt = restoredAt;
+        // Backward-compat: old folderOnly delete logic could drop folder links.
+        // Ensure restored videos are visible in manager by attaching one active folder link.
+        if (!hasActiveFolder(state, videoId)) {
+          const fallbackFolder = activeFolders(state)[0];
+          if (fallbackFolder && !folderItemExists(state, fallbackFolder.id, videoId)) {
+            state.folderItems.push({
+              id: state.counters.folderItem++,
+              folderId: fallbackFolder.id,
+              videoId,
+              addedAt: restoredAt
+            });
+          }
+        }
         return ok({ ok: true });
       }
 
@@ -4441,10 +4548,16 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       }
 
       return fail(404, `Route not found: ${method} ${path}`);
-    }, method !== "GET");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return fail(500, message);
+      }, method !== "GET");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Internal server error";
+      return fail(500, message);
+    }
+  } finally {
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs > SLOW_API_THRESHOLD_MS) {
+      console.warn(`[api] ${method} ${path} took ${elapsedMs}ms`);
+    }
   }
 }
 

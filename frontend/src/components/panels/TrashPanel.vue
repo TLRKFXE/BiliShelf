@@ -70,13 +70,17 @@ const emit = defineEmits<{
     <section class="panel-surface p-5">
       <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div class="flex min-w-0 items-center gap-2.5">
-          <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/12 text-primary">
+          <span
+            class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/12 text-primary"
+          >
             <FolderArchive class="h-4.5 w-4.5" />
           </span>
           <div class="min-w-0">
             <p class="text-sm font-semibold">{{ t("trash.foldersTitle") }}</p>
             <p class="text-xs text-muted-foreground">
-              {{ t("common.selected", { count: selectedTrashFolderIds.length }) }}
+              {{
+                t("common.selected", { count: selectedTrashFolderIds.length })
+              }}
             </p>
           </div>
           <Badge variant="secondary">{{ trashFolders.length }}</Badge>
@@ -132,10 +136,14 @@ const emit = defineEmits<{
           }}
         </p>
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs text-muted-foreground">{{ t("common.perPage") }}</span>
+          <span class="text-xs text-muted-foreground">{{
+            t("common.perPage")
+          }}</span>
           <Select
             :model-value="String(trashFolderPageSize)"
-            @update:model-value="emit('trashFolderPageSizeChange', String($event))"
+            @update:model-value="
+              emit('trashFolderPageSizeChange', String($event))
+            "
           >
             <SelectTrigger class="h-8 w-[92px]">
               <SelectValue />
@@ -189,11 +197,16 @@ const emit = defineEmits<{
               :model-value="isTrashFolderSelected(folder.id)"
               class="mt-1"
               @update:model-value="
-                emit('setTrashFolderSelection', { id: folder.id, checked: $event === true })
+                emit('setTrashFolderSelection', {
+                  id: folder.id,
+                  checked: $event === true,
+                })
               "
             />
             <div class="min-w-0">
-              <p class="line-clamp-1 text-sm font-semibold">{{ folder.name }}</p>
+              <p class="line-clamp-1 text-sm font-semibold">
+                {{ folder.name }}
+              </p>
               <p class="mt-0.5 text-xs text-muted-foreground">
                 {{ t("common.videosCount", { count: folder.itemCount ?? 0 }) }}
               </p>
@@ -225,13 +238,17 @@ const emit = defineEmits<{
     <section class="panel-surface p-5">
       <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div class="flex min-w-0 items-center gap-2.5">
-          <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/12 text-primary">
+          <span
+            class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/12 text-primary"
+          >
             <Video class="h-4.5 w-4.5" />
           </span>
           <div class="min-w-0">
             <p class="text-sm font-semibold">{{ t("trash.videosTitle") }}</p>
             <p class="text-xs text-muted-foreground">
-              {{ t("common.selected", { count: selectedTrashVideoIds.length }) }}
+              {{
+                t("common.selected", { count: selectedTrashVideoIds.length })
+              }}
             </p>
           </div>
           <Badge variant="secondary">{{ trashVideoTotal }}</Badge>
@@ -287,10 +304,14 @@ const emit = defineEmits<{
           }}
         </p>
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs text-muted-foreground">{{ t("common.perPage") }}</span>
+          <span class="text-xs text-muted-foreground">{{
+            t("common.perPage")
+          }}</span>
           <Select
             :model-value="String(trashVideoPageSize)"
-            @update:model-value="emit('trashVideoPageSizeChange', String($event))"
+            @update:model-value="
+              emit('trashVideoPageSizeChange', String($event))
+            "
           >
             <SelectTrigger class="h-8 w-[92px]">
               <SelectValue />
@@ -344,7 +365,10 @@ const emit = defineEmits<{
               :model-value="isTrashVideoSelected(video.id)"
               class="mt-1"
               @update:model-value="
-                emit('setTrashVideoSelection', { id: video.id, checked: $event === true })
+                emit('setTrashVideoSelection', {
+                  id: video.id,
+                  checked: $event === true,
+                })
               "
             />
             <div class="min-w-0">
