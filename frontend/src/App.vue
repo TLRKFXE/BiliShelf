@@ -9,6 +9,7 @@ import ManageTagsDialog from "./components/dialogs/ManageTagsDialog.vue";
 import RenameTagDialog from "./components/dialogs/RenameTagDialog.vue";
 import SyncImportDialog from "./components/dialogs/SyncImportDialog.vue";
 import AutoInitSetupDialog from "./components/dialogs/AutoInitSetupDialog.vue";
+import AiSettingsDialog from "./components/dialogs/AiSettingsDialog.vue";
 import BidirectionalSyncSettingsDialog from "./components/dialogs/BidirectionalSyncSettingsDialog.vue";
 import WebDavBackupDialog from "./components/dialogs/WebDavBackupDialog.vue";
 import VideoDetailDialog from "./components/dialogs/VideoDetailDialog.vue";
@@ -38,6 +39,7 @@ import { useRenameTagDialog } from "./composables/use-rename-tag-dialog";
 import { useVideoDetail } from "./composables/use-video-detail";
 import {
   exportLibrary,
+  fetchAiSettings,
   fetchHistoryModelSyncStatus,
   fetchTagEnrichmentStatus,
   fetchBidirectionalSyncSettings,
@@ -52,7 +54,9 @@ import {
   runTagEnrichmentNow,
   startHistoryModelSync,
   testWebDavConnection,
+  testAiSettings,
   uploadWebDavBackup,
+  updateAiSettings,
   updateBidirectionalSyncSettings,
   updateWebDavSettings,
   type BidirectionalSyncSettings,
@@ -62,7 +66,7 @@ import {
   updateVideo,
   type SyncRemoteFolder,
 } from "./lib/api";
-import type { Tag } from "./types";
+import type { AiSettings, Tag } from "./types";
 
 const uiStore = useAppUiStore();
 const { locale, isDark } = storeToRefs(uiStore);
@@ -167,6 +171,9 @@ const syncSpeedMode = ref<"stable" | "balanced" | "fast">("balanced");
 const syncIncludeTagEnrichment = ref(false);
 const tagEnrichmentStatus = ref<TagEnrichmentStatus | null>(null);
 const tagEnrichmentLoading = ref(false);
+const aiSettingsDialogOpen = ref(false);
+const aiSettings = ref<AiSettings | null>(null);
+const aiSettingsBusy = ref(false);
 const bidirectionalSyncDialogOpen = ref(false);
 const bidirectionalSyncSettings = ref<BidirectionalSyncSettings | null>(null);
 const bidirectionalSyncSaving = ref(false);
@@ -889,6 +896,65 @@ async function refreshBidirectionalSyncSettings() {
     bidirectionalSyncSettings.value = await fetchBidirectionalSyncSettings();
   } catch (error) {
     notifyError(t("toast.syncSettingsLoadFail"), error);
+  }
+}
+
+async function refreshAiSettings() {
+  if (!EXTENSION_LOCAL_API_RUNTIME) {
+    aiSettings.value = null;
+    return;
+  }
+  try {
+    aiSettings.value = await fetchAiSettings();
+  } catch (error) {
+    notifyError(t("toast.aiSettingsLoadFail"), error);
+  }
+}
+
+function openAiSettingsDialog() {
+  if (!EXTENSION_LOCAL_API_RUNTIME) return;
+  aiSettingsDialogOpen.value = true;
+  void refreshAiSettings();
+}
+
+async function saveAiSettings(payload: {
+  provider?: AiSettings["provider"];
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  enabled?: boolean;
+}) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) return;
+  if (aiSettingsBusy.value) return;
+  aiSettingsBusy.value = true;
+  try {
+    aiSettings.value = await updateAiSettings(payload);
+    notifySuccess(t("toast.aiSettingsSaved"));
+    aiSettingsDialogOpen.value = false;
+  } catch (error) {
+    notifyError(t("toast.aiSettingsSaveFail"), error);
+  } finally {
+    aiSettingsBusy.value = false;
+  }
+}
+
+async function testAiSettingsFromUi(payload: {
+  provider?: AiSettings["provider"];
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  enabled?: boolean;
+}) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) return;
+  if (aiSettingsBusy.value) return;
+  aiSettingsBusy.value = true;
+  try {
+    aiSettings.value = await testAiSettings(payload);
+    notifySuccess(t("toast.aiSettingsTestDone"));
+  } catch (error) {
+    notifyError(t("toast.aiSettingsTestFail"), error);
+  } finally {
+    aiSettingsBusy.value = false;
   }
 }
 
@@ -1963,6 +2029,7 @@ onBeforeUnmount(() => {
       <ManagerHeader
         :t="t"
         :trash-mode="trashMode"
+        :show-ai-settings="EXTENSION_LOCAL_API_RUNTIME"
         :show-sync-settings="BILIBILI_LISTENER_SETTINGS_ENABLED"
         :current-view-label="headerCurrentViewLabel"
         :current-scope-label="headerCurrentScopeLabel"
@@ -1973,6 +2040,7 @@ onBeforeUnmount(() => {
         :exporting="exportingLibrary"
         :importing="importingLibrary"
         @open-tags="toolsOpen = true"
+        @open-ai-settings="openAiSettingsDialog"
         @open-sync-settings="openBidirectionalSyncSettingsDialog"
         @open-webdav-settings="openWebDavDialog"
         @sync-import="openSyncImportDialog"
@@ -2249,6 +2317,17 @@ onBeforeUnmount(() => {
         (remoteId, checked) => toggleAutoInitFolder(remoteId, checked)
       "
       @start="confirmAutoInitSetup"
+    />
+
+    <AiSettingsDialog
+      :open="aiSettingsDialogOpen"
+      :t="t"
+      :loading="aiSettingsBusy"
+      :settings="aiSettings"
+      @update:open="aiSettingsDialogOpen = $event"
+      @reload="refreshAiSettings"
+      @save="saveAiSettings"
+      @test="testAiSettingsFromUi"
     />
 
     <BidirectionalSyncSettingsDialog

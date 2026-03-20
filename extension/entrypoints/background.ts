@@ -1,5 +1,6 @@
 import {
   createDefaultAiState,
+  normalizeAiProvider,
   normalizeAiState
 } from "../shared/ai-state.js";
 import {
@@ -1933,6 +1934,78 @@ function ensureBidirectionalSyncMeta(state: LocalState) {
   return state.syncMeta.bidirectionalSync;
 }
 
+function normalizeAiBaseUrl(rawUrl: unknown) {
+  const text = normalizeText(rawUrl);
+  if (!text) return "";
+  let parsed: URL;
+  try {
+    parsed = new URL(text);
+  } catch {
+    throw new Error("AI base URL is invalid");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("AI base URL must start with http:// or https://");
+  }
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function ensureAiMeta(state: LocalState) {
+  const normalized = normalizeAiState(state.ai, now());
+  state.ai = normalized;
+  state.ai.provider = normalizeAiProvider(state.ai.provider);
+  state.ai.baseUrl = normalizeText(state.ai.baseUrl);
+  state.ai.apiKey = String(state.ai.apiKey ?? "");
+  state.ai.model = normalizeText(state.ai.model);
+  state.ai.enabled = Boolean(state.ai.enabled);
+  return state.ai;
+}
+
+function getAiSettings(meta: AiMeta): AiSettingsResponse {
+  return maskApiKeyStateForResponse(meta);
+}
+
+function applyAiSettingsPatch(meta: AiMeta, body: Record<string, unknown>) {
+  let configChanged = false;
+
+  if (Object.prototype.hasOwnProperty.call(body, "provider")) {
+    meta.provider = normalizeAiProvider(body.provider);
+    configChanged = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "baseUrl")) {
+    meta.baseUrl = normalizeAiBaseUrl(body.baseUrl);
+    configChanged = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "apiKey")) {
+    meta.apiKey = String(body.apiKey ?? "").trim();
+    configChanged = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "model")) {
+    meta.model = normalizeText(body.model);
+    configChanged = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "enabled")) {
+    meta.enabled = Boolean(body.enabled);
+  }
+
+  if (configChanged) {
+    meta.lastTestAt = null;
+    meta.lastTestOk = false;
+    meta.lastError = null;
+  }
+}
+
+function validateAiSettings(meta: AiMeta) {
+  if (!meta.baseUrl) {
+    throw new Error("AI base URL is required");
+  }
+  if (!meta.model) {
+    throw new Error("AI model is required");
+  }
+  if (!meta.apiKey) {
+    throw new Error("AI API key is required");
+  }
+}
+
 function normalizeWebDavBaseUrl(rawUrl: unknown) {
   const text = normalizeText(rawUrl);
   if (!text) return "";
@@ -2910,6 +2983,8 @@ function isWriteRequestBlockedByFavoritesSync(method: string, path: string) {
   if (path === "/sync/bilibili/history-model/status") return false;
   if (path === "/sync/bilibili/tag-enrichment/status") return false;
   if (path === "/sync/bilibili/bidirectional/settings") return false;
+  if (path === "/ai/settings") return false;
+  if (path === "/ai/settings/test") return false;
   if (path === "/backup/webdav/settings") return false;
   if (path === "/backup/webdav/test") return false;
   if (path === "/backup/webdav/upload") return false;
@@ -3235,6 +3310,11 @@ function handleReadOnlyApi(
     });
   }
 
+  if (path === "/ai/settings") {
+    const settings = ensureAiMeta(state);
+    return ok(getAiSettings(settings));
+  }
+
   if (path === "/backup/webdav/settings") {
     const settings = ensureWebDavMeta(state);
     return ok(getWebDavSettings(settings));
@@ -3472,6 +3552,43 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           localToBiliEnabled: false,
           updatedAt: meta.updatedAt
         });
+      }
+
+      if (method === "PATCH" && path === "/ai/settings") {
+        const meta = ensureAiMeta(state);
+        applyAiSettingsPatch(meta, body);
+        if (meta.enabled) {
+          try {
+            validateAiSettings(meta);
+          } catch (error) {
+            return fail(
+              400,
+              error instanceof Error ? error.message : "AI settings are invalid"
+            );
+          }
+        }
+        meta.updatedAt = now();
+        return ok(getAiSettings(meta));
+      }
+
+      if (method === "POST" && path === "/ai/settings/test") {
+        const meta = ensureAiMeta(state);
+        applyAiSettingsPatch(meta, body);
+        meta.updatedAt = now();
+        try {
+          validateAiSettings(meta);
+          meta.lastTestAt = now();
+          meta.lastTestOk = true;
+          meta.lastError = null;
+          return ok(getAiSettings(meta));
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "AI settings test failed";
+          meta.lastTestAt = now();
+          meta.lastTestOk = false;
+          meta.lastError = message;
+          return fail(400, message);
+        }
       }
 
       if (method === "PATCH" && path === "/sync/bilibili/bidirectional/settings") {
