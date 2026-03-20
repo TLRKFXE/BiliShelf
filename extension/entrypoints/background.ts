@@ -1,3 +1,15 @@
+import {
+  createDefaultAiState,
+  normalizeAiState
+} from "../shared/ai-state.js";
+import type {
+  AiMeta as SharedAiMeta,
+  AiProvider as SharedAiProvider,
+  AiState,
+  FolderAiAnalysisRecord as SharedFolderAiAnalysisRecord,
+  VideoAiAnalysisRecord as SharedVideoAiAnalysisRecord
+} from "../shared/ai-state.js";
+
 type FolderRecord = {
   id: number;
   name: string;
@@ -96,6 +108,11 @@ type SyncMeta = {
   stage3Reconcile: Stage3ReconcileMeta;
 };
 
+type AiProvider = SharedAiProvider;
+type AiMeta = SharedAiMeta;
+type FolderAiAnalysisRecord = SharedFolderAiAnalysisRecord;
+type VideoAiAnalysisRecord = SharedVideoAiAnalysisRecord;
+
 type LocalState = {
   counters: {
     folder: number;
@@ -110,6 +127,7 @@ type LocalState = {
   tags: TagRecord[];
   videoTags: VideoTagRecord[];
   syncMeta: SyncMeta;
+  ai: AiState;
 };
 
 type ApiResult = {
@@ -292,7 +310,8 @@ const defaultState = (): LocalState => ({
     bidirectionalSync: defaultBidirectionalSyncMeta(),
     webdav: defaultWebDavMeta(),
     stage3Reconcile: defaultStage3ReconcileMeta()
-  }
+  },
+  ai: createDefaultAiState(now())
 });
 
 const emptyFavoritesSyncSummary = (): FavoritesSyncSummaryStatus => ({
@@ -531,7 +550,8 @@ async function readState() {
               )
             }
           }
-        }
+        },
+        ai: normalizeAiState(raw.ai, base.ai.updatedAt)
       };
       resolve(normalized);
     };
