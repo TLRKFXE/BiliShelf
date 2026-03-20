@@ -215,11 +215,12 @@ type FavoritesSyncProgress = {
 };
 
 type CookieLike = { name?: unknown; value?: unknown };
+type CookiesGetAll = (
+  details: { domain?: string },
+  callback?: (cookies: CookieLike[]) => void
+) => Promise<CookieLike[]> | void;
 type CookiesApi = {
-  getAll: (
-    details: { domain?: string },
-    callback?: (cookies: CookieLike[]) => void
-  ) => Promise<CookieLike[]> | void;
+  getAll?: CookiesGetAll;
 };
 
 const defaultTagEnrichmentMeta = (): TagEnrichmentMeta => ({
@@ -1160,14 +1161,14 @@ function parseImportRows(format: "json" | "csv", content: string) {
         ) ??
         nowTs;
       pushRow({
-        bvid: video.bvid,
-        title: video.title,
-        coverUrl: video.coverUrl,
-        uploader: video.uploader,
+        bvid: normalizeText(video.bvid),
+        title: normalizeText(video.title),
+        coverUrl: normalizeText(video.coverUrl),
+        uploader: normalizeText(video.uploader),
         uploaderSpaceUrl: normalizeText(video.uploaderSpaceUrl || video.uploaderUrl),
-        description: video.description,
+        description: normalizeText(video.description),
         publishAt: parseTimestampInput(video.publishAt ?? video.publishAtText),
-        bvidUrl: video.bvidUrl,
+        bvidUrl: normalizeText(video.bvidUrl),
         isInvalid: Boolean(video.isInvalid),
         partition: normalizeText(video.partition) || "uncategorized",
         addedAt: favoriteAt,
@@ -1331,6 +1332,11 @@ async function requestWebDav(
 
 function getAllCookies(api: CookiesApi, details: { domain?: string }): Promise<CookieLike[]> {
   return new Promise<CookieLike[]>((resolve, reject) => {
+    const getAll = api.getAll;
+    if (!getAll) {
+      resolve([]);
+      return;
+    }
     let settled = false;
     const finish = (cookies: unknown) => {
       if (settled) return;
@@ -1339,7 +1345,7 @@ function getAllCookies(api: CookiesApi, details: { domain?: string }): Promise<C
     };
 
     try {
-      const maybePromise = api.getAll(details, (cookies) => finish(cookies));
+      const maybePromise = getAll(details, (cookies) => finish(cookies));
       if (maybePromise && typeof (maybePromise as Promise<CookieLike[]>).then === "function") {
         (maybePromise as Promise<CookieLike[]>)
           .then((cookies) => finish(cookies))
