@@ -8,3 +8,4 @@ extension/.output/
 extension/.wxt/
 extension/release/packages/
 extension/public/manager/
+.worktrees/
