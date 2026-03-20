@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import {
+  Bot,
   DatabaseBackup,
   Download,
   Languages,
@@ -28,6 +29,7 @@ import { Progress } from "@/components/ui/progress";
 const props = defineProps<{
   t: (key: string, vars?: Record<string, string | number>) => string;
   trashMode: boolean;
+  showAiSettings: boolean;
   showSyncSettings: boolean;
   currentViewLabel: string;
   currentScopeLabel: string;
@@ -41,6 +43,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "open-tags": [];
+  "open-ai-settings": [];
   "open-sync-settings": [];
   "open-webdav-settings": [];
   "toggle-trash": [];
@@ -138,6 +141,16 @@ function submitExport(format: "json" | "csv") {
       >
         <Tags class="h-3.5 w-3.5" />
         {{ props.t("header.manageTags") }}
+      </Button>
+      <Button
+        v-if="!props.trashMode && props.showAiSettings"
+        size="sm"
+        variant="outline"
+        class="justify-start"
+        @click="emit('open-ai-settings')"
+      >
+        <Bot class="h-3.5 w-3.5" />
+        {{ props.t("header.aiSettings") }}
       </Button>
       <Button
         v-if="!props.trashMode && props.showSyncSettings"

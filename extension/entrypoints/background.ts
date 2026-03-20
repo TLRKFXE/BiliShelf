@@ -1,3 +1,26 @@
+import {
+  createDefaultAiState,
+  normalizeAiProvider,
+  normalizeAiState
+} from "../shared/ai-state.js";
+import {
+  maskApiKeyStateForResponse,
+  normalizeClassificationPayload,
+  normalizeFolderSummaryPayload
+} from "../shared/ai-provider.js";
+import {
+  applyFolderAnalysisAttempt,
+  buildFolderAnalysisInput
+} from "../shared/ai-analysis.js";
+import type {
+  AiMeta as SharedAiMeta,
+  AiProvider as SharedAiProvider,
+  AiState,
+  FolderAiAnalysisRecord as SharedFolderAiAnalysisRecord,
+  VideoAiAnalysisRecord as SharedVideoAiAnalysisRecord
+} from "../shared/ai-state.js";
+import type { FolderAnalysisInput } from "../shared/ai-analysis.js";
+
 type FolderRecord = {
   id: number;
   name: string;
@@ -96,6 +119,12 @@ type SyncMeta = {
   stage3Reconcile: Stage3ReconcileMeta;
 };
 
+type AiProvider = SharedAiProvider;
+type AiMeta = SharedAiMeta;
+type FolderAiAnalysisRecord = SharedFolderAiAnalysisRecord;
+type VideoAiAnalysisRecord = SharedVideoAiAnalysisRecord;
+type AiSettingsResponse = ReturnType<typeof maskApiKeyStateForResponse>;
+
 type LocalState = {
   counters: {
     folder: number;
@@ -110,6 +139,7 @@ type LocalState = {
   tags: TagRecord[];
   videoTags: VideoTagRecord[];
   syncMeta: SyncMeta;
+  ai: AiState;
 };
 
 type ApiResult = {
@@ -215,11 +245,12 @@ type FavoritesSyncProgress = {
 };
 
 type CookieLike = { name?: unknown; value?: unknown };
+type CookiesGetAll = (
+  details: { domain?: string },
+  callback?: (cookies: CookieLike[]) => void
+) => Promise<CookieLike[]> | void;
 type CookiesApi = {
-  getAll: (
-    details: { domain?: string },
-    callback?: (cookies: CookieLike[]) => void
-  ) => Promise<CookieLike[]> | void;
+  getAll?: CookiesGetAll;
 };
 
 const defaultTagEnrichmentMeta = (): TagEnrichmentMeta => ({
@@ -291,7 +322,8 @@ const defaultState = (): LocalState => ({
     bidirectionalSync: defaultBidirectionalSyncMeta(),
     webdav: defaultWebDavMeta(),
     stage3Reconcile: defaultStage3ReconcileMeta()
-  }
+  },
+  ai: createDefaultAiState(now())
 });
 
 const emptyFavoritesSyncSummary = (): FavoritesSyncSummaryStatus => ({
@@ -330,6 +362,8 @@ let biliRequestThrottleQueue: Promise<void> = Promise.resolve();
 let favoritesSyncTask: Promise<void> | null = null;
 let favoritesSyncStatus: FavoritesSyncStatus = defaultFavoritesSyncStatus();
 let stage3ReconcileTask: Promise<void> | null = null;
+let folderAiAnalysisTask: Promise<unknown> | null = null;
+let folderAiAnalysisFolderId: number | null = null;
 
 function now() {
   return Date.now();
@@ -530,7 +564,8 @@ async function readState() {
               )
             }
           }
-        }
+        },
+        ai: normalizeAiState(raw.ai, base.ai.updatedAt)
       };
       resolve(normalized);
     };
@@ -1160,14 +1195,14 @@ function parseImportRows(format: "json" | "csv", content: string) {
         ) ??
         nowTs;
       pushRow({
-        bvid: video.bvid,
-        title: video.title,
-        coverUrl: video.coverUrl,
-        uploader: video.uploader,
+        bvid: normalizeText(video.bvid),
+        title: normalizeText(video.title),
+        coverUrl: normalizeText(video.coverUrl),
+        uploader: normalizeText(video.uploader),
         uploaderSpaceUrl: normalizeText(video.uploaderSpaceUrl || video.uploaderUrl),
-        description: video.description,
+        description: normalizeText(video.description),
         publishAt: parseTimestampInput(video.publishAt ?? video.publishAtText),
-        bvidUrl: video.bvidUrl,
+        bvidUrl: normalizeText(video.bvidUrl),
         isInvalid: Boolean(video.isInvalid),
         partition: normalizeText(video.partition) || "uncategorized",
         addedAt: favoriteAt,
@@ -1331,6 +1366,11 @@ async function requestWebDav(
 
 function getAllCookies(api: CookiesApi, details: { domain?: string }): Promise<CookieLike[]> {
   return new Promise<CookieLike[]>((resolve, reject) => {
+    const getAll = api.getAll;
+    if (!getAll) {
+      resolve([]);
+      return;
+    }
     let settled = false;
     const finish = (cookies: unknown) => {
       if (settled) return;
@@ -1339,7 +1379,7 @@ function getAllCookies(api: CookiesApi, details: { domain?: string }): Promise<C
     };
 
     try {
-      const maybePromise = api.getAll(details, (cookies) => finish(cookies));
+      const maybePromise = getAll(details, (cookies) => finish(cookies));
       if (maybePromise && typeof (maybePromise as Promise<CookieLike[]>).then === "function") {
         (maybePromise as Promise<CookieLike[]>)
           .then((cookies) => finish(cookies))
@@ -1899,6 +1939,379 @@ function ensureBidirectionalSyncMeta(state: LocalState) {
   // Local->Bilibili write-back has been retired; keep it hard-disabled in persisted state.
   state.syncMeta.bidirectionalSync.localToBiliEnabled = false;
   return state.syncMeta.bidirectionalSync;
+}
+
+function normalizeAiBaseUrl(rawUrl: unknown) {
+  const text = normalizeText(rawUrl);
+  if (!text) return "";
+  let parsed: URL;
+  try {
+    parsed = new URL(text);
+  } catch {
+    throw new Error("AI base URL is invalid");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("AI base URL must start with http:// or https://");
+  }
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function ensureAiMeta(state: LocalState) {
+  const normalized = normalizeAiState(state.ai, now());
+  state.ai = normalized;
+  state.ai.provider = normalizeAiProvider(state.ai.provider);
+  state.ai.baseUrl = normalizeText(state.ai.baseUrl);
+  state.ai.apiKey = String(state.ai.apiKey ?? "");
+  state.ai.model = normalizeText(state.ai.model);
+  state.ai.enabled = Boolean(state.ai.enabled);
+  return state.ai;
+}
+
+function getAiSettings(meta: AiMeta): AiSettingsResponse {
+  return maskApiKeyStateForResponse(meta);
+}
+
+function applyAiSettingsPatch(meta: AiMeta, body: Record<string, unknown>) {
+  let configChanged = false;
+
+  if (Object.prototype.hasOwnProperty.call(body, "provider")) {
+    meta.provider = normalizeAiProvider(body.provider);
+    configChanged = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "baseUrl")) {
+    meta.baseUrl = normalizeAiBaseUrl(body.baseUrl);
+    configChanged = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "apiKey")) {
+    meta.apiKey = String(body.apiKey ?? "").trim();
+    configChanged = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "model")) {
+    meta.model = normalizeText(body.model);
+    configChanged = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "enabled")) {
+    meta.enabled = Boolean(body.enabled);
+  }
+
+  if (configChanged) {
+    meta.lastTestAt = null;
+    meta.lastTestOk = false;
+    meta.lastError = null;
+  }
+}
+
+function validateAiSettings(meta: AiMeta) {
+  if (!meta.baseUrl) {
+    throw new Error("AI base URL is required");
+  }
+  if (!meta.model) {
+    throw new Error("AI model is required");
+  }
+  if (!meta.apiKey) {
+    throw new Error("AI API key is required");
+  }
+}
+
+function joinUrl(baseUrl: string, path: string) {
+  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
+function extractJsonObject(rawText: string) {
+  const direct = normalizeText(rawText);
+  if (!direct) {
+    throw new Error("AI response was empty");
+  }
+  try {
+    return JSON.parse(direct) as Record<string, unknown>;
+  } catch {}
+
+  const fencedMatch = direct.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fencedMatch?.[1] ?? direct;
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start < 0 || end <= start) {
+    throw new Error("AI response did not contain JSON");
+  }
+  return JSON.parse(candidate.slice(start, end + 1)) as Record<string, unknown>;
+}
+
+function extractOpenAiLikeText(payload: Record<string, unknown>) {
+  const choice = Array.isArray(payload.choices) ? payload.choices[0] : null;
+  const message =
+    choice && typeof choice === "object" && choice !== null
+      ? (choice as Record<string, unknown>).message
+      : null;
+  const content =
+    message && typeof message === "object" && message !== null
+      ? (message as Record<string, unknown>).content
+      : null;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) =>
+        item && typeof item === "object" && "text" in item
+          ? normalizeText((item as { text?: unknown }).text)
+          : ""
+      )
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+function extractClaudeText(payload: Record<string, unknown>) {
+  if (!Array.isArray(payload.content)) return "";
+  return payload.content
+    .map((item) =>
+      item && typeof item === "object" && "text" in item
+        ? normalizeText((item as { text?: unknown }).text)
+        : ""
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+function extractGeminiText(payload: Record<string, unknown>) {
+  const candidate = Array.isArray(payload.candidates) ? payload.candidates[0] : null;
+  const content =
+    candidate && typeof candidate === "object" && candidate !== null
+      ? (candidate as Record<string, unknown>).content
+      : null;
+  const parts =
+    content && typeof content === "object" && content !== null
+      ? (content as Record<string, unknown>).parts
+      : null;
+  if (!Array.isArray(parts)) return "";
+  return parts
+    .map((item) =>
+      item && typeof item === "object" && "text" in item
+        ? normalizeText((item as { text?: unknown }).text)
+        : ""
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function requestAiJson(meta: AiMeta, prompt: string) {
+  validateAiSettings(meta);
+
+  let response: Response;
+  if (meta.provider === "gemini") {
+    response = await fetch(
+      `${joinUrl(meta.baseUrl, `models/${encodeURIComponent(meta.model)}:generateContent`)}?key=${encodeURIComponent(meta.apiKey)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: prompt }]
+            }
+          ]
+        })
+      }
+    );
+  } else if (meta.provider === "claude") {
+    response = await fetch(joinUrl(meta.baseUrl, "messages"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": meta.apiKey,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: meta.model,
+        max_tokens: 512,
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    });
+  } else {
+    response = await fetch(joinUrl(meta.baseUrl, "chat/completions"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${meta.apiKey}`
+      },
+      body: JSON.stringify({
+        model: meta.model,
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Return JSON only. Do not include markdown fences or extra prose."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    });
+  }
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      normalizeText(responseText) || `AI request failed (${response.status})`
+    );
+  }
+
+  const payload = responseText
+    ? (JSON.parse(responseText) as Record<string, unknown>)
+    : {};
+  const text =
+    meta.provider === "gemini"
+      ? extractGeminiText(payload)
+      : meta.provider === "claude"
+        ? extractClaudeText(payload)
+        : extractOpenAiLikeText(payload);
+
+  return extractJsonObject(text);
+}
+
+async function classifyFolderVideo(meta: AiMeta, input: FolderAnalysisInput, video: FolderAnalysisInput["videos"][number]) {
+  const payload = await requestAiJson(
+    meta,
+    [
+      "You analyze one video inside a folder and return JSON only.",
+      'Return schema: {"categories":["Category"],"reasoningSnippet":"short text"}',
+      `Folder: ${input.folderName}`,
+      `Video title: ${video.title}`,
+      `Uploader: ${video.uploader}`,
+      `Description: ${video.description || "-"}`,
+      `Custom tags: ${video.customTags.join(", ") || "-"}`,
+      `System tags: ${video.systemTags.join(", ") || "-"}`
+    ].join("\n")
+  );
+  return normalizeClassificationPayload(payload);
+}
+
+async function summarizeFolder(meta: AiMeta, input: FolderAnalysisInput, classifiedVideos: Array<{ title: string; categories: string[] }>) {
+  const payload = await requestAiJson(
+    meta,
+    [
+      "You summarize a folder and return JSON only.",
+      'Return schema: {"summary":"short summary"}',
+      `Folder: ${input.folderName}`,
+      `Folder description: ${input.folderDescription || "-"}`,
+      `Videos: ${classifiedVideos
+        .map((video) => `${video.title} -> ${video.categories.join(", ") || "Uncategorized"}`)
+        .join(" | ")}`
+    ].join("\n")
+  );
+  return normalizeFolderSummaryPayload(payload);
+}
+
+function getFolderAiAnalysis(state: LocalState, folderId: number) {
+  const folderRecord = ensureAiMeta(state).folderAnalyses.find(
+    (item) => item.folderId === folderId
+  );
+  if (!folderRecord) return null;
+  return {
+    ...folderRecord,
+    videos: ensureAiMeta(state).videoAnalyses.filter(
+      (item) => item.folderId === folderId
+    )
+  };
+}
+
+function writeFolderAiAnalysis(
+  state: LocalState,
+  snapshot: (FolderAiAnalysisRecord & { videos: VideoAiAnalysisRecord[] }) | null
+) {
+  const aiMeta = ensureAiMeta(state);
+  if (!snapshot) return null;
+
+  aiMeta.folderAnalyses = aiMeta.folderAnalyses.filter(
+    (item) => item.folderId !== snapshot.folderId
+  );
+  aiMeta.videoAnalyses = aiMeta.videoAnalyses.filter(
+    (item) => item.folderId !== snapshot.folderId
+  );
+  aiMeta.folderAnalyses.push({
+    folderId: snapshot.folderId,
+    summary: snapshot.summary,
+    status: snapshot.status,
+    lastError: snapshot.lastError,
+    startedAt: snapshot.startedAt,
+    finishedAt: snapshot.finishedAt,
+    updatedAt: snapshot.updatedAt,
+    provider: snapshot.provider,
+    model: snapshot.model
+  });
+  aiMeta.videoAnalyses.push(...snapshot.videos);
+  aiMeta.updatedAt = now();
+  return getFolderAiAnalysis(state, snapshot.folderId);
+}
+
+async function runFolderAiAnalysisInState(state: LocalState, folderId: number) {
+  const aiMeta = ensureAiMeta(state);
+  if (!aiMeta.enabled) {
+    throw new Error("AI analysis is disabled");
+  }
+  validateAiSettings(aiMeta);
+
+  const input = buildFolderAnalysisInput(state, folderId);
+  if (input.videos.length === 0) {
+    throw new Error("Folder has no videos to analyze");
+  }
+
+  const startedAt = now();
+  const nextVideoAnalyses: VideoAiAnalysisRecord[] = [];
+
+  for (const video of input.videos) {
+    const classified = await classifyFolderVideo(aiMeta, input, video);
+    nextVideoAnalyses.push({
+      folderId,
+      videoId: video.videoId,
+      categories: classified.categories,
+      reasoningSnippet: classified.reasoningSnippet,
+      analyzedAt: now(),
+      provider: aiMeta.provider,
+      model: aiMeta.model
+    });
+  }
+
+  const summaryPayload = await summarizeFolder(
+    aiMeta,
+    input,
+    input.videos.map((video) => ({
+      title: video.title,
+      categories:
+        nextVideoAnalyses.find((item) => item.videoId === video.videoId)?.categories ?? []
+    }))
+  );
+
+  const folderRecord: FolderAiAnalysisRecord = {
+    folderId,
+    summary: summaryPayload.summary,
+    status: "success",
+    lastError: null,
+    startedAt,
+    finishedAt: now(),
+    updatedAt: now(),
+    provider: aiMeta.provider,
+    model: aiMeta.model
+  };
+
+  const previousAnalysis = getFolderAiAnalysis(state, folderId);
+  return writeFolderAiAnalysis(
+    state,
+    applyFolderAnalysisAttempt(previousAnalysis, {
+      ...folderRecord,
+      videos: nextVideoAnalyses
+    })
+  );
 }
 
 function normalizeWebDavBaseUrl(rawUrl: unknown) {
@@ -2878,6 +3291,8 @@ function isWriteRequestBlockedByFavoritesSync(method: string, path: string) {
   if (path === "/sync/bilibili/history-model/status") return false;
   if (path === "/sync/bilibili/tag-enrichment/status") return false;
   if (path === "/sync/bilibili/bidirectional/settings") return false;
+  if (path === "/ai/settings") return false;
+  if (path === "/ai/settings/test") return false;
   if (path === "/backup/webdav/settings") return false;
   if (path === "/backup/webdav/test") return false;
   if (path === "/backup/webdav/upload") return false;
@@ -3203,6 +3618,11 @@ function handleReadOnlyApi(
     });
   }
 
+  if (path === "/ai/settings") {
+    const settings = ensureAiMeta(state);
+    return ok(getAiSettings(settings));
+  }
+
   if (path === "/backup/webdav/settings") {
     const settings = ensureWebDavMeta(state);
     return ok(getWebDavSettings(settings));
@@ -3307,6 +3727,12 @@ function handleReadOnlyApi(
     return ok(data);
   }
 
+  const folderAiAnalysisMatch = path.match(/^\/folders\/(\d+)\/ai-analysis$/);
+  if (folderAiAnalysisMatch) {
+    const folderId = toInt(folderAiAnalysisMatch[1]);
+    return ok(getFolderAiAnalysis(state, folderId));
+  }
+
   return null;
 }
 
@@ -3360,6 +3786,73 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         423,
         "Favorites sync is running. Wait for completion (or stop sync) before modifying local folders/videos."
       );
+    }
+
+    const folderAiAnalysisMatch = path.match(/^\/folders\/(\d+)\/ai-analysis$/);
+    if (folderAiAnalysisMatch && method === "POST") {
+      const folderId = toInt(folderAiAnalysisMatch[1]);
+      if (folderAiAnalysisTask || folderAiAnalysisFolderId !== null) {
+        return fail(
+          409,
+          `AI analysis is already running for folder ${folderAiAnalysisFolderId ?? "unknown"}`
+        );
+      }
+      folderAiAnalysisFolderId = folderId;
+      await withState((state) => {
+        const aiMeta = ensureAiMeta(state);
+        const currentAnalysis = getFolderAiAnalysis(state, folderId);
+        const startedAt = now();
+        writeFolderAiAnalysis(
+          state,
+          applyFolderAnalysisAttempt(currentAnalysis, {
+            folderId,
+            summary: null,
+            status: "running",
+            lastError: null,
+            startedAt,
+            finishedAt: null,
+            updatedAt: startedAt,
+            provider: aiMeta.provider,
+            model: aiMeta.model,
+            videos: []
+          })
+        );
+      }, true);
+      const task = withState(async (state) => {
+        const data = await runFolderAiAnalysisInState(state, folderId);
+        return ok(data);
+      }, true);
+      folderAiAnalysisTask = task.finally(() => {
+        folderAiAnalysisTask = null;
+        folderAiAnalysisFolderId = null;
+      });
+      try {
+        return await task;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "AI analysis failed";
+        await withState((state) => {
+          const aiMeta = ensureAiMeta(state);
+          const currentAnalysis = getFolderAiAnalysis(state, folderId);
+          const finishedAt = now();
+          writeFolderAiAnalysis(
+            state,
+            applyFolderAnalysisAttempt(currentAnalysis, {
+              folderId,
+              summary: null,
+              status: "error",
+              lastError: message,
+              startedAt: currentAnalysis?.startedAt ?? finishedAt,
+              finishedAt,
+              updatedAt: finishedAt,
+              provider: aiMeta.provider,
+              model: aiMeta.model,
+              videos: []
+            })
+          );
+        }, true);
+        return fail(400, message);
+      }
     }
 
     if (method === "GET") {
@@ -3440,6 +3933,43 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           localToBiliEnabled: false,
           updatedAt: meta.updatedAt
         });
+      }
+
+      if (method === "PATCH" && path === "/ai/settings") {
+        const meta = ensureAiMeta(state);
+        applyAiSettingsPatch(meta, body);
+        if (meta.enabled) {
+          try {
+            validateAiSettings(meta);
+          } catch (error) {
+            return fail(
+              400,
+              error instanceof Error ? error.message : "AI settings are invalid"
+            );
+          }
+        }
+        meta.updatedAt = now();
+        return ok(getAiSettings(meta));
+      }
+
+      if (method === "POST" && path === "/ai/settings/test") {
+        const meta = ensureAiMeta(state);
+        applyAiSettingsPatch(meta, body);
+        meta.updatedAt = now();
+        try {
+          validateAiSettings(meta);
+          meta.lastTestAt = now();
+          meta.lastTestOk = true;
+          meta.lastError = null;
+          return ok(getAiSettings(meta));
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "AI settings test failed";
+          meta.lastTestAt = now();
+          meta.lastTestOk = false;
+          meta.lastError = message;
+          return fail(400, message);
+        }
       }
 
       if (method === "PATCH" && path === "/sync/bilibili/bidirectional/settings") {
@@ -3861,6 +4391,20 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       }
 
       const folderMatch = path.match(/^\/folders\/(\d+)$/);
+      const folderAiAnalysisWriteMatch = path.match(/^\/folders\/(\d+)\/ai-analysis$/);
+      if (folderAiAnalysisWriteMatch && method === "DELETE") {
+        const folderId = toInt(folderAiAnalysisWriteMatch[1]);
+        ensureAiMeta(state);
+        state.ai.folderAnalyses = state.ai.folderAnalyses.filter(
+          (item) => item.folderId !== folderId
+        );
+        state.ai.videoAnalyses = state.ai.videoAnalyses.filter(
+          (item) => item.folderId !== folderId
+        );
+        state.ai.updatedAt = now();
+        return ok(undefined, 204);
+      }
+
       if (folderMatch && method === "PATCH") {
         const folderId = toInt(folderMatch[1]);
         const folder = state.folders.find((row) => row.id === folderId);

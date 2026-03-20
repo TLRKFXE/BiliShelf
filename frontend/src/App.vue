@@ -9,6 +9,7 @@ import ManageTagsDialog from "./components/dialogs/ManageTagsDialog.vue";
 import RenameTagDialog from "./components/dialogs/RenameTagDialog.vue";
 import SyncImportDialog from "./components/dialogs/SyncImportDialog.vue";
 import AutoInitSetupDialog from "./components/dialogs/AutoInitSetupDialog.vue";
+import AiSettingsDialog from "./components/dialogs/AiSettingsDialog.vue";
 import BidirectionalSyncSettingsDialog from "./components/dialogs/BidirectionalSyncSettingsDialog.vue";
 import WebDavBackupDialog from "./components/dialogs/WebDavBackupDialog.vue";
 import VideoDetailDialog from "./components/dialogs/VideoDetailDialog.vue";
@@ -37,7 +38,10 @@ import { useManagerRouteSync } from "./composables/use-manager-route-sync";
 import { useRenameTagDialog } from "./composables/use-rename-tag-dialog";
 import { useVideoDetail } from "./composables/use-video-detail";
 import {
+  clearFolderAiAnalysis,
   exportLibrary,
+  fetchAiSettings,
+  fetchFolderAiAnalysis,
   fetchHistoryModelSyncStatus,
   fetchTagEnrichmentStatus,
   fetchBidirectionalSyncSettings,
@@ -49,10 +53,13 @@ import {
   pauseTagEnrichment,
   resumeTagEnrichment,
   restoreWebDavBackup,
+  runFolderAiAnalysis,
   runTagEnrichmentNow,
   startHistoryModelSync,
   testWebDavConnection,
+  testAiSettings,
   uploadWebDavBackup,
+  updateAiSettings,
   updateBidirectionalSyncSettings,
   updateWebDavSettings,
   type BidirectionalSyncSettings,
@@ -62,7 +69,7 @@ import {
   updateVideo,
   type SyncRemoteFolder,
 } from "./lib/api";
-import type { Tag } from "./types";
+import type { AiFolderAnalysis, AiSettings, Tag } from "./types";
 
 const uiStore = useAppUiStore();
 const { locale, isDark } = storeToRefs(uiStore);
@@ -167,6 +174,11 @@ const syncSpeedMode = ref<"stable" | "balanced" | "fast">("balanced");
 const syncIncludeTagEnrichment = ref(false);
 const tagEnrichmentStatus = ref<TagEnrichmentStatus | null>(null);
 const tagEnrichmentLoading = ref(false);
+const aiSettingsDialogOpen = ref(false);
+const aiSettings = ref<AiSettings | null>(null);
+const aiSettingsBusy = ref(false);
+const selectedFolderAiAnalysis = ref<AiFolderAnalysis | null>(null);
+const aiRunningFolderId = ref<number | null>(null);
 const bidirectionalSyncDialogOpen = ref(false);
 const bidirectionalSyncSettings = ref<BidirectionalSyncSettings | null>(null);
 const bidirectionalSyncSaving = ref(false);
@@ -200,6 +212,7 @@ let autoInitHeartbeatTimer: number | null = null;
 let tagEnrichmentPollTimer: number | null = null;
 let autoInitRetryTimer: number | null = null;
 let tickTimer: number | null = null;
+let folderAiFetchToken = 0;
 
 const SYNC_SPEED_PROFILES = {
   stable: {
@@ -225,6 +238,38 @@ const { detailOpen, detailLoading, detailVideo, openVideoDetail } =
 const detailSaving = ref(false);
 const isBusy = computed(() => loading.value || detailLoading.value);
 const progressValue = useLoadingProgress(isBusy);
+const detailVideoWithAi = computed(() => {
+  const currentDetailVideo = detailVideo.value;
+  if (!currentDetailVideo) return null;
+
+  const matchedAnalysis = selectedFolderAiAnalysis.value?.videos.find(
+    (item) => item.videoId === currentDetailVideo.id
+  );
+
+  if (!matchedAnalysis) {
+    return currentDetailVideo;
+  }
+
+  return {
+    ...currentDetailVideo,
+    aiAnalysis: {
+      categories: matchedAnalysis.categories,
+      analyzedAt: matchedAnalysis.analyzedAt,
+      provider: matchedAnalysis.provider,
+      model: matchedAnalysis.model,
+    },
+  };
+});
+const selectedFolderAiSummary = computed(() => {
+  const summary = selectedFolderAiAnalysis.value?.summary?.trim();
+  return summary ? summary : null;
+});
+const selectedFolderAiStatus = computed(
+  () => selectedFolderAiAnalysis.value?.status ?? null
+);
+const selectedFolderAiLastError = computed(
+  () => selectedFolderAiAnalysis.value?.lastError ?? null
+);
 const {
   currentViewLabel: headerCurrentViewLabel,
   currentScopeLabel: headerCurrentScopeLabel,
@@ -344,6 +389,8 @@ const {
   handleBatchMoveOrCopy,
   handleBatchDelete,
   handleQuickAction,
+  handleAnalyzeFolder,
+  handleClearFolderAi,
   batchRestoreTrashFolders,
   batchPurgeTrashFolders,
   batchRestoreTrashVideos,
@@ -376,6 +423,8 @@ const {
   refreshTrashAndVideos,
   refreshTrashFoldersAndVideos,
   openVideoDetail,
+  performFolderAiAnalysis,
+  performClearFolderAiAnalysis,
 });
 
 function setVideoSelection(id: number, checked: boolean) {
@@ -889,6 +938,121 @@ async function refreshBidirectionalSyncSettings() {
     bidirectionalSyncSettings.value = await fetchBidirectionalSyncSettings();
   } catch (error) {
     notifyError(t("toast.syncSettingsLoadFail"), error);
+  }
+}
+
+async function refreshAiSettings() {
+  if (!EXTENSION_LOCAL_API_RUNTIME) {
+    aiSettings.value = null;
+    return;
+  }
+  try {
+    aiSettings.value = await fetchAiSettings();
+  } catch (error) {
+    notifyError(t("toast.aiSettingsLoadFail"), error);
+  }
+}
+
+async function refreshSelectedFolderAiAnalysis(folderId: number | null) {
+  const requestToken = ++folderAiFetchToken;
+  if (!EXTENSION_LOCAL_API_RUNTIME || trashMode.value || folderId === null) {
+    selectedFolderAiAnalysis.value = null;
+    return;
+  }
+
+  try {
+    const analysis = await fetchFolderAiAnalysis(folderId);
+    if (requestToken !== folderAiFetchToken) return;
+    if (selectedFolderId.value !== folderId || trashMode.value) return;
+    selectedFolderAiAnalysis.value = analysis;
+  } catch (error) {
+    if (requestToken !== folderAiFetchToken) return;
+    selectedFolderAiAnalysis.value = null;
+    notifyError(t("toast.folderAiLoadFail"), error);
+  }
+}
+
+async function performFolderAiAnalysis(folderId: number) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) {
+    throw new Error("AI analysis is unavailable in this runtime.");
+  }
+  if (aiRunningFolderId.value !== null) {
+    throw new Error("AI analysis is already running.");
+  }
+
+  aiRunningFolderId.value = folderId;
+  try {
+    const analysis = await runFolderAiAnalysis(folderId);
+    if (selectedFolderId.value === folderId && !trashMode.value) {
+      selectedFolderAiAnalysis.value = analysis;
+    }
+  } catch (error) {
+    if (selectedFolderId.value === folderId && !trashMode.value) {
+      await refreshSelectedFolderAiAnalysis(folderId);
+    }
+    throw error;
+  } finally {
+    if (aiRunningFolderId.value === folderId) {
+      aiRunningFolderId.value = null;
+    }
+  }
+}
+
+async function performClearFolderAiAnalysis(folderId: number) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) {
+    throw new Error("AI analysis is unavailable in this runtime.");
+  }
+
+  await clearFolderAiAnalysis(folderId);
+  if (selectedFolderId.value === folderId) {
+    selectedFolderAiAnalysis.value = null;
+  }
+}
+
+function openAiSettingsDialog() {
+  if (!EXTENSION_LOCAL_API_RUNTIME) return;
+  aiSettingsDialogOpen.value = true;
+  void refreshAiSettings();
+}
+
+async function saveAiSettings(payload: {
+  provider?: AiSettings["provider"];
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  enabled?: boolean;
+}) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) return;
+  if (aiSettingsBusy.value) return;
+  aiSettingsBusy.value = true;
+  try {
+    aiSettings.value = await updateAiSettings(payload);
+    notifySuccess(t("toast.aiSettingsSaved"));
+    aiSettingsDialogOpen.value = false;
+  } catch (error) {
+    notifyError(t("toast.aiSettingsSaveFail"), error);
+  } finally {
+    aiSettingsBusy.value = false;
+  }
+}
+
+async function testAiSettingsFromUi(payload: {
+  provider?: AiSettings["provider"];
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  enabled?: boolean;
+}) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) return;
+  if (aiSettingsBusy.value) return;
+  aiSettingsBusy.value = true;
+  try {
+    aiSettings.value = await testAiSettings(payload);
+    notifySuccess(t("toast.aiSettingsTestDone"));
+  } catch (error) {
+    notifyError(t("toast.aiSettingsTestFail"), error);
+  } finally {
+    aiSettingsBusy.value = false;
   }
 }
 
@@ -1876,6 +2040,19 @@ watch(
 );
 
 watch(
+  [selectedFolderId, trashMode],
+  ([folderId, isTrash]) => {
+    if (isTrash) {
+      folderAiFetchToken += 1;
+      selectedFolderAiAnalysis.value = null;
+      return;
+    }
+    void refreshSelectedFolderAiAnalysis(folderId);
+  },
+  { immediate: true }
+);
+
+watch(
   () => autoInitCooldownRemainMs.value,
   () => {
     // Manual-confirm mode: cooldown end does not auto-resume.
@@ -1951,18 +2128,26 @@ onBeforeUnmount(() => {
     <FolderSidebar
       :folders="folders"
       :active-folder-id="selectedFolderId"
+      :selected-folder-ai-summary="selectedFolderAiSummary"
+      :selected-folder-ai-status="selectedFolderAiStatus"
+      :selected-folder-ai-last-error="selectedFolderAiLastError"
+      :ai-running-folder-id="aiRunningFolderId"
+      :show-ai-actions="EXTENSION_LOCAL_API_RUNTIME && !trashMode"
       :locale="locale"
       @select="handleSelectFolder"
       @create="handleCreateFolder"
       @update="handleUpdateFolder"
       @remove="handleRemoveFolder"
       @reorder="handleReorderFolders"
+      @analyze="handleAnalyzeFolder"
+      @clear-ai="handleClearFolderAi"
     />
 
     <section class="min-w-0 space-y-4">
       <ManagerHeader
         :t="t"
         :trash-mode="trashMode"
+        :show-ai-settings="EXTENSION_LOCAL_API_RUNTIME"
         :show-sync-settings="BILIBILI_LISTENER_SETTINGS_ENABLED"
         :current-view-label="headerCurrentViewLabel"
         :current-scope-label="headerCurrentScopeLabel"
@@ -1973,6 +2158,7 @@ onBeforeUnmount(() => {
         :exporting="exportingLibrary"
         :importing="importingLibrary"
         @open-tags="toolsOpen = true"
+        @open-ai-settings="openAiSettingsDialog"
         @open-sync-settings="openBidirectionalSyncSettingsDialog"
         @open-webdav-settings="openWebDavDialog"
         @sync-import="openSyncImportDialog"
@@ -2251,6 +2437,17 @@ onBeforeUnmount(() => {
       @start="confirmAutoInitSetup"
     />
 
+    <AiSettingsDialog
+      :open="aiSettingsDialogOpen"
+      :t="t"
+      :loading="aiSettingsBusy"
+      :settings="aiSettings"
+      @update:open="aiSettingsDialogOpen = $event"
+      @reload="refreshAiSettings"
+      @save="saveAiSettings"
+      @test="testAiSettingsFromUi"
+    />
+
     <BidirectionalSyncSettingsDialog
       :open="bidirectionalSyncDialogOpen"
       :t="t"
@@ -2327,7 +2524,7 @@ onBeforeUnmount(() => {
       :t="t"
       :loading="detailLoading"
       :saving="detailSaving"
-      :detail-video="detailVideo"
+      :detail-video="detailVideoWithAi"
       @update:open="detailOpen = $event"
       @save="handleSaveVideoDetail"
     />

@@ -27,7 +27,7 @@ export default defineConfig({
         data_collection_permissions: {
           required: ["none"]
         }
-      }
+      } as { id: string } & Record<string, unknown>
     },
     host_permissions: ["https://*.bilibili.com/*", "https://*/*", "http://*/*"]
   }

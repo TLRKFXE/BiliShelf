@@ -1,4 +1,7 @@
 import type {
+  AiFolderAnalysis,
+  AiProvider,
+  AiSettings,
   CreateVideoPayload,
   Folder,
   Pagination,
@@ -281,6 +284,12 @@ export async function fetchVideoById(id: number) {
     Video & {
       folders?: Array<{ id: number; name: string }>;
       tags?: Array<{ id: number; name: string; type: "system" | "custom" }>;
+      aiAnalysis?: {
+        categories: string[];
+        analyzedAt: number | null;
+        provider: string;
+        model: string;
+      };
     }
   >(`/videos/${id}`);
 }
@@ -693,6 +702,52 @@ export async function updateBidirectionalSyncSettings(payload: {
       body: JSON.stringify(payload),
     }
   );
+}
+
+export async function fetchAiSettings() {
+  return request<AiSettings>("/ai/settings");
+}
+
+export async function updateAiSettings(payload: {
+  provider?: AiProvider;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  enabled?: boolean;
+}) {
+  return request<AiSettings>("/ai/settings", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function testAiSettings(payload?: {
+  provider?: AiProvider;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  enabled?: boolean;
+}) {
+  return request<AiSettings>("/ai/settings/test", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
+export async function fetchFolderAiAnalysis(folderId: number) {
+  return request<AiFolderAnalysis | null>(`/folders/${folderId}/ai-analysis`);
+}
+
+export async function runFolderAiAnalysis(folderId: number) {
+  return request<AiFolderAnalysis>(`/folders/${folderId}/ai-analysis`, {
+    method: "POST",
+  });
+}
+
+export async function clearFolderAiAnalysis(folderId: number) {
+  return request<void>(`/folders/${folderId}/ai-analysis`, {
+    method: "DELETE",
+  });
 }
 
 export async function fetchWebDavSettings() {

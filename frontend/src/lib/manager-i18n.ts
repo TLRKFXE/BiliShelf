@@ -27,6 +27,10 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "管理自定义标签",
     "en-US": "Manage Custom Tags",
   },
+  "header.aiSettings": {
+    "zh-CN": "AI 设置",
+    "en-US": "AI Settings",
+  },
   "header.syncSettings": {
     "zh-CN": "监听设置",
     "en-US": "Listener Settings",
@@ -328,6 +332,66 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "刷新设置",
     "en-US": "Reload",
   },
+  "ai.settings.title": {
+    "zh-CN": "AI 设置",
+    "en-US": "AI Settings",
+  },
+  "ai.settings.desc": {
+    "zh-CN": "AI 功能仅保存在扩展本地运行时中，不会写入 backend。",
+    "en-US": "AI settings are stored in the extension runtime only and are not added to backend.",
+  },
+  "ai.settings.enableTitle": {
+    "zh-CN": "启用文件夹 AI 分析",
+    "en-US": "Enable folder AI analysis",
+  },
+  "ai.settings.enableDesc": {
+    "zh-CN": "开启后可在收藏夹级别手动触发 AI 分析。",
+    "en-US": "Enable manual AI analysis at the folder level.",
+  },
+  "ai.settings.provider": {
+    "zh-CN": "提供商",
+    "en-US": "Provider",
+  },
+  "ai.settings.baseUrl": {
+    "zh-CN": "Base URL",
+    "en-US": "Base URL",
+  },
+  "ai.settings.model": {
+    "zh-CN": "模型",
+    "en-US": "Model",
+  },
+  "ai.settings.apiKey": {
+    "zh-CN": "API Key",
+    "en-US": "API Key",
+  },
+  "ai.settings.baseUrlPlaceholder": {
+    "zh-CN": "例如：https://api.openai.com/v1",
+    "en-US": "For example: https://api.openai.com/v1",
+  },
+  "ai.settings.modelPlaceholder": {
+    "zh-CN": "例如：gpt-4.1-mini",
+    "en-US": "For example: gpt-4.1-mini",
+  },
+  "ai.settings.apiKeyPlaceholder": {
+    "zh-CN": "输入新的 API Key",
+    "en-US": "Enter a new API key",
+  },
+  "ai.settings.apiKeyPlaceholderKeep": {
+    "zh-CN": "留空表示保持当前 API Key",
+    "en-US": "Leave blank to keep the current API key",
+  },
+  "ai.settings.reload": {
+    "zh-CN": "刷新状态",
+    "en-US": "Reload",
+  },
+  "ai.settings.test": {
+    "zh-CN": "测试设置",
+    "en-US": "Test settings",
+  },
+  "ai.settings.statusTest": {
+    "zh-CN": "最近测试：{time}",
+    "en-US": "Last test: {time}",
+  },
   "webdav.title": {
     "zh-CN": "WebDAV 备份/恢复",
     "en-US": "WebDAV Backup/Restore",
@@ -456,6 +520,19 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "Separate tags with commas",
   },
   "detail.folders": { "zh-CN": "Folders", "en-US": "Folders" },
+  "detail.aiTitle": { "zh-CN": "AI 分析", "en-US": "AI Analysis" },
+  "detail.aiCategories": {
+    "zh-CN": "AI 分类",
+    "en-US": "AI Categories",
+  },
+  "detail.aiAnalyzedAt": {
+    "zh-CN": "分析时间",
+    "en-US": "Analyzed At",
+  },
+  "detail.aiProviderModel": {
+    "zh-CN": "提供商 / 模型",
+    "en-US": "Provider / Model",
+  },
   "detail.openOnBilibili": {
     "zh-CN": "Open on Bilibili",
     "en-US": "Open on Bilibili",
@@ -749,6 +826,46 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "监听设置已保存",
     "en-US": "Sync settings saved",
   },
+  "toast.aiSettingsSaved": {
+    "zh-CN": "AI 设置已保存",
+    "en-US": "AI settings saved",
+  },
+  "toast.aiSettingsSaveFail": {
+    "zh-CN": "保存 AI 设置失败",
+    "en-US": "Failed to save AI settings",
+  },
+  "toast.aiSettingsLoadFail": {
+    "zh-CN": "加载 AI 设置失败",
+    "en-US": "Failed to load AI settings",
+  },
+  "toast.aiSettingsTestDone": {
+    "zh-CN": "AI 设置测试通过",
+    "en-US": "AI settings test passed",
+  },
+  "toast.aiSettingsTestFail": {
+    "zh-CN": "AI 设置测试失败",
+    "en-US": "AI settings test failed",
+  },
+  "toast.folderAiLoadFail": {
+    "zh-CN": "加载文件夹 AI 结果失败",
+    "en-US": "Failed to load folder AI analysis",
+  },
+  "toast.folderAiAnalyzeDone": {
+    "zh-CN": "文件夹 AI 分析完成",
+    "en-US": "Folder AI analysis completed",
+  },
+  "toast.folderAiAnalyzeFail": {
+    "zh-CN": "文件夹 AI 分析失败",
+    "en-US": "Folder AI analysis failed",
+  },
+  "toast.folderAiCleared": {
+    "zh-CN": "已清除文件夹 AI 结果",
+    "en-US": "Folder AI analysis cleared",
+  },
+  "toast.folderAiClearFail": {
+    "zh-CN": "清除文件夹 AI 结果失败",
+    "en-US": "Failed to clear folder AI analysis",
+  },
   "toast.syncSettingsSaveFail": {
     "zh-CN": "保存监听设置失败",
     "en-US": "Failed to save sync settings",
@@ -997,6 +1114,10 @@ const MANAGER_I18N_ZH_OVERRIDES: Record<string, string> = {
   "detail.customTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.systemTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.folders": "所属收藏夹",
+  "detail.aiTitle": "AI 分析",
+  "detail.aiCategories": "AI 分类",
+  "detail.aiAnalyzedAt": "分析时间",
+  "detail.aiProviderModel": "提供商 / 模型",
   "detail.openOnBilibili": "在 B 站打开",
   "detail.openUploaderSpace": "打开 UP 主空间",
   "detail.manualComplete": "手动补全信息",

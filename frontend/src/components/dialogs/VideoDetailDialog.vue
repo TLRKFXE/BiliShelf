@@ -12,7 +12,15 @@ import {
 } from "@/components/ui/dialog";
 import type { Video } from "@/types";
 
-type DetailVideo = Video & { folders?: Array<{ id: number; name: string }> };
+type DetailVideo = Video & {
+  folders?: Array<{ id: number; name: string }>;
+  aiAnalysis?: {
+    categories: string[];
+    analyzedAt: number | null;
+    provider: string;
+    model: string;
+  };
+};
 const BILI_ORIGIN = "https://www.bilibili.com";
 
 type SavePayload = {
@@ -156,6 +164,7 @@ const canSubmit = computed(() => {
   if (!props.detailVideo) return false;
   return formTitle.value.trim().length > 0 && formUploader.value.trim().length > 0;
 });
+const detailAiAnalysis = computed(() => props.detailVideo?.aiAnalysis ?? null);
 
 function submitManualSave() {
   if (!props.detailVideo) return;
@@ -249,6 +258,21 @@ watch(
             <span class="font-semibold">{{ t("detail.folders") }}:</span>
             {{ (detailVideo.folders || []).map((f) => f.name).join(", ") || "-" }}
           </p>
+          <div v-if="detailAiAnalysis" class="rounded-lg border border-border/70 bg-muted/30 p-3">
+            <p class="font-semibold">{{ t("detail.aiTitle") }}</p>
+            <p class="mt-2">
+              <span class="font-semibold">{{ t("detail.aiCategories") }}:</span>
+              {{ detailAiAnalysis.categories.join(", ") || "-" }}
+            </p>
+            <p>
+              <span class="font-semibold">{{ t("detail.aiAnalyzedAt") }}:</span>
+              {{ formatDateTimeDisplay(detailAiAnalysis.analyzedAt) }}
+            </p>
+            <p>
+              <span class="font-semibold">{{ t("detail.aiProviderModel") }}:</span>
+              {{ `${detailAiAnalysis.provider} / ${detailAiAnalysis.model}` }}
+            </p>
+          </div>
           <div class="flex flex-wrap items-center gap-3">
             <a
               :href="resolveVideoUrl(detailVideo)"
