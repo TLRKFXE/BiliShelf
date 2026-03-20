@@ -2,6 +2,11 @@ import {
   createDefaultAiState,
   normalizeAiState
 } from "../shared/ai-state.js";
+import {
+  maskApiKeyStateForResponse,
+  normalizeClassificationPayload,
+  normalizeFolderSummaryPayload
+} from "../shared/ai-provider.js";
 import type {
   AiMeta as SharedAiMeta,
   AiProvider as SharedAiProvider,
@@ -112,6 +117,7 @@ type AiProvider = SharedAiProvider;
 type AiMeta = SharedAiMeta;
 type FolderAiAnalysisRecord = SharedFolderAiAnalysisRecord;
 type VideoAiAnalysisRecord = SharedVideoAiAnalysisRecord;
+type AiSettingsResponse = ReturnType<typeof maskApiKeyStateForResponse>;
 
 type LocalState = {
   counters: {
