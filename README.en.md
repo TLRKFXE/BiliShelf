@@ -13,7 +13,7 @@ BiliShelf is a browser extension that replaces the default Bilibili favorite-man
 
 - Please make sure to read all instructions completely, including the final statement.
 
-<img width="2460" height="1275" alt="image" src="https://github.com/user-attachments/assets/ff435a0d-3777-48ea-bf60-7217966d4c70" />
+![Uploading a2bd6a4d-5b3b-4768-aaf0-13a1e18d64fa.png…]()
 
 ## Features
 

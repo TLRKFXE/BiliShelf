@@ -13,7 +13,7 @@
 
 - 请一定完整阅读所有说明，包括最后的声明。
 
-<img width="2460" height="1275" alt="image" src="https://github.com/user-attachments/assets/ff435a0d-3777-48ea-bf60-7217966d4c70" />
+<img width="1111" height="744" alt="a2bd6a4d-5b3b-4768-aaf0-13a1e18d64fa" src="https://github.com/user-attachments/assets/4c5d155a-9e13-4645-ba23-4dfe993f8939" />
 
 ## 功能说明
 
