@@ -238,6 +238,28 @@ const { detailOpen, detailLoading, detailVideo, openVideoDetail } =
 const detailSaving = ref(false);
 const isBusy = computed(() => loading.value || detailLoading.value);
 const progressValue = useLoadingProgress(isBusy);
+const detailVideoWithAi = computed(() => {
+  const currentDetailVideo = detailVideo.value;
+  if (!currentDetailVideo) return null;
+
+  const matchedAnalysis = selectedFolderAiAnalysis.value?.videos.find(
+    (item) => item.videoId === currentDetailVideo.id
+  );
+
+  if (!matchedAnalysis) {
+    return currentDetailVideo;
+  }
+
+  return {
+    ...currentDetailVideo,
+    aiAnalysis: {
+      categories: matchedAnalysis.categories,
+      analyzedAt: matchedAnalysis.analyzedAt,
+      provider: matchedAnalysis.provider,
+      model: matchedAnalysis.model,
+    },
+  };
+});
 const selectedFolderAiSummary = computed(() => {
   const summary = selectedFolderAiAnalysis.value?.summary?.trim();
   return summary ? summary : null;
@@ -2489,7 +2511,7 @@ onBeforeUnmount(() => {
       :t="t"
       :loading="detailLoading"
       :saving="detailSaving"
-      :detail-video="detailVideo"
+      :detail-video="detailVideoWithAi"
       @update:open="detailOpen = $event"
       @save="handleSaveVideoDetail"
     />

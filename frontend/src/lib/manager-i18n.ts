@@ -520,6 +520,19 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "Separate tags with commas",
   },
   "detail.folders": { "zh-CN": "Folders", "en-US": "Folders" },
+  "detail.aiTitle": { "zh-CN": "AI 分析", "en-US": "AI Analysis" },
+  "detail.aiCategories": {
+    "zh-CN": "AI 分类",
+    "en-US": "AI Categories",
+  },
+  "detail.aiAnalyzedAt": {
+    "zh-CN": "分析时间",
+    "en-US": "Analyzed At",
+  },
+  "detail.aiProviderModel": {
+    "zh-CN": "提供商 / 模型",
+    "en-US": "Provider / Model",
+  },
   "detail.openOnBilibili": {
     "zh-CN": "Open on Bilibili",
     "en-US": "Open on Bilibili",
@@ -1101,6 +1114,10 @@ const MANAGER_I18N_ZH_OVERRIDES: Record<string, string> = {
   "detail.customTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.systemTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.folders": "所属收藏夹",
+  "detail.aiTitle": "AI 分析",
+  "detail.aiCategories": "AI 分类",
+  "detail.aiAnalyzedAt": "分析时间",
+  "detail.aiProviderModel": "提供商 / 模型",
   "detail.openOnBilibili": "在 B 站打开",
   "detail.openUploaderSpace": "打开 UP 主空间",
   "detail.manualComplete": "手动补全信息",

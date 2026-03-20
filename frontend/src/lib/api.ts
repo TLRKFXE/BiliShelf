@@ -284,6 +284,12 @@ export async function fetchVideoById(id: number) {
     Video & {
       folders?: Array<{ id: number; name: string }>;
       tags?: Array<{ id: number; name: string; type: "system" | "custom" }>;
+      aiAnalysis?: {
+        categories: string[];
+        analyzedAt: number | null;
+        provider: string;
+        model: string;
+      };
     }
   >(`/videos/${id}`);
 }
