@@ -38,8 +38,10 @@ import { useManagerRouteSync } from "./composables/use-manager-route-sync";
 import { useRenameTagDialog } from "./composables/use-rename-tag-dialog";
 import { useVideoDetail } from "./composables/use-video-detail";
 import {
+  clearFolderAiAnalysis,
   exportLibrary,
   fetchAiSettings,
+  fetchFolderAiAnalysis,
   fetchHistoryModelSyncStatus,
   fetchTagEnrichmentStatus,
   fetchBidirectionalSyncSettings,
@@ -51,6 +53,7 @@ import {
   pauseTagEnrichment,
   resumeTagEnrichment,
   restoreWebDavBackup,
+  runFolderAiAnalysis,
   runTagEnrichmentNow,
   startHistoryModelSync,
   testWebDavConnection,
@@ -66,7 +69,7 @@ import {
   updateVideo,
   type SyncRemoteFolder,
 } from "./lib/api";
-import type { AiSettings, Tag } from "./types";
+import type { AiFolderAnalysis, AiSettings, Tag } from "./types";
 
 const uiStore = useAppUiStore();
 const { locale, isDark } = storeToRefs(uiStore);
@@ -174,6 +177,8 @@ const tagEnrichmentLoading = ref(false);
 const aiSettingsDialogOpen = ref(false);
 const aiSettings = ref<AiSettings | null>(null);
 const aiSettingsBusy = ref(false);
+const selectedFolderAiAnalysis = ref<AiFolderAnalysis | null>(null);
+const aiRunningFolderId = ref<number | null>(null);
 const bidirectionalSyncDialogOpen = ref(false);
 const bidirectionalSyncSettings = ref<BidirectionalSyncSettings | null>(null);
 const bidirectionalSyncSaving = ref(false);
@@ -207,6 +212,7 @@ let autoInitHeartbeatTimer: number | null = null;
 let tagEnrichmentPollTimer: number | null = null;
 let autoInitRetryTimer: number | null = null;
 let tickTimer: number | null = null;
+let folderAiFetchToken = 0;
 
 const SYNC_SPEED_PROFILES = {
   stable: {
@@ -232,6 +238,10 @@ const { detailOpen, detailLoading, detailVideo, openVideoDetail } =
 const detailSaving = ref(false);
 const isBusy = computed(() => loading.value || detailLoading.value);
 const progressValue = useLoadingProgress(isBusy);
+const selectedFolderAiSummary = computed(() => {
+  const summary = selectedFolderAiAnalysis.value?.summary?.trim();
+  return summary ? summary : null;
+});
 const {
   currentViewLabel: headerCurrentViewLabel,
   currentScopeLabel: headerCurrentScopeLabel,
@@ -351,6 +361,8 @@ const {
   handleBatchMoveOrCopy,
   handleBatchDelete,
   handleQuickAction,
+  handleAnalyzeFolder,
+  handleClearFolderAi,
   batchRestoreTrashFolders,
   batchPurgeTrashFolders,
   batchRestoreTrashVideos,
@@ -383,6 +395,8 @@ const {
   refreshTrashAndVideos,
   refreshTrashFoldersAndVideos,
   openVideoDetail,
+  performFolderAiAnalysis,
+  performClearFolderAiAnalysis,
 });
 
 function setVideoSelection(id: number, checked: boolean) {
@@ -908,6 +922,57 @@ async function refreshAiSettings() {
     aiSettings.value = await fetchAiSettings();
   } catch (error) {
     notifyError(t("toast.aiSettingsLoadFail"), error);
+  }
+}
+
+async function refreshSelectedFolderAiAnalysis(folderId: number | null) {
+  const requestToken = ++folderAiFetchToken;
+  if (!EXTENSION_LOCAL_API_RUNTIME || trashMode.value || folderId === null) {
+    selectedFolderAiAnalysis.value = null;
+    return;
+  }
+
+  try {
+    const analysis = await fetchFolderAiAnalysis(folderId);
+    if (requestToken !== folderAiFetchToken) return;
+    if (selectedFolderId.value !== folderId || trashMode.value) return;
+    selectedFolderAiAnalysis.value = analysis;
+  } catch (error) {
+    if (requestToken !== folderAiFetchToken) return;
+    selectedFolderAiAnalysis.value = null;
+    notifyError(t("toast.folderAiLoadFail"), error);
+  }
+}
+
+async function performFolderAiAnalysis(folderId: number) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) {
+    throw new Error("AI analysis is unavailable in this runtime.");
+  }
+  if (aiRunningFolderId.value !== null) {
+    throw new Error("AI analysis is already running.");
+  }
+
+  aiRunningFolderId.value = folderId;
+  try {
+    const analysis = await runFolderAiAnalysis(folderId);
+    if (selectedFolderId.value === folderId && !trashMode.value) {
+      selectedFolderAiAnalysis.value = analysis;
+    }
+  } finally {
+    if (aiRunningFolderId.value === folderId) {
+      aiRunningFolderId.value = null;
+    }
+  }
+}
+
+async function performClearFolderAiAnalysis(folderId: number) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) {
+    throw new Error("AI analysis is unavailable in this runtime.");
+  }
+
+  await clearFolderAiAnalysis(folderId);
+  if (selectedFolderId.value === folderId) {
+    selectedFolderAiAnalysis.value = null;
   }
 }
 
@@ -1942,6 +2007,19 @@ watch(
 );
 
 watch(
+  [selectedFolderId, trashMode],
+  ([folderId, isTrash]) => {
+    if (isTrash) {
+      folderAiFetchToken += 1;
+      selectedFolderAiAnalysis.value = null;
+      return;
+    }
+    void refreshSelectedFolderAiAnalysis(folderId);
+  },
+  { immediate: true }
+);
+
+watch(
   () => autoInitCooldownRemainMs.value,
   () => {
     // Manual-confirm mode: cooldown end does not auto-resume.
@@ -2017,12 +2095,17 @@ onBeforeUnmount(() => {
     <FolderSidebar
       :folders="folders"
       :active-folder-id="selectedFolderId"
+      :selected-folder-ai-summary="selectedFolderAiSummary"
+      :ai-running-folder-id="aiRunningFolderId"
+      :show-ai-actions="EXTENSION_LOCAL_API_RUNTIME && !trashMode"
       :locale="locale"
       @select="handleSelectFolder"
       @create="handleCreateFolder"
       @update="handleUpdateFolder"
       @remove="handleRemoveFolder"
       @reorder="handleReorderFolders"
+      @analyze="handleAnalyzeFolder"
+      @clear-ai="handleClearFolderAi"
     />
 
     <section class="min-w-0 space-y-4">

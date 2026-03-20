@@ -50,6 +50,8 @@ type UseManagerActionsParams = {
   refreshTrashAndVideos: () => Promise<void>;
   refreshTrashFoldersAndVideos: () => Promise<void>;
   openVideoDetail: (id: number) => Promise<void>;
+  performFolderAiAnalysis: (folderId: number) => Promise<void>;
+  performClearFolderAiAnalysis: (folderId: number) => Promise<void>;
 };
 
 type QuickAction = "detail" | "delete";
@@ -79,6 +81,8 @@ export function useManagerActions(params: UseManagerActionsParams) {
     refreshTrashAndVideos,
     refreshTrashFoldersAndVideos,
     openVideoDetail,
+    performFolderAiAnalysis,
+    performClearFolderAiAnalysis,
   } = params;
 
   async function handleCreateFolder(payload: {
@@ -296,6 +300,24 @@ export function useManagerActions(params: UseManagerActionsParams) {
     }
   }
 
+  async function handleAnalyzeFolder(id: number) {
+    try {
+      await performFolderAiAnalysis(id);
+      notifySuccess(t("toast.folderAiAnalyzeDone"));
+    } catch (error) {
+      notifyError(t("toast.folderAiAnalyzeFail"), error);
+    }
+  }
+
+  async function handleClearFolderAi(id: number) {
+    try {
+      await performClearFolderAiAnalysis(id);
+      notifySuccess(t("toast.folderAiCleared"));
+    } catch (error) {
+      notifyError(t("toast.folderAiClearFail"), error);
+    }
+  }
+
   async function batchRestoreTrashFolders() {
     if (selectedTrashFolderIds.value.length === 0)
       return notifyError(t("toast.selectFoldersFirst"));
@@ -435,6 +457,8 @@ export function useManagerActions(params: UseManagerActionsParams) {
     handleBatchMoveOrCopy,
     handleBatchDelete,
     handleQuickAction,
+    handleAnalyzeFolder,
+    handleClearFolderAi,
     batchRestoreTrashFolders,
     batchPurgeTrashFolders,
     batchRestoreTrashVideos,

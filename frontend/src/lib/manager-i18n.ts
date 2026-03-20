@@ -833,6 +833,26 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "AI 设置测试失败",
     "en-US": "AI settings test failed",
   },
+  "toast.folderAiLoadFail": {
+    "zh-CN": "加载文件夹 AI 结果失败",
+    "en-US": "Failed to load folder AI analysis",
+  },
+  "toast.folderAiAnalyzeDone": {
+    "zh-CN": "文件夹 AI 分析完成",
+    "en-US": "Folder AI analysis completed",
+  },
+  "toast.folderAiAnalyzeFail": {
+    "zh-CN": "文件夹 AI 分析失败",
+    "en-US": "Folder AI analysis failed",
+  },
+  "toast.folderAiCleared": {
+    "zh-CN": "已清除文件夹 AI 结果",
+    "en-US": "Folder AI analysis cleared",
+  },
+  "toast.folderAiClearFail": {
+    "zh-CN": "清除文件夹 AI 结果失败",
+    "en-US": "Failed to clear folder AI analysis",
+  },
   "toast.syncSettingsSaveFail": {
     "zh-CN": "保存监听设置失败",
     "en-US": "Failed to save sync settings",

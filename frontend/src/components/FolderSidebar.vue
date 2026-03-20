@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   ArrowDownAZ,
+  Bot,
   CalendarClock,
   FolderOpen,
   FolderPlus,
@@ -17,7 +18,13 @@ import type { Folder } from "../types";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { Textarea } from "./ui/textarea";
 
 type Locale = "zh-CN" | "en-US";
@@ -26,10 +33,14 @@ const props = withDefaults(
   defineProps<{
     folders: Folder[];
     activeFolderId: number | null;
+    selectedFolderAiSummary: string | null;
+    aiRunningFolderId: number | null;
+    showAiActions?: boolean;
     locale?: Locale;
   }>(),
   {
-    locale: "zh-CN"
+    locale: "zh-CN",
+    showAiActions: false,
   }
 );
 
@@ -39,6 +50,8 @@ const emit = defineEmits<{
   update: [{ id: number; name?: string; description?: string | null }];
   remove: [number];
   reorder: [number[]];
+  analyze: [number];
+  clearAi: [number];
 }>();
 
 const folderName = ref("");
@@ -74,27 +87,35 @@ const SIDEBAR_TEXT: Record<
   | "description"
   | "namePlaceholder"
   | "descriptionPlaceholder"
-  | "create",
+  | "create"
+  | "aiAnalyze"
+  | "aiAnalyzing"
+  | "aiClear"
+  | "aiSummary"
+  | "aiSummaryEmpty",
   Record<Locale, string>
 > = {
   folders: { "zh-CN": "收藏夹", "en-US": "Folders" },
   searchPlaceholder: {
     "zh-CN": "搜索收藏夹名称或简介",
-    "en-US": "Search folder name or description"
+    "en-US": "Search folder name or description",
   },
   sortPlaceholder: { "zh-CN": "排序方式", "en-US": "Sort by" },
   sortManual: { "zh-CN": "手动排序（拖拽）", "en-US": "Manual (Drag)" },
   sortUpdatedAt: { "zh-CN": "最近更新", "en-US": "Recently Updated" },
   sortName: { "zh-CN": "按名称", "en-US": "By Name" },
-  sortCount: { "zh-CN": "按视频数量", "en-US": "By Video Count" },
+  sortCount: { "zh-CN": "按视频数", "en-US": "By Video Count" },
   dragHint: {
     "zh-CN": "仅在“手动排序”且搜索为空时支持拖拽调整顺序。",
-    "en-US": "Drag sorting works only in Manual mode with empty search."
+    "en-US": "Drag sorting works only in Manual mode with empty search.",
   },
   createFolder: { "zh-CN": "新建收藏夹", "en-US": "New Folder" },
   allVideos: { "zh-CN": "全部视频", "en-US": "All Videos" },
   folderName: { "zh-CN": "收藏夹名称", "en-US": "Folder Name" },
-  folderDescription: { "zh-CN": "收藏夹简介", "en-US": "Folder Description" },
+  folderDescription: {
+    "zh-CN": "收藏夹简介",
+    "en-US": "Folder Description",
+  },
   cancel: { "zh-CN": "取消", "en-US": "Cancel" },
   save: { "zh-CN": "保存", "en-US": "Save" },
   noDescription: { "zh-CN": "暂无简介", "en-US": "No description" },
@@ -104,13 +125,21 @@ const SIDEBAR_TEXT: Record<
   description: { "zh-CN": "简介", "en-US": "Description" },
   namePlaceholder: {
     "zh-CN": "请输入收藏夹名称",
-    "en-US": "Enter folder name"
+    "en-US": "Enter folder name",
   },
   descriptionPlaceholder: {
-    "zh-CN": "可填写该收藏夹用途说明",
-    "en-US": "Describe this folder"
+    "zh-CN": "可填写该收藏夹的用途说明",
+    "en-US": "Describe this folder",
   },
-  create: { "zh-CN": "创建", "en-US": "Create" }
+  create: { "zh-CN": "创建", "en-US": "Create" },
+  aiAnalyze: { "zh-CN": "AI 分析", "en-US": "AI Analyze" },
+  aiAnalyzing: { "zh-CN": "分析中...", "en-US": "Analyzing..." },
+  aiClear: { "zh-CN": "清除 AI", "en-US": "Clear AI" },
+  aiSummary: { "zh-CN": "AI 摘要", "en-US": "AI Summary" },
+  aiSummaryEmpty: {
+    "zh-CN": "当前收藏夹还没有 AI 摘要。",
+    "en-US": "No AI summary for the current folder yet.",
+  },
 };
 
 function t(
@@ -127,7 +156,10 @@ const displayedFolders = computed(() => {
   const keyword = searchKeyword.value.trim().toLowerCase();
   let rows = props.folders.filter((folder) => {
     if (!keyword) return true;
-    return folder.name.toLowerCase().includes(keyword) || (folder.description ?? "").toLowerCase().includes(keyword);
+    return (
+      folder.name.toLowerCase().includes(keyword) ||
+      (folder.description ?? "").toLowerCase().includes(keyword)
+    );
   });
 
   if (sortBy.value === "manual") return rows;
@@ -141,14 +173,24 @@ const displayedFolders = computed(() => {
   return rows;
 });
 
-const canDragSort = computed(() => sortBy.value === "manual" && !searchKeyword.value.trim());
+const canDragSort = computed(
+  () => sortBy.value === "manual" && !searchKeyword.value.trim()
+);
 const folderNameLength = computed(() => folderName.value.trim().length);
 const folderDescriptionLength = computed(() => folderDescription.value.length);
+const hasAiTaskRunning = computed(() => props.aiRunningFolderId !== null);
+
+function isFolderAiRunning(folderId: number) {
+  return props.aiRunningFolderId === folderId;
+}
 
 watch(
   () => props.folders,
   () => {
-    if (editingId.value !== null && !props.folders.some((folder) => folder.id === editingId.value)) {
+    if (
+      editingId.value !== null &&
+      !props.folders.some((folder) => folder.id === editingId.value)
+    ) {
       editingId.value = null;
       editingName.value = "";
       editingDescription.value = "";
@@ -161,7 +203,7 @@ function handleCreate() {
   if (!name) return;
   emit("create", {
     name,
-    description: folderDescription.value.trim() || undefined
+    description: folderDescription.value.trim() || undefined,
   });
   folderName.value = "";
   folderDescription.value = "";
@@ -187,7 +229,7 @@ function submitEdit() {
   emit("update", {
     id: editingId.value,
     name,
-    description: editingDescription.value.trim() || null
+    description: editingDescription.value.trim() || null,
   });
   cancelEdit();
 }
@@ -232,7 +274,9 @@ function handleDragEnd() {
 <template>
   <aside class="panel-surface h-full p-5">
     <div class="mb-5 flex items-center gap-2">
-      <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/12 text-primary">
+      <span
+        class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/12 text-primary"
+      >
         <LibraryBig class="h-4 w-4" />
       </span>
       <h2 class="text-sm font-semibold tracking-wide">{{ t("folders") }}</h2>
@@ -240,7 +284,9 @@ function handleDragEnd() {
 
     <div class="space-y-2">
       <div class="relative">
-        <Search class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Search
+          class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+        />
         <Input
           v-model="searchKeyword"
           :placeholder="t('searchPlaceholder')"
@@ -289,7 +335,9 @@ function handleDragEnd() {
         class="interactive-lift flex w-full items-center gap-2 rounded-xl border border-border/70 bg-accent/35 px-3 py-2.5 text-left text-sm font-medium text-foreground"
         @click="createDialogOpen = true"
       >
-        <span class="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/15 text-primary">
+        <span
+          class="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/15 text-primary"
+        >
           <FolderPlus class="h-3.5 w-3.5" />
         </span>
         <span>{{ t("createFolder") }}</span>
@@ -298,7 +346,11 @@ function handleDragEnd() {
       <button
         type="button"
         class="interactive-lift w-full rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition"
-        :class="props.activeFolderId === null ? 'border-primary/45 bg-primary/10 text-primary' : 'border-border/80 bg-card/80 hover:bg-accent/45'"
+        :class="
+          props.activeFolderId === null
+            ? 'border-primary/45 bg-primary/10 text-primary'
+            : 'border-border/80 bg-card/80 hover:bg-accent/45'
+        "
         @click="emit('select', null)"
       >
         {{ t("allVideos") }}
@@ -309,8 +361,10 @@ function handleDragEnd() {
         :key="folder.id"
         class="interactive-lift rounded-xl border p-2.5"
         :class="[
-          props.activeFolderId === folder.id ? 'border-primary/45 bg-primary/10' : 'border-border/80 bg-card/85',
-          dragOverFolderId === folder.id ? 'ring-2 ring-primary/45' : ''
+          props.activeFolderId === folder.id
+            ? 'border-primary/45 bg-primary/10'
+            : 'border-border/80 bg-card/85',
+          dragOverFolderId === folder.id ? 'ring-2 ring-primary/45' : '',
         ]"
         :draggable="canDragSort"
         @dragstart="handleDragStart(folder.id)"
@@ -321,50 +375,128 @@ function handleDragEnd() {
         <template v-if="editingId === folder.id">
           <div class="space-y-2">
             <Input v-model="editingName" :placeholder="t('folderName')" />
-            <Textarea v-model="editingDescription" :rows="2" :placeholder="t('folderDescription')" class="text-xs" />
+            <Textarea
+              v-model="editingDescription"
+              :rows="2"
+              :placeholder="t('folderDescription')"
+              class="text-xs"
+            />
             <div class="flex justify-end gap-2">
-              <Button size="sm" variant="ghost" @click="cancelEdit">{{ t("cancel") }}</Button>
+              <Button size="sm" variant="ghost" @click="cancelEdit">
+                {{ t("cancel") }}
+              </Button>
               <Button size="sm" @click="submitEdit">{{ t("save") }}</Button>
             </div>
           </div>
         </template>
 
         <template v-else>
-          <button type="button" class="w-full text-left" @click="emit('select', folder.id)">
+          <button
+            type="button"
+            class="w-full text-left"
+            @click="emit('select', folder.id)"
+          >
             <div class="flex items-start justify-between gap-2">
               <div class="flex min-w-0 items-center gap-2">
                 <FolderOpen class="h-4 w-4 shrink-0 text-muted-foreground" />
                 <p class="line-clamp-1 text-sm font-semibold">{{ folder.name }}</p>
               </div>
-              <GripVertical v-if="canDragSort" class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <GripVertical
+                v-if="canDragSort"
+                class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+              />
             </div>
-            <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">{{ folder.description || t("noDescription") }}</p>
-            <p class="mt-1 text-[11px] text-muted-foreground">{{ t("videosCount", { count: folder.itemCount ?? 0 }) }}</p>
+            <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
+              {{ folder.description || t("noDescription") }}
+            </p>
+            <p class="mt-1 text-[11px] text-muted-foreground">
+              {{ t("videosCount", { count: folder.itemCount ?? 0 }) }}
+            </p>
           </button>
-          <div class="mt-2 flex justify-end gap-1">
-            <Button size="icon" variant="ghost" class="h-8 w-8" @click="startEdit(folder)">
-              <Pencil class="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" class="h-8 w-8 text-red-500" @click="handleDelete(folder.id)">
-              <Trash2 class="h-4 w-4" />
-            </Button>
+          <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <div v-if="props.showAiActions" class="flex flex-wrap gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                class="h-8 gap-1 px-2 text-xs"
+                :disabled="hasAiTaskRunning"
+                @click.stop="emit('analyze', folder.id)"
+              >
+                <Bot class="h-3.5 w-3.5" />
+                {{
+                  isFolderAiRunning(folder.id)
+                    ? t("aiAnalyzing")
+                    : t("aiAnalyze")
+                }}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                class="h-8 px-2 text-xs"
+                :disabled="
+                  hasAiTaskRunning ||
+                  props.activeFolderId !== folder.id ||
+                  !props.selectedFolderAiSummary
+                "
+                @click.stop="emit('clearAi', folder.id)"
+              >
+                {{ t("aiClear") }}
+              </Button>
+            </div>
+            <div class="flex justify-end gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                class="h-8 w-8"
+                @click="startEdit(folder)"
+              >
+                <Pencil class="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                class="h-8 w-8 text-red-500"
+                @click="handleDelete(folder.id)"
+              >
+                <Trash2 class="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </template>
       </div>
+    </div>
+
+    <div
+      v-if="props.showAiActions && props.activeFolderId !== null"
+      class="mt-4 rounded-xl border border-border/80 bg-card/70 p-3"
+    >
+      <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <Bot class="h-3.5 w-3.5" />
+        <span>{{ t("aiSummary") }}</span>
+      </div>
+      <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/90">
+        {{ props.selectedFolderAiSummary || t("aiSummaryEmpty") }}
+      </p>
     </div>
 
     <Dialog v-model:open="createDialogOpen">
       <DialogContent class="max-w-lg border-border/80 p-0">
         <div class="rounded-lg bg-card p-6">
           <DialogHeader class="mb-5">
-            <DialogTitle class="text-xl font-semibold">{{ t("newFolderTitle") }}</DialogTitle>
+            <DialogTitle class="text-xl font-semibold">
+              {{ t("newFolderTitle") }}
+            </DialogTitle>
           </DialogHeader>
 
           <div class="space-y-4">
             <div class="space-y-2">
               <div class="flex items-center justify-between text-sm">
-                <span class="font-medium">{{ t("name") }} <span class="text-red-500">*</span></span>
-                <span class="text-xs text-muted-foreground">{{ folderNameLength }}/20</span>
+                <span class="font-medium">
+                  {{ t("name") }} <span class="text-red-500">*</span>
+                </span>
+                <span class="text-xs text-muted-foreground">
+                  {{ folderNameLength }}/20
+                </span>
               </div>
               <Input
                 v-model="folderName"
@@ -377,7 +509,9 @@ function handleDragEnd() {
             <div class="space-y-2">
               <div class="flex items-center justify-between text-sm">
                 <span class="font-medium">{{ t("description") }}</span>
-                <span class="text-xs text-muted-foreground">{{ folderDescriptionLength }}/200</span>
+                <span class="text-xs text-muted-foreground">
+                  {{ folderDescriptionLength }}/200
+                </span>
               </div>
               <Textarea
                 v-model="folderDescription"
@@ -389,8 +523,12 @@ function handleDragEnd() {
             </div>
 
             <div class="flex items-center justify-end gap-2 pt-2">
-              <Button variant="outline" @click="createDialogOpen = false">{{ t("cancel") }}</Button>
-              <Button :disabled="folderNameLength === 0" @click="handleCreate">{{ t("create") }}</Button>
+              <Button variant="outline" @click="createDialogOpen = false">
+                {{ t("cancel") }}
+              </Button>
+              <Button :disabled="folderNameLength === 0" @click="handleCreate">
+                {{ t("create") }}
+              </Button>
             </div>
           </div>
         </div>
