@@ -15,6 +15,13 @@
 
 <img width="2460" height="1275" alt="image" src="https://github.com/user-attachments/assets/ff435a0d-3777-48ea-bf60-7217966d4c70" />
 
+## AI Folder Analysis
+
+- Open the extension manager and use the header action `AI 设置` to configure the provider, base URL, model, and API key.
+- Select a folder in the left sidebar, then use `AI 分析` on the folder card to run analysis. The sidebar summary panel shows the latest summary/status, and video detail dialogs show AI categories when the current folder has analysis data.
+- AI settings and AI results are stored in the extension runtime only. This implementation does not add backend AI routes or backend AI persistence.
+- Supported provider families: OpenAI, OpenAI-compatible, Claude, Gemini, Grok, DeepSeek, and Kimi.
+
 ## 功能说明
 
 - 支持深色/浅色主题，i18n（CN/EN）
