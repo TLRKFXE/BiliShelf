@@ -264,6 +264,12 @@ const selectedFolderAiSummary = computed(() => {
   const summary = selectedFolderAiAnalysis.value?.summary?.trim();
   return summary ? summary : null;
 });
+const selectedFolderAiStatus = computed(
+  () => selectedFolderAiAnalysis.value?.status ?? null
+);
+const selectedFolderAiLastError = computed(
+  () => selectedFolderAiAnalysis.value?.lastError ?? null
+);
 const {
   currentViewLabel: headerCurrentViewLabel,
   currentScopeLabel: headerCurrentScopeLabel,
@@ -980,6 +986,11 @@ async function performFolderAiAnalysis(folderId: number) {
     if (selectedFolderId.value === folderId && !trashMode.value) {
       selectedFolderAiAnalysis.value = analysis;
     }
+  } catch (error) {
+    if (selectedFolderId.value === folderId && !trashMode.value) {
+      await refreshSelectedFolderAiAnalysis(folderId);
+    }
+    throw error;
   } finally {
     if (aiRunningFolderId.value === folderId) {
       aiRunningFolderId.value = null;
@@ -2118,6 +2129,8 @@ onBeforeUnmount(() => {
       :folders="folders"
       :active-folder-id="selectedFolderId"
       :selected-folder-ai-summary="selectedFolderAiSummary"
+      :selected-folder-ai-status="selectedFolderAiStatus"
+      :selected-folder-ai-last-error="selectedFolderAiLastError"
       :ai-running-folder-id="aiRunningFolderId"
       :show-ai-actions="EXTENSION_LOCAL_API_RUNTIME && !trashMode"
       :locale="locale"

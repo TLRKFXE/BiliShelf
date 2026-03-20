@@ -34,6 +34,8 @@ const props = withDefaults(
     folders: Folder[];
     activeFolderId: number | null;
     selectedFolderAiSummary: string | null;
+    selectedFolderAiStatus: "idle" | "running" | "success" | "error" | null;
+    selectedFolderAiLastError: string | null;
     aiRunningFolderId: number | null;
     showAiActions?: boolean;
     locale?: Locale;
@@ -92,7 +94,12 @@ const SIDEBAR_TEXT: Record<
   | "aiAnalyzing"
   | "aiClear"
   | "aiSummary"
-  | "aiSummaryEmpty",
+  | "aiSummaryEmpty"
+  | "aiStatus"
+  | "aiStatusRunning"
+  | "aiStatusSuccess"
+  | "aiStatusError"
+  | "aiLastError",
   Record<Locale, string>
 > = {
   folders: { "zh-CN": "收藏夹", "en-US": "Folders" },
@@ -140,6 +147,11 @@ const SIDEBAR_TEXT: Record<
     "zh-CN": "当前收藏夹还没有 AI 摘要。",
     "en-US": "No AI summary for the current folder yet.",
   },
+  aiStatus: { "zh-CN": "状态", "en-US": "Status" },
+  aiStatusRunning: { "zh-CN": "分析中", "en-US": "Running" },
+  aiStatusSuccess: { "zh-CN": "已完成", "en-US": "Success" },
+  aiStatusError: { "zh-CN": "失败", "en-US": "Error" },
+  aiLastError: { "zh-CN": "最近错误", "en-US": "Last Error" },
 };
 
 function t(
@@ -179,9 +191,22 @@ const canDragSort = computed(
 const folderNameLength = computed(() => folderName.value.trim().length);
 const folderDescriptionLength = computed(() => folderDescription.value.length);
 const hasAiTaskRunning = computed(() => props.aiRunningFolderId !== null);
+const hasSelectedFolderAiRecord = computed(
+  () =>
+    props.selectedFolderAiStatus !== null ||
+    Boolean(props.selectedFolderAiSummary) ||
+    Boolean(props.selectedFolderAiLastError)
+);
 
 function isFolderAiRunning(folderId: number) {
   return props.aiRunningFolderId === folderId;
+}
+
+function getAiStatusText(status: "idle" | "running" | "success" | "error" | null) {
+  if (status === "running") return t("aiStatusRunning");
+  if (status === "success") return t("aiStatusSuccess");
+  if (status === "error") return t("aiStatusError");
+  return "";
 }
 
 watch(
@@ -436,7 +461,7 @@ function handleDragEnd() {
                 :disabled="
                   hasAiTaskRunning ||
                   props.activeFolderId !== folder.id ||
-                  !props.selectedFolderAiSummary
+                  !hasSelectedFolderAiRecord
                 "
                 @click.stop="emit('clearAi', folder.id)"
               >
@@ -474,6 +499,20 @@ function handleDragEnd() {
         <Bot class="h-3.5 w-3.5" />
         <span>{{ t("aiSummary") }}</span>
       </div>
+      <p
+        v-if="props.selectedFolderAiStatus"
+        class="mt-2 text-xs text-muted-foreground"
+      >
+        <span class="font-semibold">{{ t("aiStatus") }}:</span>
+        {{ getAiStatusText(props.selectedFolderAiStatus) }}
+      </p>
+      <p
+        v-if="props.selectedFolderAiLastError"
+        class="mt-2 whitespace-pre-wrap text-xs text-red-500"
+      >
+        <span class="font-semibold">{{ t("aiLastError") }}:</span>
+        {{ props.selectedFolderAiLastError }}
+      </p>
       <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/90">
         {{ props.selectedFolderAiSummary || t("aiSummaryEmpty") }}
       </p>

@@ -15,6 +15,96 @@ function uniqueTextList(input) {
   );
 }
 
+function normalizeStatus(value) {
+  const text = normalizeText(value);
+  return text === "running" ||
+    text === "success" ||
+    text === "error" ||
+    text === "idle"
+    ? text
+    : "idle";
+}
+
+function normalizeVideoAnalysisRecord(record, fallbackFolderId, fallbackProvider, fallbackModel) {
+  return {
+    folderId: Number(record?.folderId) > 0 ? Number(record.folderId) : Number(fallbackFolderId),
+    videoId: Number(record?.videoId) > 0 ? Number(record.videoId) : 0,
+    categories: uniqueTextList(record?.categories),
+    reasoningSnippet: normalizeText(record?.reasoningSnippet) || null,
+    analyzedAt: toIntOrNull(record?.analyzedAt),
+    provider: normalizeText(record?.provider) || normalizeText(fallbackProvider),
+    model: normalizeText(record?.model) || normalizeText(fallbackModel),
+  };
+}
+
+function normalizeFolderAnalysisSnapshot(snapshot) {
+  if (!snapshot || Number(snapshot?.folderId) <= 0) return null;
+  const folderId = Number(snapshot.folderId);
+  const provider = normalizeText(snapshot.provider);
+  const model = normalizeText(snapshot.model);
+  return {
+    folderId,
+    summary: normalizeText(snapshot.summary) || null,
+    status: normalizeStatus(snapshot.status),
+    lastError: normalizeText(snapshot.lastError) || null,
+    startedAt: toIntOrNull(snapshot.startedAt),
+    finishedAt: toIntOrNull(snapshot.finishedAt),
+    updatedAt: toIntOrNull(snapshot.updatedAt) ?? 0,
+    provider,
+    model,
+    videos: (Array.isArray(snapshot.videos) ? snapshot.videos : [])
+      .map((item) => normalizeVideoAnalysisRecord(item, folderId, provider, model))
+      .filter((item) => item.videoId > 0),
+  };
+}
+
+function hasReusableAnalysisData(snapshot) {
+  return Boolean(
+    snapshot &&
+      snapshot.summary &&
+      Array.isArray(snapshot.videos) &&
+      snapshot.videos.length > 0,
+  );
+}
+
+export function applyFolderAnalysisAttempt(previousAnalysis, nextAttempt) {
+  const previous = normalizeFolderAnalysisSnapshot(previousAnalysis);
+  const next = normalizeFolderAnalysisSnapshot(nextAttempt);
+  if (!next) return previous;
+
+  if (next.status === "success" && hasReusableAnalysisData(next)) {
+    return next;
+  }
+
+  if (!hasReusableAnalysisData(previous)) {
+    return next;
+  }
+
+  if (next.status === "success") {
+    return {
+      ...previous,
+      status: "error",
+      lastError: next.lastError || "AI analysis result was incomplete",
+      startedAt: next.startedAt,
+      finishedAt: next.finishedAt,
+      updatedAt: next.updatedAt,
+      provider: next.provider || previous.provider,
+      model: next.model || previous.model,
+    };
+  }
+
+  return {
+    ...previous,
+    status: next.status,
+    lastError: next.lastError,
+    startedAt: next.startedAt,
+    finishedAt: next.finishedAt,
+    updatedAt: next.updatedAt,
+    provider: next.provider || previous.provider,
+    model: next.model || previous.model,
+  };
+}
+
 export function buildFolderAnalysisInput(state, folderId) {
   const folder = Array.isArray(state?.folders)
     ? state.folders.find((item) => Number(item?.id) === Number(folderId) && item?.deletedAt === null)

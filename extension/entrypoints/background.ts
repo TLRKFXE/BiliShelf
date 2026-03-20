@@ -8,7 +8,10 @@ import {
   normalizeClassificationPayload,
   normalizeFolderSummaryPayload
 } from "../shared/ai-provider.js";
-import { buildFolderAnalysisInput } from "../shared/ai-analysis.js";
+import {
+  applyFolderAnalysisAttempt,
+  buildFolderAnalysisInput
+} from "../shared/ai-analysis.js";
 import type {
   AiMeta as SharedAiMeta,
   AiProvider as SharedAiProvider,
@@ -2222,6 +2225,35 @@ function getFolderAiAnalysis(state: LocalState, folderId: number) {
   };
 }
 
+function writeFolderAiAnalysis(
+  state: LocalState,
+  snapshot: (FolderAiAnalysisRecord & { videos: VideoAiAnalysisRecord[] }) | null
+) {
+  const aiMeta = ensureAiMeta(state);
+  if (!snapshot) return null;
+
+  aiMeta.folderAnalyses = aiMeta.folderAnalyses.filter(
+    (item) => item.folderId !== snapshot.folderId
+  );
+  aiMeta.videoAnalyses = aiMeta.videoAnalyses.filter(
+    (item) => item.folderId !== snapshot.folderId
+  );
+  aiMeta.folderAnalyses.push({
+    folderId: snapshot.folderId,
+    summary: snapshot.summary,
+    status: snapshot.status,
+    lastError: snapshot.lastError,
+    startedAt: snapshot.startedAt,
+    finishedAt: snapshot.finishedAt,
+    updatedAt: snapshot.updatedAt,
+    provider: snapshot.provider,
+    model: snapshot.model
+  });
+  aiMeta.videoAnalyses.push(...snapshot.videos);
+  aiMeta.updatedAt = now();
+  return getFolderAiAnalysis(state, snapshot.folderId);
+}
+
 async function runFolderAiAnalysisInState(state: LocalState, folderId: number) {
   const aiMeta = ensureAiMeta(state);
   if (!aiMeta.enabled) {
@@ -2272,11 +2304,14 @@ async function runFolderAiAnalysisInState(state: LocalState, folderId: number) {
     model: aiMeta.model
   };
 
-  aiMeta.folderAnalyses = aiMeta.folderAnalyses.filter((item) => item.folderId !== folderId);
-  aiMeta.videoAnalyses = aiMeta.videoAnalyses.filter((item) => item.folderId !== folderId);
-  aiMeta.folderAnalyses.push(folderRecord);
-  aiMeta.videoAnalyses.push(...nextVideoAnalyses);
-  return getFolderAiAnalysis(state, folderId);
+  const previousAnalysis = getFolderAiAnalysis(state, folderId);
+  return writeFolderAiAnalysis(
+    state,
+    applyFolderAnalysisAttempt(previousAnalysis, {
+      ...folderRecord,
+      videos: nextVideoAnalyses
+    })
+  );
 }
 
 function normalizeWebDavBaseUrl(rawUrl: unknown) {
@@ -3756,13 +3791,33 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
     const folderAiAnalysisMatch = path.match(/^\/folders\/(\d+)\/ai-analysis$/);
     if (folderAiAnalysisMatch && method === "POST") {
       const folderId = toInt(folderAiAnalysisMatch[1]);
-      if (folderAiAnalysisTask) {
+      if (folderAiAnalysisTask || folderAiAnalysisFolderId !== null) {
         return fail(
           409,
           `AI analysis is already running for folder ${folderAiAnalysisFolderId ?? "unknown"}`
         );
       }
       folderAiAnalysisFolderId = folderId;
+      await withState((state) => {
+        const aiMeta = ensureAiMeta(state);
+        const currentAnalysis = getFolderAiAnalysis(state, folderId);
+        const startedAt = now();
+        writeFolderAiAnalysis(
+          state,
+          applyFolderAnalysisAttempt(currentAnalysis, {
+            folderId,
+            summary: null,
+            status: "running",
+            lastError: null,
+            startedAt,
+            finishedAt: null,
+            updatedAt: startedAt,
+            provider: aiMeta.provider,
+            model: aiMeta.model,
+            videos: []
+          })
+        );
+      }, true);
       const task = withState(async (state) => {
         const data = await runFolderAiAnalysisInState(state, folderId);
         return ok(data);
@@ -3776,6 +3831,26 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "AI analysis failed";
+        await withState((state) => {
+          const aiMeta = ensureAiMeta(state);
+          const currentAnalysis = getFolderAiAnalysis(state, folderId);
+          const finishedAt = now();
+          writeFolderAiAnalysis(
+            state,
+            applyFolderAnalysisAttempt(currentAnalysis, {
+              folderId,
+              summary: null,
+              status: "error",
+              lastError: message,
+              startedAt: currentAnalysis?.startedAt ?? finishedAt,
+              finishedAt,
+              updatedAt: finishedAt,
+              provider: aiMeta.provider,
+              model: aiMeta.model,
+              videos: []
+            })
+          );
+        }, true);
         return fail(400, message);
       }
     }
