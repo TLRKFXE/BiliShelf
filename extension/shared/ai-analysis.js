@@ -26,25 +26,26 @@ function normalizeStatus(value) {
 }
 
 function normalizeVideoAnalysisRecord(record, fallbackFolderId, fallbackProvider, fallbackModel) {
+  const category =
+    normalizeText(record?.category) ||
+    normalizeText(Array.isArray(record?.categories) ? record.categories[0] : "");
   return {
     folderId: Number(record?.folderId) > 0 ? Number(record.folderId) : Number(fallbackFolderId),
     videoId: Number(record?.videoId) > 0 ? Number(record.videoId) : 0,
-    categories: uniqueTextList(record?.categories),
-    reasoningSnippet: normalizeText(record?.reasoningSnippet) || null,
+    category,
     analyzedAt: toIntOrNull(record?.analyzedAt),
     provider: normalizeText(record?.provider) || normalizeText(fallbackProvider),
     model: normalizeText(record?.model) || normalizeText(fallbackModel),
   };
 }
 
-function normalizeFolderAnalysisSnapshot(snapshot) {
+function normalizeFolderCategorySnapshot(snapshot) {
   if (!snapshot || Number(snapshot?.folderId) <= 0) return null;
   const folderId = Number(snapshot.folderId);
   const provider = normalizeText(snapshot.provider);
   const model = normalizeText(snapshot.model);
   return {
     folderId,
-    summary: normalizeText(snapshot.summary) || null,
     status: normalizeStatus(snapshot.status),
     lastError: normalizeText(snapshot.lastError) || null,
     startedAt: toIntOrNull(snapshot.startedAt),
@@ -54,29 +55,28 @@ function normalizeFolderAnalysisSnapshot(snapshot) {
     model,
     videos: (Array.isArray(snapshot.videos) ? snapshot.videos : [])
       .map((item) => normalizeVideoAnalysisRecord(item, folderId, provider, model))
-      .filter((item) => item.videoId > 0),
+      .filter((item) => item.videoId > 0 && item.category),
   };
 }
 
-function hasReusableAnalysisData(snapshot) {
+function hasReusableCategoryData(snapshot) {
   return Boolean(
     snapshot &&
-      snapshot.summary &&
       Array.isArray(snapshot.videos) &&
       snapshot.videos.length > 0,
   );
 }
 
-export function applyFolderAnalysisAttempt(previousAnalysis, nextAttempt) {
-  const previous = normalizeFolderAnalysisSnapshot(previousAnalysis);
-  const next = normalizeFolderAnalysisSnapshot(nextAttempt);
+export function applyFolderCategoryAttempt(previousAnalysis, nextAttempt) {
+  const previous = normalizeFolderCategorySnapshot(previousAnalysis);
+  const next = normalizeFolderCategorySnapshot(nextAttempt);
   if (!next) return previous;
 
-  if (next.status === "success" && hasReusableAnalysisData(next)) {
+  if (next.status === "success" && hasReusableCategoryData(next)) {
     return next;
   }
 
-  if (!hasReusableAnalysisData(previous)) {
+  if (!hasReusableCategoryData(previous)) {
     return next;
   }
 
@@ -104,6 +104,8 @@ export function applyFolderAnalysisAttempt(previousAnalysis, nextAttempt) {
     model: next.model || previous.model,
   };
 }
+
+export const applyFolderAnalysisAttempt = applyFolderCategoryAttempt;
 
 export function buildFolderAnalysisInput(state, folderId) {
   const folder = Array.isArray(state?.folders)

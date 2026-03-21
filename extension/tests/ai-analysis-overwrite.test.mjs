@@ -3,12 +3,11 @@ import assert from "node:assert/strict";
 
 import * as aiAnalysis from "../shared/ai-analysis.js";
 
-test("failed rerun preserves previous successful analysis", () => {
-  assert.equal(typeof aiAnalysis.applyFolderAnalysisAttempt, "function");
+test("failed rerun preserves previous successful category result", () => {
+  assert.equal(typeof aiAnalysis.applyFolderCategoryAttempt, "function");
 
   const previousSuccess = {
     folderId: 7,
-    summary: "Existing summary",
     status: "success",
     lastError: null,
     startedAt: 100,
@@ -20,8 +19,7 @@ test("failed rerun preserves previous successful analysis", () => {
       {
         folderId: 7,
         videoId: 11,
-        categories: ["Music", "Live"],
-        reasoningSnippet: "festival set",
+        category: "music",
         analyzedAt: 111,
         provider: "openai",
         model: "gpt-4.1-mini",
@@ -31,7 +29,6 @@ test("failed rerun preserves previous successful analysis", () => {
 
   const failedAttempt = {
     folderId: 7,
-    summary: null,
     status: "error",
     lastError: "provider timeout",
     startedAt: 200,
@@ -42,12 +39,11 @@ test("failed rerun preserves previous successful analysis", () => {
     videos: [],
   };
 
-  const next = aiAnalysis.applyFolderAnalysisAttempt(
+  const next = aiAnalysis.applyFolderCategoryAttempt(
     previousSuccess,
     failedAttempt,
   );
 
-  assert.equal(next.summary, previousSuccess.summary);
   assert.deepEqual(next.videos, previousSuccess.videos);
   assert.equal(next.status, "error");
   assert.equal(next.lastError, "provider timeout");

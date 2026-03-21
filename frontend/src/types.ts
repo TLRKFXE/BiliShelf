@@ -91,10 +91,11 @@ export type AiSettings = {
 
 export type AiFolderAnalysisStatus = "idle" | "running" | "success" | "error";
 
+export type AiCategoryKey = string;
+
 export type AiVideoAnalysis = {
   videoId: number;
-  categories: string[];
-  reasoningSnippet: string | null;
+  category: AiCategoryKey;
   analyzedAt: number | null;
   provider: string;
   model: string;
@@ -102,7 +103,6 @@ export type AiVideoAnalysis = {
 
 export type AiFolderAnalysis = {
   folderId: number;
-  summary: string | null;
   status: AiFolderAnalysisStatus;
   lastError: string | null;
   startedAt: number | null;
