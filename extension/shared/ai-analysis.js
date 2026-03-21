@@ -1,8 +1,11 @@
+import { STABLE_CATEGORY_KEYS } from "./ai-provider.js";
+
 function normalizeText(value) {
   return String(value ?? "").replace(/^\uFEFF/, "").trim();
 }
 
 const DEFAULT_CATEGORY_KEY = "other";
+const STABLE_CATEGORY_KEY_SET = new Set(STABLE_CATEGORY_KEYS);
 
 export function matchFolderAiCategoriesPath(path) {
   return (
@@ -17,6 +20,11 @@ function toIntOrNull(value) {
   if (!text) return null;
   const parsed = Number(text);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+}
+
+function normalizeCategoryKey(value) {
+  const key = normalizeText(value).toLowerCase();
+  return STABLE_CATEGORY_KEY_SET.has(key) ? key : DEFAULT_CATEGORY_KEY;
 }
 
 function uniqueTextList(input) {
@@ -37,10 +45,11 @@ function normalizeStatus(value) {
 }
 
 function normalizeVideoAnalysisRecord(record, fallbackFolderId, fallbackProvider, fallbackModel) {
-  const category =
+  const category = normalizeCategoryKey(
     normalizeText(record?.category) ||
-    normalizeText(Array.isArray(record?.categories) ? record.categories[0] : "") ||
-    DEFAULT_CATEGORY_KEY;
+      normalizeText(Array.isArray(record?.categories) ? record.categories[0] : "") ||
+      DEFAULT_CATEGORY_KEY,
+  );
   return {
     folderId: Number(fallbackFolderId),
     videoId: Number(record?.videoId) > 0 ? Number(record.videoId) : 0,
@@ -48,6 +57,31 @@ function normalizeVideoAnalysisRecord(record, fallbackFolderId, fallbackProvider
     analyzedAt: toIntOrNull(record?.analyzedAt),
     provider: normalizeText(record?.provider) || normalizeText(fallbackProvider),
     model: normalizeText(record?.model) || normalizeText(fallbackModel),
+  };
+}
+
+function deriveResponseStatus(snapshot) {
+  if (!snapshot) return null;
+  if (
+    snapshot.status === "running" ||
+    snapshot.status === "success" ||
+    snapshot.status === "error"
+  ) {
+    return snapshot.status;
+  }
+  if (snapshot.videos.length > 0) return "success";
+  if (snapshot.lastError) return "error";
+  return null;
+}
+
+export function normalizeFolderAiCategoriesResponse(snapshot) {
+  const normalized = normalizeFolderCategorySnapshot(snapshot);
+  if (!normalized) return null;
+  const status = deriveResponseStatus(normalized);
+  if (!status) return null;
+  return {
+    ...normalized,
+    status,
   };
 }
 

@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { applyFolderCategoryAttempt } from "../shared/ai-analysis.js";
+import {
+  applyFolderCategoryAttempt,
+  normalizeFolderAiCategoriesResponse,
+} from "../shared/ai-analysis.js";
 
 test("keeps previous successful category result when rerun fails", () => {
   const previous = {
@@ -152,4 +155,47 @@ test("uses snapshot folder id and treats whitespace timestamps as null", () => {
   assert.equal(next.startedAt, null);
   assert.equal(next.finishedAt, null);
   assert.equal(next.videos[0].folderId, 99);
+});
+
+test("normalizes legacy response snapshot to frontend ai-categories contract", () => {
+  const normalized = normalizeFolderAiCategoriesResponse({
+    folderId: 5,
+    status: "idle",
+    lastError: null,
+    startedAt: 101,
+    finishedAt: 102,
+    updatedAt: 103,
+    provider: "gemini",
+    model: "gemini-2.5-flash",
+    videos: [
+      {
+        folderId: 5,
+        videoId: 77,
+        category: "legacy-unknown-category",
+        analyzedAt: 103,
+        provider: "gemini",
+        model: "gemini-2.5-flash",
+      },
+    ],
+  });
+
+  assert.ok(normalized);
+  assert.equal(normalized.status, "success");
+  assert.equal(normalized.videos[0].category, "other");
+});
+
+test("returns null for empty idle snapshots", () => {
+  const normalized = normalizeFolderAiCategoriesResponse({
+    folderId: 5,
+    status: "idle",
+    lastError: null,
+    startedAt: null,
+    finishedAt: null,
+    updatedAt: 103,
+    provider: "gemini",
+    model: "gemini-2.5-flash",
+    videos: [],
+  });
+
+  assert.equal(normalized, null);
 });

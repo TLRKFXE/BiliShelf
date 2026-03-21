@@ -88,7 +88,7 @@ function parseRequestBody(init?: RequestInit): unknown {
 function resolveExtensionRequestTimeout(path: string, method: string) {
   if (
     method === "POST" &&
-    /^\/folders\/\d+\/ai-categories$/.test(path)
+    /^\/folders\/\d+\/ai-(categories|analysis)$/.test(path)
   ) {
     return EXTENSION_REQUEST_TIMEOUT_AI_CATEGORIES_MS;
   }

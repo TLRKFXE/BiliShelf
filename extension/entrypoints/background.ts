@@ -10,6 +10,7 @@ import {
   applyFolderCategoryAttempt,
   buildFolderCategorizationInput,
   matchFolderAiCategoriesPath,
+  normalizeFolderAiCategoriesResponse,
   runFolderAiCategories
 } from "../shared/ai-analysis.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
@@ -3499,7 +3500,7 @@ function handleReadOnlyApi(
   const folderAiCategoryMatch = matchFolderAiCategoriesPath(path);
   if (folderAiCategoryMatch) {
     const folderId = toInt(folderAiCategoryMatch[1]);
-    return ok(getFolderAiAnalysis(state, folderId));
+    return ok(normalizeFolderAiCategoriesResponse(getFolderAiAnalysis(state, folderId)));
   }
 
   return null;

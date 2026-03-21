@@ -26,6 +26,10 @@ export type FolderCategorySnapshot = FolderAiAnalysisRecord & {
   videos: VideoAiAnalysisRecord[];
 };
 
+export type FolderAiCategoriesResponse = Omit<FolderCategorySnapshot, "status"> & {
+  status: "running" | "success" | "error";
+};
+
 export type RunFolderAiCategoriesOptions = {
   folderId: number;
   input: FolderAnalysisInput;
@@ -56,3 +60,6 @@ export function applyFolderCategoryAttempt(
   previousAnalysis: FolderCategorySnapshot | null | undefined,
   nextAttempt: FolderCategorySnapshot | null | undefined,
 ): FolderCategorySnapshot | null;
+export function normalizeFolderAiCategoriesResponse(
+  snapshot: FolderCategorySnapshot | null | undefined,
+): FolderAiCategoriesResponse | null;
