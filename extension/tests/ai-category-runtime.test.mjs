@@ -140,3 +140,49 @@ test("matchFolderAiCategoriesPath supports preferred route and legacy alias", ()
   assert.equal(legacy?.[1], "42");
   assert.equal(invalid, null);
 });
+
+test("returns provider quota error instead of a generic timeout message", async () => {
+  const input = {
+    folderId: 42,
+    folderName: "Test Folder",
+    folderDescription: "",
+    videos: [
+      {
+        videoId: 9001,
+        title: "Test Video",
+        uploader: "Uploader",
+        description: "",
+        customTags: [],
+        systemTags: [],
+      },
+    ],
+  };
+
+  const provider429Body = JSON.stringify({
+    error: {
+      code: 429,
+      status: "RESOURCE_EXHAUSTED",
+      message: "Resource has been exhausted.",
+      details: [{ retryDelay: "7s" }],
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      runFolderAiCategories({
+        folderId: 42,
+        input,
+        provider: "gemini",
+        model: "gemini-2.5-flash",
+        now: () => 1234,
+        classifyVideo: async () => {
+          throw new Error(provider429Body);
+        },
+      }),
+    (error) => {
+      assert.match(String(error?.message), /quota/i);
+      assert.doesNotMatch(String(error?.message), /timeout/i);
+      return true;
+    },
+  );
+});

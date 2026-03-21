@@ -17,6 +17,7 @@ const EXTENSION_REQUEST_TIMEOUT_SYNC_MS = 900_000;
 const EXTENSION_REQUEST_TIMEOUT_SYNC_FOLDERS_MS = 90_000;
 const EXTENSION_REQUEST_TIMEOUT_TAG_ENRICH_MS = 60_000;
 const EXTENSION_REQUEST_TIMEOUT_WEBDAV_MS = 180_000;
+const EXTENSION_REQUEST_TIMEOUT_AI_CATEGORIES_MS = 180_000;
 
 type LocalApiRequest = {
   method: string;
@@ -84,6 +85,12 @@ function parseRequestBody(init?: RequestInit): unknown {
 }
 
 function resolveExtensionRequestTimeout(path: string, method: string) {
+  if (
+    method === "POST" &&
+    /^\/folders\/\d+\/ai-(categories|analysis)$/.test(path)
+  ) {
+    return EXTENSION_REQUEST_TIMEOUT_AI_CATEGORIES_MS;
+  }
   if (path === "/sync/bilibili" && method === "POST") {
     return EXTENSION_REQUEST_TIMEOUT_SYNC_MS;
   }

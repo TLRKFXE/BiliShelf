@@ -3,6 +3,7 @@ function normalizeText(value) {
 }
 
 const DEFAULT_CATEGORY_KEY = "other";
+const RETRY_DELAY_PATTERN = /^(\d+)s$/i;
 
 export function matchFolderAiCategoriesPath(path) {
   return (
@@ -79,6 +80,58 @@ function hasReusableCategoryData(snapshot) {
   );
 }
 
+function parseAiProviderErrorDetails(rawMessage) {
+  const message = normalizeText(rawMessage);
+  if (!message) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const rootError =
+    parsed.error && typeof parsed.error === "object" ? parsed.error : parsed;
+  const code = Number(rootError.code);
+  const status = normalizeText(rootError.status).toUpperCase();
+  const providerMessage = normalizeText(rootError.message);
+  const details = Array.isArray(rootError.details) ? rootError.details : [];
+
+  let retryDelay = "";
+  for (const detail of details) {
+    if (!detail || typeof detail !== "object") continue;
+    const candidate = normalizeText(detail.retryDelay);
+    if (candidate) {
+      retryDelay = candidate;
+      break;
+    }
+  }
+
+  const isQuotaError =
+    code === 429 ||
+    status === "RESOURCE_EXHAUSTED" ||
+    status.includes("QUOTA") ||
+    providerMessage.toLowerCase().includes("quota");
+  if (!isQuotaError) return null;
+
+  const retryLabel = retryDelay
+    ? ` Retry after ${RETRY_DELAY_PATTERN.test(retryDelay) ? retryDelay : retryDelay}.`
+    : "";
+  const suffix = providerMessage ? ` ${providerMessage}` : "";
+  return `AI provider quota exceeded.${suffix}${retryLabel}`.trim();
+}
+
+function normalizeCategorizationErrorMessage(error) {
+  const fallback =
+    error instanceof Error ? normalizeText(error.message) : normalizeText(error);
+  return (
+    parseAiProviderErrorDetails(fallback) ||
+    fallback ||
+    "AI categorization failed"
+  );
+}
+
 export function applyFolderCategoryAttempt(previousAnalysis, nextAttempt) {
   const previous = normalizeFolderCategorySnapshot(previousAnalysis);
   const next = normalizeFolderCategorySnapshot(nextAttempt);
@@ -141,15 +194,20 @@ export async function runFolderAiCategories(options) {
   const categorizedVideos = [];
 
   for (const video of videos) {
-    const classified = await classifyVideo(
-      {
-        folderId,
-        input,
-        provider,
-        model,
-      },
-      video,
-    );
+    let classified;
+    try {
+      classified = await classifyVideo(
+        {
+          folderId,
+          input,
+          provider,
+          model,
+        },
+        video,
+      );
+    } catch (error) {
+      throw new Error(normalizeCategorizationErrorMessage(error));
+    }
     categorizedVideos.push({
       folderId,
       videoId: Number(video?.videoId) || 0,
