@@ -1,4 +1,4 @@
-import type { AiMeta, AiProvider } from "./ai-state.js";
+import type { AiCategoryKey, AiMeta, AiProvider } from "./ai-state.js";
 
 export type AiSettingsResponse = {
   provider: AiProvider;
@@ -12,15 +12,10 @@ export type AiSettingsResponse = {
   updatedAt: number;
 };
 
-export type ClassificationPayload = {
-  categories: string[];
-  reasoningSnippet: string | null;
+export type VideoCategoryPayload = {
+  category: AiCategoryKey;
 };
 
-export type FolderSummaryPayload = {
-  summary: string | null;
-};
-
-export function normalizeClassificationPayload(payload: unknown): ClassificationPayload;
-export function normalizeFolderSummaryPayload(payload: unknown): FolderSummaryPayload;
+export function normalizeVideoCategoryPayload(payload: unknown): VideoCategoryPayload;
+export const normalizeClassificationPayload: typeof normalizeVideoCategoryPayload;
 export function maskApiKeyStateForResponse(state: Partial<AiMeta> & { apiKey?: string }): AiSettingsResponse;

@@ -3,17 +3,23 @@ import assert from "node:assert/strict";
 
 import {
   maskApiKeyStateForResponse,
-  normalizeClassificationPayload,
+  normalizeVideoCategoryPayload,
 } from "../shared/ai-provider.js";
 
-test("normalizes classification response into categories array", async () => {
-  const result = normalizeClassificationPayload({
-    categories: ["Music", " Live ", "Music"],
-    reasoningSnippet: "focus on live music",
-  });
+test("normalizes category response into a single category key", () => {
+  const result = normalizeVideoCategoryPayload({ category: "tech" });
+  assert.equal(result.category, "tech");
+});
 
-  assert.deepEqual(result.categories, ["Music", "Live"]);
-  assert.equal(result.reasoningSnippet, "focus on live music");
+test("falls back to other when category output is invalid or empty", () => {
+  assert.equal(
+    normalizeVideoCategoryPayload({ category: "" }).category,
+    "other",
+  );
+  assert.equal(
+    normalizeVideoCategoryPayload({ category: "not-a-real-key" }).category,
+    "other",
+  );
 });
 
 test("masks raw api key state for settings responses", () => {
