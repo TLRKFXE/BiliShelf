@@ -26,6 +26,10 @@ import {
 } from "./stores/library";
 import { useAppUiStore } from "./stores/app-ui";
 import { parseKeyword as parseKeywordFromUtils } from "./lib/search-keyword";
+import {
+  canOpenAiCategoryBrowser,
+  loadAllAiBrowserVideos,
+} from "./lib/ai-category-browser.js";
 import { MANAGER_I18N } from "./lib/manager-i18n";
 import { useAppToast } from "./composables/use-app-toast";
 import { useConfirmDialog } from "./composables/use-confirm-dialog";
@@ -284,7 +288,7 @@ const selectedFolderHasAiRecord = computed(
 );
 const selectedFolderCanOpenAiBrowser = computed(() => {
   if (trashMode.value || selectedFolderId.value === null) return false;
-  return selectedFolderAiCategories.value !== null;
+  return canOpenAiCategoryBrowser(selectedFolderAiCategories.value);
 });
 const aiCategoryBrowserVideos = computed(() => {
   const folderId = activeFolder.value?.id;
@@ -1017,19 +1021,11 @@ async function ensureAiBrowserFolderVideos(folderId: number) {
   };
 
   try {
-    const loaded: Video[] = [];
-    const pageSize = 100;
-    let page = 1;
-    let total = Number.POSITIVE_INFINITY;
-
-    while (loaded.length < total) {
-      const response = await fetchVideos({ folderId, page, pageSize });
-      loaded.push(...(response.items ?? []));
-      total = response.pagination?.total ?? loaded.length;
-      if (!response.items?.length) break;
-      page += 1;
-      if (page > 300) break;
-    }
+    const loaded = await loadAllAiBrowserVideos({
+      folderId,
+      pageSize: 100,
+      fetchPage: fetchVideos,
+    });
 
     aiBrowserFolderVideos.value = {
       ...aiBrowserFolderVideos.value,
@@ -1052,7 +1048,7 @@ async function openAiCategoryBrowser() {
   if (!selectedFolderAiCategories.value) {
     selectedFolderAiCategories.value = folderAiCategoriesCache.value[folderId] ?? null;
   }
-  if (!selectedFolderAiCategories.value) return;
+  if (!canOpenAiCategoryBrowser(selectedFolderAiCategories.value)) return;
 
   aiCategoryBrowserCategory.value = null;
   aiCategoryBrowserOpen.value = true;
@@ -1090,13 +1086,13 @@ async function refreshSelectedFolderAiCategories(folderId: number | null) {
 
 async function performFolderAiCategories(folderId: number) {
   if (!EXTENSION_LOCAL_API_RUNTIME) {
-    throw new Error("AI analysis is unavailable in this runtime.");
+    throw new Error("AI categorization is unavailable in this runtime.");
   }
   if (selectedFolderId.value !== folderId || trashMode.value) {
-    throw new Error("Please analyze the active folder.");
+    throw new Error("Please categorize the active folder.");
   }
   if (aiRunningFolderId.value !== null) {
-    throw new Error("AI analysis is already running.");
+    throw new Error("AI categorization is already running.");
   }
 
   aiRunningFolderId.value = folderId;
@@ -1105,9 +1101,11 @@ async function performFolderAiCategories(folderId: number) {
     if (selectedFolderId.value === folderId && !trashMode.value) {
       selectedFolderAiCategories.value = categories;
       setFolderAiCategoryCache(folderId, categories);
-      aiCategoryBrowserCategory.value = null;
-      aiCategoryBrowserOpen.value = true;
-      void ensureAiBrowserFolderVideos(folderId);
+      if (canOpenAiCategoryBrowser(categories)) {
+        aiCategoryBrowserCategory.value = null;
+        aiCategoryBrowserOpen.value = true;
+        void ensureAiBrowserFolderVideos(folderId);
+      }
     }
   } catch (error) {
     if (selectedFolderId.value === folderId && !trashMode.value) {
@@ -1123,7 +1121,7 @@ async function performFolderAiCategories(folderId: number) {
 
 async function performClearFolderAiCategories(folderId: number) {
   if (!EXTENSION_LOCAL_API_RUNTIME) {
-    throw new Error("AI analysis is unavailable in this runtime.");
+    throw new Error("AI categorization is unavailable in this runtime.");
   }
 
   await clearFolderAiCategories(folderId);

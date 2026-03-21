@@ -4,23 +4,24 @@
 
 ## 中文
 
-这是 BiliShelf 的浏览器扩展版本，负责悬浮收藏、扩展内本地数据存储，以及内嵌管理页。
+这是 BiliShelf 的浏览器扩展版本，负责悬浮收藏、本地数据存储，以及内嵌的管理页。
 
-### 用户可获得
+### 用户可以获得
 
 - 在 Bilibili 视频页使用悬浮收藏面板
 - 数据保存在扩展本地 `IndexedDB`
-- 与 Web 管理端一致的完整管理页 UI
+- 与 Web 管理端共享逻辑的完整管理页 UI
 - 从 Bilibili 收藏夹同步导入
 - 导出 JSON / CSV 备份
 
-### AI 文件夹分析
+### AI 收藏夹分类
 
 - 在扩展管理页顶部使用 `AI 设置` 配置 provider、Base URL、model 和 API key。
-- 在左侧收藏夹卡片上使用 `AI 分析` 手动触发当前文件夹分析，分析摘要和状态会显示在侧边栏摘要面板中。
-- 打开视频详情弹窗时，如果当前收藏夹存在 AI 分析结果，会额外显示 AI 分类、分析时间以及 provider/model。
-- 这套 AI 功能只保存在扩展运行时，不会给 `backend/` 增加 AI 路由或持久化逻辑。
-- 当前支持的 provider 家族：OpenAI、OpenAI-compatible、Claude、Gemini、Grok、DeepSeek、Kimi。
+- 在左侧边栏针对当前选中的收藏夹手动触发 `AI 分类`。
+- 分类完成后会进入一个一次性的 AI 分类浏览页，先展示分类卡片总览，再进入分类详情查看视频。
+- 视频详情弹窗会显示当前视频的单一 AI 主分类、分类时间，以及 provider/model。
+- 该 AI 功能只存在于扩展本地运行时，不会给 `backend/` 增加 AI 路由或持久化逻辑。
+- 当前支持的 provider 家族包括 OpenAI、OpenAI-compatible、Claude、Gemini、Grok、DeepSeek 和 Kimi。
 
 ### 开发与构建命令
 
@@ -68,7 +69,7 @@ pnpm ext:release:prepare
 
 ### 使用提示
 
-- 如果遇到 `412` 风控错误，或 Bilibili 收藏夹页面没有返回视频，关闭并重新打开扩展后再试，通常可以恢复。
+- 如果遇到 `412` 风控错误，或 Bilibili 收藏夹页没有返回视频，关闭并重新打开扩展后再试，通常可以恢复。
 
 ### 打包流程说明
 
@@ -103,11 +104,12 @@ This is the install-and-use browser extension edition of BiliShelf.
 - Sync import from Bilibili favorites
 - Export backup to JSON / CSV
 
-### AI Folder Analysis
+### AI Folder Categorization
 
-- Use `AI 设置` in the extension manager header to configure provider, base URL, model, and API key.
-- Use `AI 分析` on a folder card in the left sidebar to run manual folder analysis. The latest summary/status is shown in the sidebar summary panel.
-- Video detail dialogs show AI categories, analyzed time, and provider/model when the currently selected folder has AI analysis data.
+- Use `AI Settings` in the extension manager header to configure provider, base URL, model, and API key.
+- Trigger `AI 分类` manually for the currently selected folder from the left sidebar.
+- After categorization finishes, the manager opens a one-time AI category browser that shows category cards first and then category detail browsing.
+- Video detail dialogs show the video's single AI category, categorized time, and provider/model.
 - This AI feature stays extension-only. It does not add AI routes or AI persistence to `backend/`.
 - Supported provider families: OpenAI, OpenAI-compatible, Claude, Gemini, Grok, DeepSeek, and Kimi.
 

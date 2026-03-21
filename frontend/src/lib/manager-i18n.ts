@@ -341,12 +341,12 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "AI settings are stored in the extension runtime only and are not added to backend.",
   },
   "ai.settings.enableTitle": {
-    "zh-CN": "启用文件夹 AI 分析",
-    "en-US": "Enable folder AI analysis",
+    "zh-CN": "启用收藏夹 AI 分类",
+    "en-US": "Enable folder AI categorization",
   },
   "ai.settings.enableDesc": {
-    "zh-CN": "开启后可在收藏夹级别手动触发 AI 分析。",
-    "en-US": "Enable manual AI analysis at the folder level.",
+    "zh-CN": "开启后可在当前收藏夹手动触发 AI 分类。",
+    "en-US": "Enable manual AI categorization for the current folder.",
   },
   "ai.settings.provider": {
     "zh-CN": "提供商",
@@ -520,14 +520,14 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "Separate tags with commas",
   },
   "detail.folders": { "zh-CN": "Folders", "en-US": "Folders" },
-  "detail.aiTitle": { "zh-CN": "AI 分析", "en-US": "AI Analysis" },
+  "detail.aiTitle": { "zh-CN": "AI 分类", "en-US": "AI Category" },
   "detail.aiCategories": {
-    "zh-CN": "AI 分类",
-    "en-US": "AI Categories",
+    "zh-CN": "AI 主分类",
+    "en-US": "AI Category",
   },
   "detail.aiAnalyzedAt": {
-    "zh-CN": "分析时间",
-    "en-US": "Analyzed At",
+    "zh-CN": "分类时间",
+    "en-US": "Categorized At",
   },
   "detail.aiProviderModel": {
     "zh-CN": "提供商 / 模型",
@@ -590,8 +590,8 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "No videos available in this category.",
   },
   "ai.browser.footerHint": {
-    "zh-CN": "点击分类卡片可进入该分类的视频详情页模式。",
-    "en-US": "Open a category card to browse videos in detail mode.",
+    "zh-CN": "这是一次性的临时分类视图，不会修改原收藏夹结构。",
+    "en-US": "This is a temporary one-time category view and does not modify the original folders.",
   },
   "ai.category.animation": { "zh-CN": "动画", "en-US": "Animation" },
   "ai.category.music": { "zh-CN": "音乐", "en-US": "Music" },
@@ -901,27 +901,27 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   },
   "toast.folderAiLoadFail": {
     "zh-CN": "加载文件夹 AI 结果失败",
-    "en-US": "Failed to load folder AI analysis",
+    "en-US": "Failed to load folder AI categories",
   },
   "toast.folderAiBrowserVideosLoadFail": {
     "zh-CN": "加载分类视频失败",
     "en-US": "Failed to load categorized videos",
   },
   "toast.folderAiAnalyzeDone": {
-    "zh-CN": "文件夹 AI 分析完成",
-    "en-US": "Folder AI analysis completed",
+    "zh-CN": "收藏夹 AI 分类完成",
+    "en-US": "Folder AI categorization completed",
   },
   "toast.folderAiAnalyzeFail": {
-    "zh-CN": "文件夹 AI 分析失败",
-    "en-US": "Folder AI analysis failed",
+    "zh-CN": "收藏夹 AI 分类失败",
+    "en-US": "Folder AI categorization failed",
   },
   "toast.folderAiCleared": {
     "zh-CN": "已清除文件夹 AI 结果",
-    "en-US": "Folder AI analysis cleared",
+    "en-US": "Folder AI categorization cleared",
   },
   "toast.folderAiClearFail": {
     "zh-CN": "清除文件夹 AI 结果失败",
-    "en-US": "Failed to clear folder AI analysis",
+    "en-US": "Failed to clear folder AI categories",
   },
   "toast.syncSettingsSaveFail": {
     "zh-CN": "保存监听设置失败",
@@ -1171,9 +1171,9 @@ const MANAGER_I18N_ZH_OVERRIDES: Record<string, string> = {
   "detail.customTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.systemTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.folders": "所属收藏夹",
-  "detail.aiTitle": "AI 分析",
-  "detail.aiCategories": "AI 分类",
-  "detail.aiAnalyzedAt": "分析时间",
+  "detail.aiTitle": "AI 分类",
+  "detail.aiCategories": "AI 主分类",
+  "detail.aiAnalyzedAt": "分类时间",
   "detail.aiProviderModel": "提供商 / 模型",
   "detail.openOnBilibili": "在 B 站打开",
   "detail.openUploaderSpace": "打开 UP 主空间",

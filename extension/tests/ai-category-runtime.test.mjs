@@ -8,7 +8,7 @@ import {
 } from "../shared/ai-analysis.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
 
-test("runFolderAiCategories groups videos without generating a folder summary", async () => {
+test("runFolderAiCategories groups videos without generating summary fields", async () => {
   const input = {
     folderId: 7,
     folderName: "Favorites",
