@@ -10,7 +10,8 @@ import {
 } from "../shared/ai-provider.js";
 import {
   applyFolderCategoryAttempt,
-  buildFolderAnalysisInput
+  buildFolderCategorizationInput,
+  runFolderAiCategories
 } from "../shared/ai-analysis.js";
 import type {
   AiMeta as SharedAiMeta,
@@ -362,9 +363,8 @@ let biliRequestThrottleQueue: Promise<void> = Promise.resolve();
 let favoritesSyncTask: Promise<void> | null = null;
 let favoritesSyncStatus: FavoritesSyncStatus = defaultFavoritesSyncStatus();
 let stage3ReconcileTask: Promise<void> | null = null;
-let folderAiAnalysisTask: Promise<unknown> | null = null;
-let folderAiAnalysisFolderId: number | null = null;
-const DEFAULT_AI_CATEGORY_KEY = "other";
+let folderAiCategoryTask: Promise<unknown> | null = null;
+let folderAiCategoryFolderId: number | null = null;
 
 function now() {
   return Date.now();
@@ -2180,7 +2180,14 @@ async function requestAiJson(meta: AiMeta, prompt: string) {
   return extractJsonObject(text);
 }
 
-async function classifyFolderVideo(meta: AiMeta, input: FolderAnalysisInput, video: FolderAnalysisInput["videos"][number]) {
+function matchFolderAiCategoriesPath(path: string) {
+  return (
+    path.match(/^\/folders\/(\d+)\/ai-categories$/) ||
+    path.match(/^\/folders\/(\d+)\/ai-analysis$/)
+  );
+}
+
+async function categorizeFolderVideo(meta: AiMeta, input: FolderAnalysisInput, video: FolderAnalysisInput["videos"][number]) {
   const allowedCategoryKeys = STABLE_CATEGORY_KEYS.join(", ");
   const payload = await requestAiJson(
     meta,
@@ -2240,51 +2247,28 @@ function writeFolderAiAnalysis(
   return getFolderAiAnalysis(state, snapshot.folderId);
 }
 
-async function runFolderAiAnalysisInState(state: LocalState, folderId: number) {
+async function runFolderAiCategoriesInState(state: LocalState, folderId: number) {
   const aiMeta = ensureAiMeta(state);
   if (!aiMeta.enabled) {
-    throw new Error("AI analysis is disabled");
+    throw new Error("AI categorization is disabled");
   }
   validateAiSettings(aiMeta);
 
-  const input = buildFolderAnalysisInput(state, folderId);
-  if (input.videos.length === 0) {
-    throw new Error("Folder has no videos to analyze");
-  }
-
-  const startedAt = now();
-  const nextVideoAnalyses: VideoAiAnalysisRecord[] = [];
-
-  for (const video of input.videos) {
-    const classified = await classifyFolderVideo(aiMeta, input, video);
-    nextVideoAnalyses.push({
-      folderId,
-      videoId: video.videoId,
-      category: classified.category || DEFAULT_AI_CATEGORY_KEY,
-      analyzedAt: now(),
-      provider: aiMeta.provider,
-      model: aiMeta.model
-    });
-  }
-
-  const folderRecord: FolderAiAnalysisRecord = {
+  const input = buildFolderCategorizationInput(state, folderId);
+  const folderRecord = (await runFolderAiCategories({
     folderId,
-    status: "success",
-    lastError: null,
-    startedAt,
-    finishedAt: now(),
-    updatedAt: now(),
+    input,
     provider: aiMeta.provider,
-    model: aiMeta.model
-  };
+    model: aiMeta.model,
+    now,
+    classifyVideo: async (_context: unknown, video: FolderAnalysisInput["videos"][number]) =>
+      categorizeFolderVideo(aiMeta, input, video)
+  })) as FolderAiAnalysisRecord & { videos: VideoAiAnalysisRecord[] };
 
   const previousAnalysis = getFolderAiAnalysis(state, folderId);
   return writeFolderAiAnalysis(
     state,
-    applyFolderCategoryAttempt(previousAnalysis, {
-      ...folderRecord,
-      videos: nextVideoAnalyses
-    })
+    applyFolderCategoryAttempt(previousAnalysis, folderRecord)
   );
 }
 
@@ -3701,9 +3685,9 @@ function handleReadOnlyApi(
     return ok(data);
   }
 
-  const folderAiAnalysisMatch = path.match(/^\/folders\/(\d+)\/ai-analysis$/);
-  if (folderAiAnalysisMatch) {
-    const folderId = toInt(folderAiAnalysisMatch[1]);
+  const folderAiCategoryMatch = matchFolderAiCategoriesPath(path);
+  if (folderAiCategoryMatch) {
+    const folderId = toInt(folderAiCategoryMatch[1]);
     return ok(getFolderAiAnalysis(state, folderId));
   }
 
@@ -3762,16 +3746,16 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       );
     }
 
-    const folderAiAnalysisMatch = path.match(/^\/folders\/(\d+)\/ai-analysis$/);
-    if (folderAiAnalysisMatch && method === "POST") {
-      const folderId = toInt(folderAiAnalysisMatch[1]);
-      if (folderAiAnalysisTask || folderAiAnalysisFolderId !== null) {
+    const folderAiCategoryMatch = matchFolderAiCategoriesPath(path);
+    if (folderAiCategoryMatch && method === "POST") {
+      const folderId = toInt(folderAiCategoryMatch[1]);
+      if (folderAiCategoryTask || folderAiCategoryFolderId !== null) {
         return fail(
           409,
-          `AI analysis is already running for folder ${folderAiAnalysisFolderId ?? "unknown"}`
+          `AI categorization is already running for folder ${folderAiCategoryFolderId ?? "unknown"}`
         );
       }
-      folderAiAnalysisFolderId = folderId;
+      folderAiCategoryFolderId = folderId;
       await withState((state) => {
         const aiMeta = ensureAiMeta(state);
         const currentAnalysis = getFolderAiAnalysis(state, folderId);
@@ -3792,18 +3776,18 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         );
       }, true);
       const task = withState(async (state) => {
-        const data = await runFolderAiAnalysisInState(state, folderId);
+        const data = await runFolderAiCategoriesInState(state, folderId);
         return ok(data);
       }, true);
-      folderAiAnalysisTask = task.finally(() => {
-        folderAiAnalysisTask = null;
-        folderAiAnalysisFolderId = null;
+      folderAiCategoryTask = task.finally(() => {
+        folderAiCategoryTask = null;
+        folderAiCategoryFolderId = null;
       });
       try {
         return await task;
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "AI analysis failed";
+          error instanceof Error ? error.message : "AI categorization failed";
         await withState((state) => {
           const aiMeta = ensureAiMeta(state);
           const currentAnalysis = getFolderAiAnalysis(state, folderId);
@@ -4363,9 +4347,9 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       }
 
       const folderMatch = path.match(/^\/folders\/(\d+)$/);
-      const folderAiAnalysisWriteMatch = path.match(/^\/folders\/(\d+)\/ai-analysis$/);
-      if (folderAiAnalysisWriteMatch && method === "DELETE") {
-        const folderId = toInt(folderAiAnalysisWriteMatch[1]);
+      const folderAiCategoryWriteMatch = matchFolderAiCategoriesPath(path);
+      if (folderAiCategoryWriteMatch && method === "DELETE") {
+        const folderId = toInt(folderAiCategoryWriteMatch[1]);
         ensureAiMeta(state);
         state.ai.folderAnalyses = state.ai.folderAnalyses.filter(
           (item) => item.folderId !== folderId

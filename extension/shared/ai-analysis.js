@@ -89,7 +89,7 @@ export function applyFolderCategoryAttempt(previousAnalysis, nextAttempt) {
     return {
       ...previous,
       status: "error",
-      lastError: next.lastError || "AI analysis result was incomplete",
+      lastError: next.lastError || "AI category result was incomplete",
       startedAt: next.startedAt,
       finishedAt: next.finishedAt,
       updatedAt: next.updatedAt,
@@ -110,7 +110,64 @@ export function applyFolderCategoryAttempt(previousAnalysis, nextAttempt) {
   };
 }
 
-export function buildFolderAnalysisInput(state, folderId) {
+export async function runFolderAiCategories(options) {
+  const folderId = Number(options?.folderId);
+  const input = options?.input ?? {};
+  const provider = normalizeText(options?.provider);
+  const model = normalizeText(options?.model);
+  const nowFn = typeof options?.now === "function" ? options.now : Date.now;
+  const classifyVideo = options?.classifyVideo;
+
+  if (!Number.isFinite(folderId) || folderId <= 0) {
+    throw new Error("folderId must be a positive number");
+  }
+  if (typeof classifyVideo !== "function") {
+    throw new Error("classifyVideo must be a function");
+  }
+
+  const videos = Array.isArray(input?.videos) ? input.videos : [];
+  if (videos.length === 0) {
+    throw new Error("Folder has no videos to analyze");
+  }
+
+  const startedAt = Number(nowFn());
+  const categorizedVideos = [];
+
+  for (const video of videos) {
+    const classified = await classifyVideo(
+      {
+        folderId,
+        input,
+        provider,
+        model,
+      },
+      video,
+    );
+    categorizedVideos.push({
+      folderId,
+      videoId: Number(video?.videoId) || 0,
+      category: normalizeText(classified?.category) || DEFAULT_CATEGORY_KEY,
+      analyzedAt: Number(nowFn()),
+      provider,
+      model,
+    });
+  }
+
+  const finishedAt = Number(nowFn());
+  return {
+    folderId,
+    status: "success",
+    lastError: null,
+    startedAt,
+    finishedAt,
+    updatedAt: finishedAt,
+    provider,
+    model,
+    videos: categorizedVideos,
+  };
+}
+
+export function buildFolderCategorizationInput(state, folderId) {
   const folder = Array.isArray(state?.folders)
     ? state.folders.find((item) => Number(item?.id) === Number(folderId) && item?.deletedAt === null)
     : null;
@@ -175,3 +232,5 @@ export function buildFolderAnalysisInput(state, folderId) {
     videos,
   };
 }
+
+export const buildFolderAnalysisInput = buildFolderCategorizationInput;

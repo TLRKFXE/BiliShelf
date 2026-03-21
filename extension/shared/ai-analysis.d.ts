@@ -26,7 +26,31 @@ export type FolderCategorySnapshot = FolderAiAnalysisRecord & {
   videos: VideoAiAnalysisRecord[];
 };
 
+export type RunFolderAiCategoriesOptions = {
+  folderId: number;
+  input: FolderAnalysisInput;
+  provider: string;
+  model: string;
+  now?: () => number;
+  classifyVideo: (
+    context: {
+      folderId: number;
+      input: FolderAnalysisInput;
+      provider: string;
+      model: string;
+    },
+    video: FolderAnalysisVideoInput,
+  ) => Promise<{ category?: unknown } | null | undefined>;
+};
+
 export function buildFolderAnalysisInput(state: unknown, folderId: number): FolderAnalysisInput;
+export function buildFolderCategorizationInput(
+  state: unknown,
+  folderId: number,
+): FolderAnalysisInput;
+export function runFolderAiCategories(
+  options: RunFolderAiCategoriesOptions,
+): Promise<FolderCategorySnapshot>;
 export function applyFolderCategoryAttempt(
   previousAnalysis: FolderCategorySnapshot | null | undefined,
   nextAttempt: FolderCategorySnapshot | null | undefined,
