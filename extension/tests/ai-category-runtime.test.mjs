@@ -6,7 +6,7 @@ import {
   matchFolderAiCategoriesPath,
   runFolderAiCategories,
 } from "../shared/ai-analysis.js";
-import { formatAiProviderErrorMessage } from "../shared/ai-provider-error.js";
+import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
 
 test("runFolderAiCategories groups videos without generating a folder summary", async () => {
   const input = {
@@ -142,7 +142,7 @@ test("matchFolderAiCategoriesPath supports preferred route and legacy alias", ()
   assert.equal(invalid, null);
 });
 
-test("returns provider quota error instead of a generic timeout message", () => {
+test("returns provider quota error instead of a generic timeout message", async () => {
   const provider429Body = JSON.stringify({
     error: {
       code: 429,
@@ -152,9 +152,45 @@ test("returns provider quota error instead of a generic timeout message", () => 
     },
   });
 
-  const message = formatAiProviderErrorMessage(429, provider429Body);
-
-  assert.match(message, /quota/i);
-  assert.match(message, /retry after 7s/i);
-  assert.doesNotMatch(message, /timeout/i);
+  await assert.rejects(
+    () =>
+      categorizeFolderVideo(
+        {
+          provider: "gemini",
+          baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+          apiKey: "test-key",
+          model: "gemini-2.5-flash",
+        },
+        {
+          folderId: 1,
+          folderName: "Favorites",
+          folderDescription: "",
+          videos: [],
+        },
+        {
+          videoId: 99,
+          bvid: "BVTEST",
+          title: "Test Video",
+          uploader: "Uploader",
+          description: "",
+          publishAt: null,
+          addedAt: null,
+          customTags: [],
+          systemTags: [],
+        },
+        {
+          fetchImpl: async () => ({
+            ok: false,
+            status: 429,
+            text: async () => provider429Body,
+          }),
+        },
+      ),
+    (error) => {
+      assert.match(String(error?.message), /quota/i);
+      assert.match(String(error?.message), /retry after 7s/i);
+      assert.doesNotMatch(String(error?.message), /timeout/i);
+      return true;
+    },
+  );
 });

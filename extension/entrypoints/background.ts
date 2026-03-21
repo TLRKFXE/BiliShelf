@@ -4,9 +4,7 @@ import {
   normalizeAiState
 } from "../shared/ai-state.js";
 import {
-  maskApiKeyStateForResponse,
-  STABLE_CATEGORY_KEYS,
-  normalizeClassificationPayload
+  maskApiKeyStateForResponse
 } from "../shared/ai-provider.js";
 import {
   applyFolderCategoryAttempt,
@@ -14,7 +12,7 @@ import {
   matchFolderAiCategoriesPath,
   runFolderAiCategories
 } from "../shared/ai-analysis.js";
-import { formatAiProviderErrorMessage } from "../shared/ai-provider-error.js";
+import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
 import type {
   AiMeta as SharedAiMeta,
   AiProvider as SharedAiProvider,
@@ -22,7 +20,6 @@ import type {
   FolderAiAnalysisRecord as SharedFolderAiAnalysisRecord,
   VideoAiAnalysisRecord as SharedVideoAiAnalysisRecord
 } from "../shared/ai-state.js";
-import type { FolderAnalysisInput } from "../shared/ai-analysis.js";
 
 type FolderRecord = {
   id: number;
@@ -2020,185 +2017,6 @@ function joinUrl(baseUrl: string, path: string) {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
-function extractJsonObject(rawText: string) {
-  const direct = normalizeText(rawText);
-  if (!direct) {
-    throw new Error("AI response was empty");
-  }
-  try {
-    return JSON.parse(direct) as Record<string, unknown>;
-  } catch {}
-
-  const fencedMatch = direct.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fencedMatch?.[1] ?? direct;
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  if (start < 0 || end <= start) {
-    throw new Error("AI response did not contain JSON");
-  }
-  return JSON.parse(candidate.slice(start, end + 1)) as Record<string, unknown>;
-}
-
-function extractOpenAiLikeText(payload: Record<string, unknown>) {
-  const choice = Array.isArray(payload.choices) ? payload.choices[0] : null;
-  const message =
-    choice && typeof choice === "object" && choice !== null
-      ? (choice as Record<string, unknown>).message
-      : null;
-  const content =
-    message && typeof message === "object" && message !== null
-      ? (message as Record<string, unknown>).content
-      : null;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((item) =>
-        item && typeof item === "object" && "text" in item
-          ? normalizeText((item as { text?: unknown }).text)
-          : ""
-      )
-      .filter(Boolean)
-      .join("\n");
-  }
-  return "";
-}
-
-function extractClaudeText(payload: Record<string, unknown>) {
-  if (!Array.isArray(payload.content)) return "";
-  return payload.content
-    .map((item) =>
-      item && typeof item === "object" && "text" in item
-        ? normalizeText((item as { text?: unknown }).text)
-        : ""
-    )
-    .filter(Boolean)
-    .join("\n");
-}
-
-function extractGeminiText(payload: Record<string, unknown>) {
-  const candidate = Array.isArray(payload.candidates) ? payload.candidates[0] : null;
-  const content =
-    candidate && typeof candidate === "object" && candidate !== null
-      ? (candidate as Record<string, unknown>).content
-      : null;
-  const parts =
-    content && typeof content === "object" && content !== null
-      ? (content as Record<string, unknown>).parts
-      : null;
-  if (!Array.isArray(parts)) return "";
-  return parts
-    .map((item) =>
-      item && typeof item === "object" && "text" in item
-        ? normalizeText((item as { text?: unknown }).text)
-        : ""
-    )
-    .filter(Boolean)
-    .join("\n");
-}
-
-async function requestAiJson(meta: AiMeta, prompt: string) {
-  validateAiSettings(meta);
-
-  let response: Response;
-  if (meta.provider === "gemini") {
-    response = await fetch(
-      `${joinUrl(meta.baseUrl, `models/${encodeURIComponent(meta.model)}:generateContent`)}?key=${encodeURIComponent(meta.apiKey)}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }]
-            }
-          ]
-        })
-      }
-    );
-  } else if (meta.provider === "claude") {
-    response = await fetch(joinUrl(meta.baseUrl, "messages"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": meta.apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: meta.model,
-        max_tokens: 512,
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ]
-      })
-    });
-  } else {
-    response = await fetch(joinUrl(meta.baseUrl, "chat/completions"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${meta.apiKey}`
-      },
-      body: JSON.stringify({
-        model: meta.model,
-        temperature: 0.2,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Return JSON only. Do not include markdown fences or extra prose."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ]
-      })
-    });
-  }
-
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new Error(formatAiProviderErrorMessage(response.status, responseText));
-  }
-
-  const payload = responseText
-    ? (JSON.parse(responseText) as Record<string, unknown>)
-    : {};
-  const text =
-    meta.provider === "gemini"
-      ? extractGeminiText(payload)
-      : meta.provider === "claude"
-        ? extractClaudeText(payload)
-        : extractOpenAiLikeText(payload);
-
-  return extractJsonObject(text);
-}
-
-async function categorizeFolderVideo(meta: AiMeta, input: FolderAnalysisInput, video: FolderAnalysisInput["videos"][number]) {
-  const allowedCategoryKeys = STABLE_CATEGORY_KEYS.join(", ");
-  const payload = await requestAiJson(
-    meta,
-    [
-      "You analyze one video inside a folder and return JSON only.",
-      `Allowed category keys (choose exactly one): ${allowedCategoryKeys}`,
-      'Return schema: {"category":"<one allowed category key>"}',
-      `Folder: ${input.folderName}`,
-      `Video title: ${video.title}`,
-      `Uploader: ${video.uploader}`,
-      `Description: ${video.description || "-"}`,
-      `Custom tags: ${video.customTags.join(", ") || "-"}`,
-      `System tags: ${video.systemTags.join(", ") || "-"}`
-    ].join("\n")
-  );
-  return normalizeClassificationPayload(payload);
-}
-
 function getFolderAiAnalysis(state: LocalState, folderId: number) {
   const folderRecord = ensureAiMeta(state).folderAnalyses.find(
     (item) => item.folderId === folderId
@@ -2254,7 +2072,7 @@ async function runFolderAiCategoriesInState(state: LocalState, folderId: number)
     provider: aiMeta.provider,
     model: aiMeta.model,
     now,
-    classifyVideo: async (_context: unknown, video: FolderAnalysisInput["videos"][number]) =>
+    classifyVideo: async (_context: unknown, video: (typeof input.videos)[number]) =>
       categorizeFolderVideo(aiMeta, input, video)
   })) as FolderAiAnalysisRecord & { videos: VideoAiAnalysisRecord[] };
 
