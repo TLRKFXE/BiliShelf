@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   maskApiKeyStateForResponse,
+  STABLE_CATEGORY_KEYS,
   normalizeVideoCategoryPayload,
 } from "../shared/ai-provider.js";
 
@@ -20,6 +21,13 @@ test("falls back to other when category output is invalid or empty", () => {
     normalizeVideoCategoryPayload({ category: "not-a-real-key" }).category,
     "other",
   );
+});
+
+test("exports stable category keys for prompt/runtime alignment", () => {
+  assert.ok(Array.isArray(STABLE_CATEGORY_KEYS));
+  assert.ok(STABLE_CATEGORY_KEYS.includes("tech"));
+  assert.ok(STABLE_CATEGORY_KEYS.includes("other"));
+  assert.equal(new Set(STABLE_CATEGORY_KEYS).size, STABLE_CATEGORY_KEYS.length);
 });
 
 test("masks raw api key state for settings responses", () => {

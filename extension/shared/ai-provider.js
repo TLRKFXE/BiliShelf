@@ -1,7 +1,7 @@
 import { normalizeAiProvider } from "./ai-state.js";
 
 const DEFAULT_CATEGORY_KEY = "other";
-const STABLE_CATEGORY_KEYS = new Set([
+export const STABLE_CATEGORY_KEYS = Object.freeze([
   "animation",
   "music",
   "dance",
@@ -19,6 +19,7 @@ const STABLE_CATEGORY_KEYS = new Set([
   "news",
   DEFAULT_CATEGORY_KEY,
 ]);
+const STABLE_CATEGORY_KEY_SET = new Set(STABLE_CATEGORY_KEYS);
 
 function normalizeText(value) {
   return String(value ?? "").replace(/^\uFEFF/, "").trim();
@@ -34,7 +35,7 @@ function toIntOrNull(value) {
 
 function normalizeCategoryKey(value) {
   const key = normalizeText(value).toLowerCase();
-  return STABLE_CATEGORY_KEYS.has(key) ? key : DEFAULT_CATEGORY_KEY;
+  return STABLE_CATEGORY_KEY_SET.has(key) ? key : DEFAULT_CATEGORY_KEY;
 }
 
 export function normalizeVideoCategoryPayload(payload) {

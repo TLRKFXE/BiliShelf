@@ -5,6 +5,7 @@ import {
 } from "../shared/ai-state.js";
 import {
   maskApiKeyStateForResponse,
+  STABLE_CATEGORY_KEYS,
   normalizeClassificationPayload
 } from "../shared/ai-provider.js";
 import {
@@ -2180,11 +2181,13 @@ async function requestAiJson(meta: AiMeta, prompt: string) {
 }
 
 async function classifyFolderVideo(meta: AiMeta, input: FolderAnalysisInput, video: FolderAnalysisInput["videos"][number]) {
+  const allowedCategoryKeys = STABLE_CATEGORY_KEYS.join(", ");
   const payload = await requestAiJson(
     meta,
     [
       "You analyze one video inside a folder and return JSON only.",
-      'Return schema: {"category":"CategoryKey"}',
+      `Allowed category keys (choose exactly one): ${allowedCategoryKeys}`,
+      'Return schema: {"category":"<one allowed category key>"}',
       `Folder: ${input.folderName}`,
       `Video title: ${video.title}`,
       `Uploader: ${video.uploader}`,
