@@ -27,3 +27,33 @@ test("normalize ai state fills missing arrays and coerces provider fields", () =
   assert.deepEqual(state.videoAnalyses, []);
   assert.equal(state.updatedAt, 1234);
 });
+
+test("normalize ai state migrates legacy categories and fills missing category with other", () => {
+  const state = normalizeAiState(
+    {
+      videoAnalyses: [
+        {
+          folderId: 7,
+          videoId: 11,
+          category: "",
+          categories: ["music"],
+          analyzedAt: 123,
+          provider: "gemini",
+          model: "gemini-2.5-flash",
+        },
+        {
+          folderId: 7,
+          videoId: 12,
+          analyzedAt: 124,
+          provider: "gemini",
+          model: "gemini-2.5-flash",
+        },
+      ],
+    },
+    2000,
+  );
+
+  assert.equal(state.videoAnalyses.length, 2);
+  assert.equal(state.videoAnalyses[0].category, "music");
+  assert.equal(state.videoAnalyses[1].category, "other");
+});

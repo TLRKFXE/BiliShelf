@@ -7,6 +7,7 @@ const AI_PROVIDERS = new Set([
   "kimi",
   "openai-compatible",
 ]);
+const DEFAULT_CATEGORY_KEY = "other";
 
 function normalizeText(value) {
   return String(value ?? "").replace(/^\uFEFF/, "").trim();
@@ -56,8 +57,11 @@ function normalizeFolderAnalysisRecord(record, nowValue) {
 function normalizeVideoAnalysisRecord(record) {
   const folderId = toInt(record?.folderId, 0);
   const videoId = toInt(record?.videoId, 0);
-  const category = normalizeText(record?.category);
-  if (folderId <= 0 || videoId <= 0 || !category) return null;
+  const category =
+    normalizeText(record?.category) ||
+    normalizeText(Array.isArray(record?.categories) ? record.categories[0] : "") ||
+    DEFAULT_CATEGORY_KEY;
+  if (folderId <= 0 || videoId <= 0) return null;
 
   return {
     folderId,

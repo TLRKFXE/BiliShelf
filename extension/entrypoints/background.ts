@@ -363,6 +363,7 @@ let favoritesSyncStatus: FavoritesSyncStatus = defaultFavoritesSyncStatus();
 let stage3ReconcileTask: Promise<void> | null = null;
 let folderAiAnalysisTask: Promise<unknown> | null = null;
 let folderAiAnalysisFolderId: number | null = null;
+const DEFAULT_AI_CATEGORY_KEY = "other";
 
 function now() {
   return Date.now();
@@ -2183,7 +2184,7 @@ async function classifyFolderVideo(meta: AiMeta, input: FolderAnalysisInput, vid
     meta,
     [
       "You analyze one video inside a folder and return JSON only.",
-      'Return schema: {"categories":["Category"],"reasoningSnippet":"short text"}',
+      'Return schema: {"categories":["Category"]}',
       `Folder: ${input.folderName}`,
       `Video title: ${video.title}`,
       `Uploader: ${video.uploader}`,
@@ -2193,6 +2194,13 @@ async function classifyFolderVideo(meta: AiMeta, input: FolderAnalysisInput, vid
     ].join("\n")
   );
   return normalizeClassificationPayload(payload);
+}
+
+function resolveAiCategoryKey(categories: string[]) {
+  const normalized = Array.isArray(categories)
+    ? categories.map((item) => normalizeText(item)).find(Boolean)
+    : "";
+  return normalized || DEFAULT_AI_CATEGORY_KEY;
 }
 
 function getFolderAiAnalysis(state: LocalState, folderId: number) {
@@ -2256,7 +2264,7 @@ async function runFolderAiAnalysisInState(state: LocalState, folderId: number) {
     nextVideoAnalyses.push({
       folderId,
       videoId: video.videoId,
-      category: classified.categories[0] || "",
+      category: resolveAiCategoryKey(classified.categories),
       analyzedAt: now(),
       provider: aiMeta.provider,
       model: aiMeta.model

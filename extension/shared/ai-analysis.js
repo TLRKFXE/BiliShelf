@@ -2,6 +2,8 @@ function normalizeText(value) {
   return String(value ?? "").replace(/^\uFEFF/, "").trim();
 }
 
+const DEFAULT_CATEGORY_KEY = "other";
+
 function toIntOrNull(value) {
   if (value === null || value === undefined) return null;
   const parsed = Number(value);
@@ -26,7 +28,10 @@ function normalizeStatus(value) {
 }
 
 function normalizeVideoAnalysisRecord(record, fallbackFolderId, fallbackProvider, fallbackModel) {
-  const category = normalizeText(record?.category);
+  const category =
+    normalizeText(record?.category) ||
+    normalizeText(Array.isArray(record?.categories) ? record.categories[0] : "") ||
+    DEFAULT_CATEGORY_KEY;
   return {
     folderId: Number(record?.folderId) > 0 ? Number(record.folderId) : Number(fallbackFolderId),
     videoId: Number(record?.videoId) > 0 ? Number(record.videoId) : 0,
@@ -53,7 +58,7 @@ function normalizeFolderCategorySnapshot(snapshot) {
     model,
     videos: (Array.isArray(snapshot.videos) ? snapshot.videos : [])
       .map((item) => normalizeVideoAnalysisRecord(item, folderId, provider, model))
-      .filter((item) => item.videoId > 0 && item.category),
+      .filter((item) => item.videoId > 0),
   };
 }
 

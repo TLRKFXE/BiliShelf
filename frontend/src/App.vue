@@ -260,7 +260,6 @@ const detailVideoWithAi = computed(() => {
     },
   };
 });
-const selectedFolderAiSummary = computed(() => null);
 const selectedFolderAiStatus = computed(
   () => selectedFolderAiAnalysis.value?.status ?? null
 );
@@ -2125,7 +2124,6 @@ onBeforeUnmount(() => {
     <FolderSidebar
       :folders="folders"
       :active-folder-id="selectedFolderId"
-      :selected-folder-ai-summary="selectedFolderAiSummary"
       :selected-folder-ai-status="selectedFolderAiStatus"
       :selected-folder-ai-last-error="selectedFolderAiLastError"
       :ai-running-folder-id="aiRunningFolderId"

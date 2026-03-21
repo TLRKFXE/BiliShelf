@@ -33,7 +33,6 @@ const props = withDefaults(
   defineProps<{
     folders: Folder[];
     activeFolderId: number | null;
-    selectedFolderAiSummary: string | null;
     selectedFolderAiStatus: "idle" | "running" | "success" | "error" | null;
     selectedFolderAiLastError: string | null;
     aiRunningFolderId: number | null;
@@ -93,8 +92,7 @@ const SIDEBAR_TEXT: Record<
   | "aiAnalyze"
   | "aiAnalyzing"
   | "aiClear"
-  | "aiSummary"
-  | "aiSummaryEmpty"
+  | "aiAnalysis"
   | "aiStatus"
   | "aiStatusRunning"
   | "aiStatusSuccess"
@@ -142,11 +140,7 @@ const SIDEBAR_TEXT: Record<
   aiAnalyze: { "zh-CN": "AI 分析", "en-US": "AI Analyze" },
   aiAnalyzing: { "zh-CN": "分析中...", "en-US": "Analyzing..." },
   aiClear: { "zh-CN": "清除 AI", "en-US": "Clear AI" },
-  aiSummary: { "zh-CN": "AI 摘要", "en-US": "AI Summary" },
-  aiSummaryEmpty: {
-    "zh-CN": "当前收藏夹还没有 AI 摘要。",
-    "en-US": "No AI summary for the current folder yet.",
-  },
+  aiAnalysis: { "zh-CN": "AI 分析状态", "en-US": "AI Analysis" },
   aiStatus: { "zh-CN": "状态", "en-US": "Status" },
   aiStatusRunning: { "zh-CN": "分析中", "en-US": "Running" },
   aiStatusSuccess: { "zh-CN": "已完成", "en-US": "Success" },
@@ -194,7 +188,6 @@ const hasAiTaskRunning = computed(() => props.aiRunningFolderId !== null);
 const hasSelectedFolderAiRecord = computed(
   () =>
     props.selectedFolderAiStatus !== null ||
-    Boolean(props.selectedFolderAiSummary) ||
     Boolean(props.selectedFolderAiLastError)
 );
 
@@ -497,7 +490,7 @@ function handleDragEnd() {
     >
       <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <Bot class="h-3.5 w-3.5" />
-        <span>{{ t("aiSummary") }}</span>
+        <span>{{ t("aiAnalysis") }}</span>
       </div>
       <p
         v-if="props.selectedFolderAiStatus"
@@ -512,9 +505,6 @@ function handleDragEnd() {
       >
         <span class="font-semibold">{{ t("aiLastError") }}:</span>
         {{ props.selectedFolderAiLastError }}
-      </p>
-      <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/90">
-        {{ props.selectedFolderAiSummary || t("aiSummaryEmpty") }}
       </p>
     </div>
 
