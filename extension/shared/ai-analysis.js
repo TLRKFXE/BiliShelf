@@ -6,7 +6,9 @@ const DEFAULT_CATEGORY_KEY = "other";
 
 function toIntOrNull(value) {
   if (value === null || value === undefined) return null;
-  const parsed = Number(value);
+  const text = String(value).trim();
+  if (!text) return null;
+  const parsed = Number(text);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
 
@@ -33,7 +35,7 @@ function normalizeVideoAnalysisRecord(record, fallbackFolderId, fallbackProvider
     normalizeText(Array.isArray(record?.categories) ? record.categories[0] : "") ||
     DEFAULT_CATEGORY_KEY;
   return {
-    folderId: Number(record?.folderId) > 0 ? Number(record.folderId) : Number(fallbackFolderId),
+    folderId: Number(fallbackFolderId),
     videoId: Number(record?.videoId) > 0 ? Number(record.videoId) : 0,
     category,
     analyzedAt: toIntOrNull(record?.analyzedAt),

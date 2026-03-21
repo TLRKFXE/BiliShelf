@@ -126,3 +126,30 @@ test("normalizes empty category values to other instead of dropping videos", () 
   assert.equal(next.videos[0].category, "other");
   assert.equal(next.videos[1].category, "sports");
 });
+
+test("uses snapshot folder id and treats whitespace timestamps as null", () => {
+  const next = applyFolderCategoryAttempt(null, {
+    folderId: 99,
+    status: "success",
+    lastError: null,
+    startedAt: "   ",
+    finishedAt: " \n ",
+    updatedAt: 40,
+    provider: "gemini",
+    model: "gemini-2.5-flash",
+    videos: [
+      {
+        folderId: 12345,
+        videoId: 1,
+        category: "music",
+        analyzedAt: 41,
+        provider: "gemini",
+        model: "gemini-2.5-flash",
+      },
+    ],
+  });
+
+  assert.equal(next.startedAt, null);
+  assert.equal(next.finishedAt, null);
+  assert.equal(next.videos[0].folderId, 99);
+});
