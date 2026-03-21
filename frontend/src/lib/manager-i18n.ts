@@ -341,16 +341,24 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "AI settings are stored in the extension runtime only and are not added to backend.",
   },
   "ai.settings.enableTitle": {
-    "zh-CN": "启用文件夹 AI 分析",
-    "en-US": "Enable folder AI analysis",
+    "zh-CN": "启用收藏夹 AI 分类",
+    "en-US": "Enable folder AI categorization",
   },
   "ai.settings.enableDesc": {
-    "zh-CN": "开启后可在收藏夹级别手动触发 AI 分析。",
-    "en-US": "Enable manual AI analysis at the folder level.",
+    "zh-CN": "开启后可在当前收藏夹手动触发 AI 分类。",
+    "en-US": "Enable manual AI categorization for the current folder.",
   },
   "ai.settings.provider": {
     "zh-CN": "提供商",
     "en-US": "Provider",
+  },
+  "ai.settings.customProvider": {
+    "zh-CN": "自定义运营商",
+    "en-US": "Custom Provider",
+  },
+  "ai.settings.customProviderName": {
+    "zh-CN": "运营商名称",
+    "en-US": "Provider Name",
   },
   "ai.settings.baseUrl": {
     "zh-CN": "Base URL",
@@ -372,6 +380,10 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "例如：gpt-4.1-mini",
     "en-US": "For example: gpt-4.1-mini",
   },
+  "ai.settings.customProviderNamePlaceholder": {
+    "zh-CN": "例如：My Custom Provider",
+    "en-US": "For example: My Custom Provider",
+  },
   "ai.settings.apiKeyPlaceholder": {
     "zh-CN": "输入新的 API Key",
     "en-US": "Enter a new API key",
@@ -387,6 +399,34 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "ai.settings.test": {
     "zh-CN": "测试设置",
     "en-US": "Test settings",
+  },
+  "ai.settings.refreshModels": {
+    "zh-CN": "刷新模型列表",
+    "en-US": "Refresh models",
+  },
+  "ai.settings.baseUrlAuto": {
+    "zh-CN": "官方运营商地址已自动填入。",
+    "en-US": "Official provider base URL is filled automatically.",
+  },
+  "ai.settings.modelsBuiltin": {
+    "zh-CN": "当前使用内置推荐模型。",
+    "en-US": "Using built-in recommended models.",
+  },
+  "ai.settings.modelsRemote": {
+    "zh-CN": "当前使用实时获取的模型列表。",
+    "en-US": "Using models fetched live from the provider.",
+  },
+  "ai.settings.modelsHintNeedKey": {
+    "zh-CN": "填入 API Key 后可刷新实时模型列表。",
+    "en-US": "Enter an API key to refresh live model options.",
+  },
+  "ai.settings.modelsHintCustom": {
+    "zh-CN": "自定义运营商会按 OpenAI-compatible 的方式获取模型列表。",
+    "en-US": "Custom providers fetch model lists using the OpenAI-compatible flow.",
+  },
+  "ai.settings.modelsEmpty": {
+    "zh-CN": "当前没有可选模型，请先刷新模型列表。",
+    "en-US": "No models are available yet. Refresh the model list first.",
   },
   "ai.settings.statusTest": {
     "zh-CN": "最近测试：{time}",
@@ -520,14 +560,14 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "Separate tags with commas",
   },
   "detail.folders": { "zh-CN": "Folders", "en-US": "Folders" },
-  "detail.aiTitle": { "zh-CN": "AI 分析", "en-US": "AI Analysis" },
+  "detail.aiTitle": { "zh-CN": "AI 分类", "en-US": "AI Category" },
   "detail.aiCategories": {
-    "zh-CN": "AI 分类",
-    "en-US": "AI Categories",
+    "zh-CN": "AI 主分类",
+    "en-US": "AI Category",
   },
   "detail.aiAnalyzedAt": {
-    "zh-CN": "分析时间",
-    "en-US": "Analyzed At",
+    "zh-CN": "分类时间",
+    "en-US": "Categorized At",
   },
   "detail.aiProviderModel": {
     "zh-CN": "提供商 / 模型",
@@ -556,6 +596,59 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "detail.saving": { "zh-CN": "Saving...", "en-US": "Saving..." },
   "folder.allVideos": { "zh-CN": "全部视频", "en-US": "All Videos" },
   "folder.unknown": { "zh-CN": "未知收藏夹", "en-US": "Unknown Folder" },
+  "ai.browser.title": { "zh-CN": "AI 分类浏览", "en-US": "AI Category Browser" },
+  "ai.browser.unknownFolder": {
+    "zh-CN": "未知收藏夹",
+    "en-US": "Unknown Folder",
+  },
+  "ai.browser.videoCount": {
+    "zh-CN": "{count} 个视频",
+    "en-US": "{count} videos",
+  },
+  "ai.browser.categoryCount": {
+    "zh-CN": "{count} 个分类",
+    "en-US": "{count} categories",
+  },
+  "ai.browser.backToManager": {
+    "zh-CN": "返回管理页",
+    "en-US": "Back To Manager",
+  },
+  "ai.browser.backToOverview": {
+    "zh-CN": "返回分类总览",
+    "en-US": "Back To Overview",
+  },
+  "ai.browser.emptyResult": {
+    "zh-CN": "当前收藏夹暂无 AI 分类结果。",
+    "en-US": "No AI category result for this folder yet.",
+  },
+  "ai.browser.emptyOverview": {
+    "zh-CN": "当前分类结果为空。",
+    "en-US": "No categorized videos available.",
+  },
+  "ai.browser.emptyCategory": {
+    "zh-CN": "该分类暂无可展示的视频。",
+    "en-US": "No videos available in this category.",
+  },
+  "ai.browser.footerHint": {
+    "zh-CN": "这是一次性的临时分类视图，不会修改原收藏夹结构。",
+    "en-US": "This is a temporary one-time category view and does not modify the original folders.",
+  },
+  "ai.category.animation": { "zh-CN": "动画", "en-US": "Animation" },
+  "ai.category.music": { "zh-CN": "音乐", "en-US": "Music" },
+  "ai.category.dance": { "zh-CN": "舞蹈", "en-US": "Dance" },
+  "ai.category.game": { "zh-CN": "游戏", "en-US": "Game" },
+  "ai.category.knowledge": { "zh-CN": "知识", "en-US": "Knowledge" },
+  "ai.category.tech": { "zh-CN": "科技", "en-US": "Tech" },
+  "ai.category.sports": { "zh-CN": "运动", "en-US": "Sports" },
+  "ai.category.car": { "zh-CN": "汽车", "en-US": "Car" },
+  "ai.category.life": { "zh-CN": "生活", "en-US": "Life" },
+  "ai.category.food": { "zh-CN": "美食", "en-US": "Food" },
+  "ai.category.animal": { "zh-CN": "动物", "en-US": "Animal" },
+  "ai.category.fashion": { "zh-CN": "时尚", "en-US": "Fashion" },
+  "ai.category.ent": { "zh-CN": "娱乐", "en-US": "Entertainment" },
+  "ai.category.cinephile": { "zh-CN": "影视", "en-US": "Cinephile" },
+  "ai.category.news": { "zh-CN": "资讯", "en-US": "News" },
+  "ai.category.other": { "zh-CN": "其他", "en-US": "Other" },
   "toast.loadFoldersFail": {
     "zh-CN": "Failed to load folders",
     "en-US": "Failed to load folders",
@@ -848,23 +941,27 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   },
   "toast.folderAiLoadFail": {
     "zh-CN": "加载文件夹 AI 结果失败",
-    "en-US": "Failed to load folder AI analysis",
+    "en-US": "Failed to load folder AI categories",
+  },
+  "toast.folderAiBrowserVideosLoadFail": {
+    "zh-CN": "加载分类视频失败",
+    "en-US": "Failed to load categorized videos",
   },
   "toast.folderAiAnalyzeDone": {
-    "zh-CN": "文件夹 AI 分析完成",
-    "en-US": "Folder AI analysis completed",
+    "zh-CN": "收藏夹 AI 分类完成",
+    "en-US": "Folder AI categorization completed",
   },
   "toast.folderAiAnalyzeFail": {
-    "zh-CN": "文件夹 AI 分析失败",
-    "en-US": "Folder AI analysis failed",
+    "zh-CN": "收藏夹 AI 分类失败",
+    "en-US": "Folder AI categorization failed",
   },
   "toast.folderAiCleared": {
     "zh-CN": "已清除文件夹 AI 结果",
-    "en-US": "Folder AI analysis cleared",
+    "en-US": "Folder AI categorization cleared",
   },
   "toast.folderAiClearFail": {
     "zh-CN": "清除文件夹 AI 结果失败",
-    "en-US": "Failed to clear folder AI analysis",
+    "en-US": "Failed to clear folder AI categories",
   },
   "toast.syncSettingsSaveFail": {
     "zh-CN": "保存监听设置失败",
@@ -1114,9 +1211,9 @@ const MANAGER_I18N_ZH_OVERRIDES: Record<string, string> = {
   "detail.customTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.systemTagsInputPlaceholder": "多个标签用逗号分隔",
   "detail.folders": "所属收藏夹",
-  "detail.aiTitle": "AI 分析",
-  "detail.aiCategories": "AI 分类",
-  "detail.aiAnalyzedAt": "分析时间",
+  "detail.aiTitle": "AI 分类",
+  "detail.aiCategories": "AI 主分类",
+  "detail.aiAnalyzedAt": "分类时间",
   "detail.aiProviderModel": "提供商 / 模型",
   "detail.openOnBilibili": "在 B 站打开",
   "detail.openUploaderSpace": "打开 UP 主空间",

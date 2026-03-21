@@ -1,5 +1,26 @@
 import { normalizeAiProvider } from "./ai-state.js";
 
+const DEFAULT_CATEGORY_KEY = "other";
+export const STABLE_CATEGORY_KEYS = Object.freeze([
+  "animation",
+  "music",
+  "dance",
+  "game",
+  "knowledge",
+  "tech",
+  "sports",
+  "car",
+  "life",
+  "food",
+  "animal",
+  "fashion",
+  "ent",
+  "cinephile",
+  "news",
+  DEFAULT_CATEGORY_KEY,
+]);
+const STABLE_CATEGORY_KEY_SET = new Set(STABLE_CATEGORY_KEYS);
+
 function normalizeText(value) {
   return String(value ?? "").replace(/^\uFEFF/, "").trim();
 }
@@ -12,32 +33,26 @@ function toIntOrNull(value) {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
 
-function normalizeCategoryList(input) {
-  if (!Array.isArray(input)) return [];
-  return Array.from(
-    new Set(input.map((item) => normalizeText(item)).filter(Boolean)),
-  );
+function normalizeCategoryKey(value) {
+  const key = normalizeText(value).toLowerCase();
+  return STABLE_CATEGORY_KEY_SET.has(key) ? key : DEFAULT_CATEGORY_KEY;
 }
 
-export function normalizeClassificationPayload(payload) {
+export function normalizeVideoCategoryPayload(payload) {
+  const category =
+    normalizeText(payload?.category) ||
+    normalizeText(Array.isArray(payload?.categories) ? payload.categories[0] : "");
   return {
-    categories: normalizeCategoryList(payload?.categories),
-    reasoningSnippet:
-      normalizeText(payload?.reasoningSnippet ?? payload?.reasoning) || null,
+    category: normalizeCategoryKey(category),
   };
 }
 
-export function normalizeFolderSummaryPayload(payload) {
-  return {
-    summary:
-      normalizeText(payload?.summary ?? payload?.folderSummary ?? payload?.text) ||
-      null,
-  };
-}
+export const normalizeClassificationPayload = normalizeVideoCategoryPayload;
 
 export function maskApiKeyStateForResponse(state) {
   return {
     provider: normalizeAiProvider(state?.provider),
+    customProviderName: normalizeText(state?.customProviderName),
     baseUrl: normalizeText(state?.baseUrl),
     model: normalizeText(state?.model),
     enabled: Boolean(state?.enabled),

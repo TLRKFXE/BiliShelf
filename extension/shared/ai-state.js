@@ -7,6 +7,7 @@ const AI_PROVIDERS = new Set([
   "kimi",
   "openai-compatible",
 ]);
+const DEFAULT_CATEGORY_KEY = "other";
 
 function normalizeText(value) {
   return String(value ?? "").replace(/^\uFEFF/, "").trim();
@@ -25,13 +26,6 @@ function toIntOrNull(value) {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
 
-function normalizeCategoryList(input) {
-  if (!Array.isArray(input)) return [];
-  return Array.from(
-    new Set(input.map((item) => normalizeText(item)).filter(Boolean)),
-  );
-}
-
 export function normalizeAiProvider(value) {
   const normalized = normalizeText(value).toLowerCase();
   return AI_PROVIDERS.has(normalized) ? normalized : "openai-compatible";
@@ -44,7 +38,6 @@ function normalizeFolderAnalysisRecord(record, nowValue) {
   const status = normalizeText(record?.status);
   return {
     folderId,
-    summary: normalizeText(record?.summary) || null,
     status:
       status === "running" ||
       status === "success" ||
@@ -64,13 +57,16 @@ function normalizeFolderAnalysisRecord(record, nowValue) {
 function normalizeVideoAnalysisRecord(record) {
   const folderId = toInt(record?.folderId, 0);
   const videoId = toInt(record?.videoId, 0);
+  const category =
+    normalizeText(record?.category) ||
+    normalizeText(Array.isArray(record?.categories) ? record.categories[0] : "") ||
+    DEFAULT_CATEGORY_KEY;
   if (folderId <= 0 || videoId <= 0) return null;
 
   return {
     folderId,
     videoId,
-    categories: normalizeCategoryList(record?.categories),
-    reasoningSnippet: normalizeText(record?.reasoningSnippet) || null,
+    category,
     analyzedAt: toIntOrNull(record?.analyzedAt),
     provider: normalizeAiProvider(record?.provider),
     model: normalizeText(record?.model),
@@ -80,6 +76,7 @@ function normalizeVideoAnalysisRecord(record) {
 export function createDefaultAiState(nowValue = Date.now()) {
   return {
     provider: "openai-compatible",
+    customProviderName: "",
     baseUrl: "",
     apiKey: "",
     model: "",
@@ -97,6 +94,7 @@ export function normalizeAiState(rawState, nowValue = Date.now()) {
   const base = createDefaultAiState(nowValue);
   return {
     provider: normalizeAiProvider(rawState?.provider),
+    customProviderName: normalizeText(rawState?.customProviderName),
     baseUrl: normalizeText(rawState?.baseUrl),
     apiKey: String(rawState?.apiKey ?? ""),
     model: normalizeText(rawState?.model),

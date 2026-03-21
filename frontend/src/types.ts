@@ -79,6 +79,7 @@ export type AiProvider =
 
 export type AiSettings = {
   provider: AiProvider;
+  customProviderName: string;
   baseUrl: string;
   model: string;
   enabled: boolean;
@@ -89,26 +90,52 @@ export type AiSettings = {
   updatedAt: number;
 };
 
-export type AiFolderAnalysisStatus = "idle" | "running" | "success" | "error";
-
-export type AiVideoAnalysis = {
-  videoId: number;
-  categories: string[];
-  reasoningSnippet: string | null;
-  analyzedAt: number | null;
-  provider: string;
-  model: string;
+export type AiSettingsModelOption = {
+  id: string;
+  label: string;
 };
 
-export type AiFolderAnalysis = {
+export type AiSettingsModelsResponse = {
+  provider: AiProvider;
+  customProviderName: string;
+  baseUrl: string;
+  models: AiSettingsModelOption[];
+  source: "builtin" | "remote";
+  supportsRemoteFetch: boolean;
+};
+
+export type AiCategoryKey =
+  | "animation"
+  | "music"
+  | "dance"
+  | "game"
+  | "knowledge"
+  | "tech"
+  | "sports"
+  | "car"
+  | "life"
+  | "food"
+  | "animal"
+  | "fashion"
+  | "ent"
+  | "cinephile"
+  | "news"
+  | "other";
+
+export type FolderAiCategories = {
   folderId: number;
-  summary: string | null;
-  status: AiFolderAnalysisStatus;
+  status: "running" | "success" | "error";
   lastError: string | null;
   startedAt: number | null;
   finishedAt: number | null;
   updatedAt: number;
   provider: string;
   model: string;
-  videos: AiVideoAnalysis[];
+  videos: Array<{
+    videoId: number;
+    category: AiCategoryKey;
+    analyzedAt: number | null;
+    provider: string;
+    model: string;
+  }>;
 };

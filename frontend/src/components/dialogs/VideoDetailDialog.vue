@@ -10,12 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Video } from "@/types";
+import type { AiCategoryKey, Video } from "@/types";
 
 type DetailVideo = Video & {
   folders?: Array<{ id: number; name: string }>;
   aiAnalysis?: {
-    categories: string[];
+    category: AiCategoryKey;
     analyzedAt: number | null;
     provider: string;
     model: string;
@@ -262,7 +262,7 @@ watch(
             <p class="font-semibold">{{ t("detail.aiTitle") }}</p>
             <p class="mt-2">
               <span class="font-semibold">{{ t("detail.aiCategories") }}:</span>
-              {{ detailAiAnalysis.categories.join(", ") || "-" }}
+              {{ detailAiAnalysis.category || "-" }}
             </p>
             <p>
               <span class="font-semibold">{{ t("detail.aiAnalyzedAt") }}:</span>

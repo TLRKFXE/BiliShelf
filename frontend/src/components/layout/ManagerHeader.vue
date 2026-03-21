@@ -56,6 +56,8 @@ const emit = defineEmits<{
 }>();
 
 const exportDialogOpen = ref(false);
+const topActionButtonClass = "h-12 justify-start rounded-2xl px-4";
+const secondaryActionButtonClass = "h-12 justify-start rounded-2xl px-4";
 
 function openExportDialog() {
   exportDialogOpen.value = true;
@@ -131,12 +133,12 @@ function submitExport(format: "json" | "csv") {
       </div>
     </div>
 
-    <div class="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+    <div class="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
       <Button
         v-if="!props.trashMode"
         size="sm"
         variant="outline"
-        class="justify-start"
+        :class="topActionButtonClass"
         @click="emit('open-tags')"
       >
         <Tags class="h-3.5 w-3.5" />
@@ -146,7 +148,7 @@ function submitExport(format: "json" | "csv") {
         v-if="!props.trashMode && props.showAiSettings"
         size="sm"
         variant="outline"
-        class="justify-start"
+        :class="topActionButtonClass"
         @click="emit('open-ai-settings')"
       >
         <Bot class="h-3.5 w-3.5" />
@@ -156,7 +158,7 @@ function submitExport(format: "json" | "csv") {
         v-if="!props.trashMode && props.showSyncSettings"
         size="sm"
         variant="outline"
-        class="justify-start"
+        :class="topActionButtonClass"
         @click="emit('open-sync-settings')"
       >
         <RefreshCcw class="h-3.5 w-3.5" />
@@ -165,7 +167,7 @@ function submitExport(format: "json" | "csv") {
       <Button
         size="sm"
         :variant="props.trashMode ? 'default' : 'outline'"
-        class="justify-start"
+        :class="topActionButtonClass"
         @click="emit('toggle-trash')"
       >
         <Trash2 class="h-3.5 w-3.5" />
@@ -177,10 +179,11 @@ function submitExport(format: "json" | "csv") {
       </Button>
     </div>
 
-    <div class="mt-3 flex flex-wrap items-center gap-2">
+    <div class="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
       <Button
         v-if="!props.trashMode"
         size="sm"
+        :class="secondaryActionButtonClass"
         :disabled="props.syncing || props.exporting || props.importing"
         @click="emit('sync-import')"
       >
@@ -195,6 +198,7 @@ function submitExport(format: "json" | "csv") {
         v-if="!props.trashMode"
         size="sm"
         variant="outline"
+        :class="secondaryActionButtonClass"
         :disabled="props.syncing || props.exporting || props.importing"
         @click="openExportDialog"
       >
@@ -205,6 +209,7 @@ function submitExport(format: "json" | "csv") {
         v-if="!props.trashMode"
         size="sm"
         variant="outline"
+        :class="secondaryActionButtonClass"
         :disabled="props.syncing || props.exporting || props.importing"
         @click="emit('import-file')"
       >
@@ -215,6 +220,7 @@ function submitExport(format: "json" | "csv") {
         v-if="!props.trashMode"
         size="sm"
         variant="outline"
+        :class="secondaryActionButtonClass"
         :disabled="props.syncing || props.exporting || props.importing"
         @click="emit('open-webdav-settings')"
       >

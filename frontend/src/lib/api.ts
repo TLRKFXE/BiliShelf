@@ -1,8 +1,10 @@
 import type {
-  AiFolderAnalysis,
+  AiCategoryKey,
   AiProvider,
   AiSettings,
+  AiSettingsModelsResponse,
   CreateVideoPayload,
+  FolderAiCategories,
   Folder,
   Pagination,
   Tag,
@@ -17,6 +19,7 @@ const EXTENSION_REQUEST_TIMEOUT_SYNC_MS = 900_000;
 const EXTENSION_REQUEST_TIMEOUT_SYNC_FOLDERS_MS = 90_000;
 const EXTENSION_REQUEST_TIMEOUT_TAG_ENRICH_MS = 60_000;
 const EXTENSION_REQUEST_TIMEOUT_WEBDAV_MS = 180_000;
+const EXTENSION_REQUEST_TIMEOUT_AI_CATEGORIES_MS = 180_000;
 
 type LocalApiRequest = {
   method: string;
@@ -84,6 +87,12 @@ function parseRequestBody(init?: RequestInit): unknown {
 }
 
 function resolveExtensionRequestTimeout(path: string, method: string) {
+  if (
+    method === "POST" &&
+    /^\/folders\/\d+\/ai-(categories|analysis)$/.test(path)
+  ) {
+    return EXTENSION_REQUEST_TIMEOUT_AI_CATEGORIES_MS;
+  }
   if (path === "/sync/bilibili" && method === "POST") {
     return EXTENSION_REQUEST_TIMEOUT_SYNC_MS;
   }
@@ -285,7 +294,7 @@ export async function fetchVideoById(id: number) {
       folders?: Array<{ id: number; name: string }>;
       tags?: Array<{ id: number; name: string; type: "system" | "custom" }>;
       aiAnalysis?: {
-        categories: string[];
+        category: AiCategoryKey;
         analyzedAt: number | null;
         provider: string;
         model: string;
@@ -710,6 +719,7 @@ export async function fetchAiSettings() {
 
 export async function updateAiSettings(payload: {
   provider?: AiProvider;
+  customProviderName?: string;
   baseUrl?: string;
   apiKey?: string;
   model?: string;
@@ -723,6 +733,7 @@ export async function updateAiSettings(payload: {
 
 export async function testAiSettings(payload?: {
   provider?: AiProvider;
+  customProviderName?: string;
   baseUrl?: string;
   apiKey?: string;
   model?: string;
@@ -734,18 +745,30 @@ export async function testAiSettings(payload?: {
   });
 }
 
-export async function fetchFolderAiAnalysis(folderId: number) {
-  return request<AiFolderAnalysis | null>(`/folders/${folderId}/ai-analysis`);
+export async function fetchFolderAiCategories(folderId: number) {
+  return request<FolderAiCategories | null>(`/folders/${folderId}/ai-categories`);
 }
 
-export async function runFolderAiAnalysis(folderId: number) {
-  return request<AiFolderAnalysis>(`/folders/${folderId}/ai-analysis`, {
+export async function runFolderAiCategories(folderId: number) {
+  return request<FolderAiCategories>(`/folders/${folderId}/ai-categories`, {
     method: "POST",
   });
 }
 
-export async function clearFolderAiAnalysis(folderId: number) {
-  return request<void>(`/folders/${folderId}/ai-analysis`, {
+export async function fetchAiSettingsModels(payload?: {
+  provider?: AiProvider;
+  customProviderName?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}) {
+  return request<AiSettingsModelsResponse>("/ai/settings/models", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
+export async function clearFolderAiCategories(folderId: number) {
+  return request<void>(`/folders/${folderId}/ai-categories`, {
     method: "DELETE",
   });
 }

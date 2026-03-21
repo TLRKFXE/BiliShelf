@@ -10,6 +10,7 @@ import {
   ListOrdered,
   Pencil,
   Search,
+  Sparkles,
   Trash2,
   Video,
 } from "lucide-vue-next";
@@ -32,10 +33,10 @@ type Locale = "zh-CN" | "en-US";
 const props = withDefaults(
   defineProps<{
     folders: Folder[];
+    activeFolder: Folder | null;
     activeFolderId: number | null;
-    selectedFolderAiSummary: string | null;
-    selectedFolderAiStatus: "idle" | "running" | "success" | "error" | null;
-    selectedFolderAiLastError: string | null;
+    hasSelectedFolderAiRecord?: boolean;
+    canOpenSelectedFolderAiBrowser?: boolean;
     aiRunningFolderId: number | null;
     showAiActions?: boolean;
     locale?: Locale;
@@ -43,6 +44,8 @@ const props = withDefaults(
   {
     locale: "zh-CN",
     showAiActions: false,
+    hasSelectedFolderAiRecord: false,
+    canOpenSelectedFolderAiBrowser: false,
   }
 );
 
@@ -54,6 +57,7 @@ const emit = defineEmits<{
   reorder: [number[]];
   analyze: [number];
   clearAi: [number];
+  openAiBrowser: [];
 }>();
 
 const folderName = ref("");
@@ -90,16 +94,13 @@ const SIDEBAR_TEXT: Record<
   | "namePlaceholder"
   | "descriptionPlaceholder"
   | "create"
+  | "aiTitle"
+  | "aiNoFolder"
+  | "aiTarget"
   | "aiAnalyze"
   | "aiAnalyzing"
-  | "aiClear"
-  | "aiSummary"
-  | "aiSummaryEmpty"
-  | "aiStatus"
-  | "aiStatusRunning"
-  | "aiStatusSuccess"
-  | "aiStatusError"
-  | "aiLastError",
+  | "aiOpen"
+  | "aiClear",
   Record<Locale, string>
 > = {
   folders: { "zh-CN": "收藏夹", "en-US": "Folders" },
@@ -119,10 +120,7 @@ const SIDEBAR_TEXT: Record<
   createFolder: { "zh-CN": "新建收藏夹", "en-US": "New Folder" },
   allVideos: { "zh-CN": "全部视频", "en-US": "All Videos" },
   folderName: { "zh-CN": "收藏夹名称", "en-US": "Folder Name" },
-  folderDescription: {
-    "zh-CN": "收藏夹简介",
-    "en-US": "Folder Description",
-  },
+  folderDescription: { "zh-CN": "收藏夹简介", "en-US": "Folder Description" },
   cancel: { "zh-CN": "取消", "en-US": "Cancel" },
   save: { "zh-CN": "保存", "en-US": "Save" },
   noDescription: { "zh-CN": "暂无简介", "en-US": "No description" },
@@ -130,28 +128,22 @@ const SIDEBAR_TEXT: Record<
   newFolderTitle: { "zh-CN": "创建收藏夹", "en-US": "Create Folder" },
   name: { "zh-CN": "名称", "en-US": "Name" },
   description: { "zh-CN": "简介", "en-US": "Description" },
-  namePlaceholder: {
-    "zh-CN": "请输入收藏夹名称",
-    "en-US": "Enter folder name",
-  },
+  namePlaceholder: { "zh-CN": "请输入收藏夹名称", "en-US": "Enter folder name" },
   descriptionPlaceholder: {
     "zh-CN": "可填写该收藏夹的用途说明",
     "en-US": "Describe this folder",
   },
   create: { "zh-CN": "创建", "en-US": "Create" },
-  aiAnalyze: { "zh-CN": "AI 分析", "en-US": "AI Analyze" },
-  aiAnalyzing: { "zh-CN": "分析中...", "en-US": "Analyzing..." },
-  aiClear: { "zh-CN": "清除 AI", "en-US": "Clear AI" },
-  aiSummary: { "zh-CN": "AI 摘要", "en-US": "AI Summary" },
-  aiSummaryEmpty: {
-    "zh-CN": "当前收藏夹还没有 AI 摘要。",
-    "en-US": "No AI summary for the current folder yet.",
+  aiTitle: { "zh-CN": "AI 分类", "en-US": "AI Category" },
+  aiNoFolder: {
+    "zh-CN": "请先选择一个收藏夹再运行 AI 分类。",
+    "en-US": "Select a folder first to run AI categorization.",
   },
-  aiStatus: { "zh-CN": "状态", "en-US": "Status" },
-  aiStatusRunning: { "zh-CN": "分析中", "en-US": "Running" },
-  aiStatusSuccess: { "zh-CN": "已完成", "en-US": "Success" },
-  aiStatusError: { "zh-CN": "失败", "en-US": "Error" },
-  aiLastError: { "zh-CN": "最近错误", "en-US": "Last Error" },
+  aiTarget: { "zh-CN": "当前收藏夹：{name}", "en-US": "Current folder: {name}" },
+  aiAnalyze: { "zh-CN": "AI 分类", "en-US": "Run AI Category" },
+  aiAnalyzing: { "zh-CN": "分类中...", "en-US": "Categorizing..." },
+  aiOpen: { "zh-CN": "打开分类页", "en-US": "Open Category Page" },
+  aiClear: { "zh-CN": "清除分类", "en-US": "Clear Categories" },
 };
 
 function t(
@@ -191,23 +183,27 @@ const canDragSort = computed(
 const folderNameLength = computed(() => folderName.value.trim().length);
 const folderDescriptionLength = computed(() => folderDescription.value.length);
 const hasAiTaskRunning = computed(() => props.aiRunningFolderId !== null);
-const hasSelectedFolderAiRecord = computed(
-  () =>
-    props.selectedFolderAiStatus !== null ||
-    Boolean(props.selectedFolderAiSummary) ||
-    Boolean(props.selectedFolderAiLastError)
+const hasActiveFolder = computed(() => props.activeFolderId !== null);
+const canAnalyzeActiveFolder = computed(
+  () => props.showAiActions && hasActiveFolder.value && !hasAiTaskRunning.value
 );
-
-function isFolderAiRunning(folderId: number) {
-  return props.aiRunningFolderId === folderId;
-}
-
-function getAiStatusText(status: "idle" | "running" | "success" | "error" | null) {
-  if (status === "running") return t("aiStatusRunning");
-  if (status === "success") return t("aiStatusSuccess");
-  if (status === "error") return t("aiStatusError");
-  return "";
-}
+const canClearActiveFolderAi = computed(
+  () =>
+    props.showAiActions &&
+    hasActiveFolder.value &&
+    !hasAiTaskRunning.value &&
+    props.hasSelectedFolderAiRecord
+);
+const canOpenActiveFolderAiBrowser = computed(
+  () =>
+    props.showAiActions &&
+    hasActiveFolder.value &&
+    !hasAiTaskRunning.value &&
+    props.canOpenSelectedFolderAiBrowser
+);
+const activeFolderName = computed(
+  () => props.activeFolder?.name || (props.locale === "zh-CN" ? "未选择" : "None")
+);
 
 watch(
   () => props.folders,
@@ -294,10 +290,20 @@ function handleDragEnd() {
   draggingFolderId.value = null;
   dragOverFolderId.value = null;
 }
+
+function triggerAnalyze() {
+  if (props.activeFolderId === null) return;
+  emit("analyze", props.activeFolderId);
+}
+
+function triggerClear() {
+  if (props.activeFolderId === null) return;
+  emit("clearAi", props.activeFolderId);
+}
 </script>
 
 <template>
-  <aside class="panel-surface h-full p-5">
+  <aside class="panel-surface flex h-full min-h-0 flex-col p-5">
     <div class="mb-5 flex items-center gap-2">
       <span
         class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/12 text-primary"
@@ -354,121 +360,138 @@ function handleDragEnd() {
       </p>
     </div>
 
-    <div class="mt-4 space-y-2.5">
-      <button
-        type="button"
-        class="interactive-lift flex w-full items-center gap-2 rounded-xl border border-border/70 bg-accent/35 px-3 py-2.5 text-left text-sm font-medium text-foreground"
-        @click="createDialogOpen = true"
-      >
-        <span
-          class="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/15 text-primary"
+    <section
+      v-if="props.showAiActions"
+      class="mt-4 space-y-3 rounded-xl border border-border/80 bg-card/70 p-3"
+    >
+      <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <Bot class="h-3.5 w-3.5" />
+        <span>{{ t("aiTitle") }}</span>
+      </div>
+
+      <p v-if="hasActiveFolder" class="text-xs text-muted-foreground">
+        {{ t("aiTarget", { name: activeFolderName }) }}
+      </p>
+      <p v-else class="text-xs text-muted-foreground">
+        {{ t("aiNoFolder") }}
+      </p>
+
+      <div class="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          class="gap-1"
+          :disabled="!canAnalyzeActiveFolder"
+          @click="triggerAnalyze"
         >
-          <FolderPlus class="h-3.5 w-3.5" />
-        </span>
-        <span>{{ t("createFolder") }}</span>
-      </button>
+          <Sparkles class="h-3.5 w-3.5" />
+          {{ hasAiTaskRunning ? t("aiAnalyzing") : t("aiAnalyze") }}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          :disabled="!canOpenActiveFolderAiBrowser"
+          @click="emit('openAiBrowser')"
+        >
+          {{ t("aiOpen") }}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          :disabled="!canClearActiveFolderAi"
+          @click="triggerClear"
+        >
+          {{ t("aiClear") }}
+        </Button>
+      </div>
+    </section>
 
-      <button
-        type="button"
-        class="interactive-lift w-full rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition"
-        :class="
-          props.activeFolderId === null
-            ? 'border-primary/45 bg-primary/10 text-primary'
-            : 'border-border/80 bg-card/80 hover:bg-accent/45'
-        "
-        @click="emit('select', null)"
-      >
-        {{ t("allVideos") }}
-      </button>
-
-      <div
-        v-for="folder in displayedFolders"
-        :key="folder.id"
-        class="interactive-lift rounded-xl border p-2.5"
-        :class="[
-          props.activeFolderId === folder.id
-            ? 'border-primary/45 bg-primary/10'
-            : 'border-border/80 bg-card/85',
-          dragOverFolderId === folder.id ? 'ring-2 ring-primary/45' : '',
-        ]"
-        :draggable="canDragSort"
-        @dragstart="handleDragStart(folder.id)"
-        @dragover.prevent="handleDragOver(folder.id)"
-        @drop.prevent="handleDrop(folder.id)"
-        @dragend="handleDragEnd"
-      >
-        <template v-if="editingId === folder.id">
-          <div class="space-y-2">
-            <Input v-model="editingName" :placeholder="t('folderName')" />
-            <Textarea
-              v-model="editingDescription"
-              :rows="2"
-              :placeholder="t('folderDescription')"
-              class="text-xs"
-            />
-            <div class="flex justify-end gap-2">
-              <Button size="sm" variant="ghost" @click="cancelEdit">
-                {{ t("cancel") }}
-              </Button>
-              <Button size="sm" @click="submitEdit">{{ t("save") }}</Button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else>
-          <button
-            type="button"
-            class="w-full text-left"
-            @click="emit('select', folder.id)"
+    <div class="mt-4 min-h-0 flex-1 overflow-y-auto">
+      <div class="space-y-2.5">
+        <button
+          type="button"
+          class="interactive-lift flex w-full items-center gap-2 rounded-xl border border-border/70 bg-accent/35 px-3 py-2.5 text-left text-sm font-medium text-foreground"
+          @click="createDialogOpen = true"
+        >
+          <span
+            class="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/15 text-primary"
           >
-            <div class="flex items-start justify-between gap-2">
-              <div class="flex min-w-0 items-center gap-2">
-                <FolderOpen class="h-4 w-4 shrink-0 text-muted-foreground" />
-                <p class="line-clamp-1 text-sm font-semibold">{{ folder.name }}</p>
-              </div>
-              <GripVertical
-                v-if="canDragSort"
-                class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+            <FolderPlus class="h-3.5 w-3.5" />
+          </span>
+          <span>{{ t("createFolder") }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="interactive-lift w-full rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition"
+          :class="
+            props.activeFolderId === null
+              ? 'border-primary/45 bg-primary/10 text-primary'
+              : 'border-border/80 bg-card/80 hover:bg-accent/45'
+          "
+          @click="emit('select', null)"
+        >
+          {{ t("allVideos") }}
+        </button>
+
+        <div
+          v-for="folder in displayedFolders"
+          :key="folder.id"
+          class="interactive-lift rounded-xl border p-2.5"
+          :class="[
+            props.activeFolderId === folder.id
+              ? 'border-primary/45 bg-primary/10'
+              : 'border-border/80 bg-card/85',
+            dragOverFolderId === folder.id ? 'ring-2 ring-primary/45' : '',
+          ]"
+          :draggable="canDragSort"
+          @dragstart="handleDragStart(folder.id)"
+          @dragover.prevent="handleDragOver(folder.id)"
+          @drop.prevent="handleDrop(folder.id)"
+          @dragend="handleDragEnd"
+        >
+          <template v-if="editingId === folder.id">
+            <div class="space-y-2">
+              <Input v-model="editingName" :placeholder="t('folderName')" />
+              <Textarea
+                v-model="editingDescription"
+                :rows="2"
+                :placeholder="t('folderDescription')"
+                class="text-xs"
               />
+              <div class="flex justify-end gap-2">
+                <Button size="sm" variant="ghost" @click="cancelEdit">
+                  {{ t("cancel") }}
+                </Button>
+                <Button size="sm" @click="submitEdit">{{ t("save") }}</Button>
+              </div>
             </div>
-            <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
-              {{ folder.description || t("noDescription") }}
-            </p>
-            <p class="mt-1 text-[11px] text-muted-foreground">
-              {{ t("videosCount", { count: folder.itemCount ?? 0 }) }}
-            </p>
-          </button>
-          <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <div v-if="props.showAiActions" class="flex flex-wrap gap-1">
-              <Button
-                size="sm"
-                variant="outline"
-                class="h-8 gap-1 px-2 text-xs"
-                :disabled="hasAiTaskRunning"
-                @click.stop="emit('analyze', folder.id)"
-              >
-                <Bot class="h-3.5 w-3.5" />
-                {{
-                  isFolderAiRunning(folder.id)
-                    ? t("aiAnalyzing")
-                    : t("aiAnalyze")
-                }}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                class="h-8 px-2 text-xs"
-                :disabled="
-                  hasAiTaskRunning ||
-                  props.activeFolderId !== folder.id ||
-                  !hasSelectedFolderAiRecord
-                "
-                @click.stop="emit('clearAi', folder.id)"
-              >
-                {{ t("aiClear") }}
-              </Button>
-            </div>
-            <div class="flex justify-end gap-1">
+          </template>
+
+          <template v-else>
+            <button
+              type="button"
+              class="w-full text-left"
+              @click="emit('select', folder.id)"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex min-w-0 items-center gap-2">
+                  <FolderOpen class="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <p class="line-clamp-1 text-sm font-semibold">{{ folder.name }}</p>
+                </div>
+                <GripVertical
+                  v-if="canDragSort"
+                  class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+                />
+              </div>
+              <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                {{ folder.description || t("noDescription") }}
+              </p>
+              <p class="mt-1 text-[11px] text-muted-foreground">
+                {{ t("videosCount", { count: folder.itemCount ?? 0 }) }}
+              </p>
+            </button>
+
+            <div class="mt-2 flex justify-end gap-1">
               <Button
                 size="icon"
                 variant="ghost"
@@ -486,36 +509,9 @@ function handleDragEnd() {
                 <Trash2 class="h-4 w-4" />
               </Button>
             </div>
-          </div>
-        </template>
+          </template>
+        </div>
       </div>
-    </div>
-
-    <div
-      v-if="props.showAiActions && props.activeFolderId !== null"
-      class="mt-4 rounded-xl border border-border/80 bg-card/70 p-3"
-    >
-      <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        <Bot class="h-3.5 w-3.5" />
-        <span>{{ t("aiSummary") }}</span>
-      </div>
-      <p
-        v-if="props.selectedFolderAiStatus"
-        class="mt-2 text-xs text-muted-foreground"
-      >
-        <span class="font-semibold">{{ t("aiStatus") }}:</span>
-        {{ getAiStatusText(props.selectedFolderAiStatus) }}
-      </p>
-      <p
-        v-if="props.selectedFolderAiLastError"
-        class="mt-2 whitespace-pre-wrap text-xs text-red-500"
-      >
-        <span class="font-semibold">{{ t("aiLastError") }}:</span>
-        {{ props.selectedFolderAiLastError }}
-      </p>
-      <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/90">
-        {{ props.selectedFolderAiSummary || t("aiSummaryEmpty") }}
-      </p>
     </div>
 
     <Dialog v-model:open="createDialogOpen">

@@ -9,6 +9,7 @@ export type AiProvider =
 
 export type AiMeta = {
   provider: AiProvider;
+  customProviderName: string;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -19,9 +20,10 @@ export type AiMeta = {
   updatedAt: number;
 };
 
+export type AiCategoryKey = string;
+
 export type FolderAiAnalysisRecord = {
   folderId: number;
-  summary: string | null;
   status: "idle" | "running" | "success" | "error";
   lastError: string | null;
   startedAt: number | null;
@@ -34,8 +36,7 @@ export type FolderAiAnalysisRecord = {
 export type VideoAiAnalysisRecord = {
   folderId: number;
   videoId: number;
-  categories: string[];
-  reasoningSnippet: string | null;
+  category: AiCategoryKey;
   analyzedAt: number | null;
   provider: AiProvider;
   model: string;

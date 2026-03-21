@@ -14,6 +14,7 @@ import BidirectionalSyncSettingsDialog from "./components/dialogs/BidirectionalS
 import WebDavBackupDialog from "./components/dialogs/WebDavBackupDialog.vue";
 import VideoDetailDialog from "./components/dialogs/VideoDetailDialog.vue";
 import FolderSidebar from "./components/FolderSidebar.vue";
+import AiCategoryBrowser from "./components/AiCategoryBrowser.vue";
 import ManagerHeader from "./components/layout/ManagerHeader.vue";
 import ManagerPanel from "./components/panels/ManagerPanel.vue";
 import TrashPanel from "./components/panels/TrashPanel.vue";
@@ -25,6 +26,10 @@ import {
 } from "./stores/library";
 import { useAppUiStore } from "./stores/app-ui";
 import { parseKeyword as parseKeywordFromUtils } from "./lib/search-keyword";
+import {
+  canOpenAiCategoryBrowser,
+  loadAllAiBrowserVideos,
+} from "./lib/ai-category-browser.js";
 import { MANAGER_I18N } from "./lib/manager-i18n";
 import { useAppToast } from "./composables/use-app-toast";
 import { useConfirmDialog } from "./composables/use-confirm-dialog";
@@ -38,10 +43,11 @@ import { useManagerRouteSync } from "./composables/use-manager-route-sync";
 import { useRenameTagDialog } from "./composables/use-rename-tag-dialog";
 import { useVideoDetail } from "./composables/use-video-detail";
 import {
-  clearFolderAiAnalysis,
+  clearFolderAiCategories,
   exportLibrary,
   fetchAiSettings,
-  fetchFolderAiAnalysis,
+  fetchVideos,
+  fetchFolderAiCategories,
   fetchHistoryModelSyncStatus,
   fetchTagEnrichmentStatus,
   fetchBidirectionalSyncSettings,
@@ -53,7 +59,7 @@ import {
   pauseTagEnrichment,
   resumeTagEnrichment,
   restoreWebDavBackup,
-  runFolderAiAnalysis,
+  runFolderAiCategories,
   runTagEnrichmentNow,
   startHistoryModelSync,
   testWebDavConnection,
@@ -69,7 +75,14 @@ import {
   updateVideo,
   type SyncRemoteFolder,
 } from "./lib/api";
-import type { AiFolderAnalysis, AiSettings, Tag } from "./types";
+import type {
+  AiCategoryKey,
+  AiSettings,
+  Folder,
+  FolderAiCategories,
+  Tag,
+  Video,
+} from "./types";
 
 const uiStore = useAppUiStore();
 const { locale, isDark } = storeToRefs(uiStore);
@@ -177,8 +190,13 @@ const tagEnrichmentLoading = ref(false);
 const aiSettingsDialogOpen = ref(false);
 const aiSettings = ref<AiSettings | null>(null);
 const aiSettingsBusy = ref(false);
-const selectedFolderAiAnalysis = ref<AiFolderAnalysis | null>(null);
+const selectedFolderAiCategories = ref<FolderAiCategories | null>(null);
+const folderAiCategoriesCache = ref<Record<number, FolderAiCategories>>({});
 const aiRunningFolderId = ref<number | null>(null);
+const aiCategoryBrowserOpen = ref(false);
+const aiCategoryBrowserCategory = ref<AiCategoryKey | null>(null);
+const aiBrowserFolderVideos = ref<Record<number, Video[]>>({});
+const aiBrowserFolderVideosLoading = ref<Record<number, boolean>>({});
 const bidirectionalSyncDialogOpen = ref(false);
 const bidirectionalSyncSettings = ref<BidirectionalSyncSettings | null>(null);
 const bidirectionalSyncSaving = ref(false);
@@ -242,7 +260,7 @@ const detailVideoWithAi = computed(() => {
   const currentDetailVideo = detailVideo.value;
   if (!currentDetailVideo) return null;
 
-  const matchedAnalysis = selectedFolderAiAnalysis.value?.videos.find(
+  const matchedAnalysis = selectedFolderAiCategories.value?.videos.find(
     (item) => item.videoId === currentDetailVideo.id
   );
 
@@ -253,23 +271,35 @@ const detailVideoWithAi = computed(() => {
   return {
     ...currentDetailVideo,
     aiAnalysis: {
-      categories: matchedAnalysis.categories,
+      category: matchedAnalysis.category,
       analyzedAt: matchedAnalysis.analyzedAt,
       provider: matchedAnalysis.provider,
       model: matchedAnalysis.model,
     },
   };
 });
-const selectedFolderAiSummary = computed(() => {
-  const summary = selectedFolderAiAnalysis.value?.summary?.trim();
-  return summary ? summary : null;
+const activeFolder = computed<Folder | null>(() => {
+  const folderId = selectedFolderId.value;
+  if (folderId === null) return null;
+  return folders.value.find((item) => item.id === folderId) ?? null;
 });
-const selectedFolderAiStatus = computed(
-  () => selectedFolderAiAnalysis.value?.status ?? null
+const selectedFolderHasAiRecord = computed(
+  () => selectedFolderAiCategories.value !== null
 );
-const selectedFolderAiLastError = computed(
-  () => selectedFolderAiAnalysis.value?.lastError ?? null
-);
+const selectedFolderCanOpenAiBrowser = computed(() => {
+  if (trashMode.value || selectedFolderId.value === null) return false;
+  return canOpenAiCategoryBrowser(selectedFolderAiCategories.value);
+});
+const aiCategoryBrowserVideos = computed(() => {
+  const folderId = activeFolder.value?.id;
+  if (!folderId) return [] as Video[];
+  return aiBrowserFolderVideos.value[folderId] ?? [];
+});
+const aiCategoryBrowserVideosLoading = computed(() => {
+  const folderId = activeFolder.value?.id;
+  if (!folderId) return false;
+  return Boolean(aiBrowserFolderVideosLoading.value[folderId]);
+});
 const {
   currentViewLabel: headerCurrentViewLabel,
   currentScopeLabel: headerCurrentScopeLabel,
@@ -423,8 +453,8 @@ const {
   refreshTrashAndVideos,
   refreshTrashFoldersAndVideos,
   openVideoDetail,
-  performFolderAiAnalysis,
-  performClearFolderAiAnalysis,
+  performFolderAiAnalysis: performFolderAiCategories,
+  performClearFolderAiAnalysis: performClearFolderAiCategories,
 });
 
 function setVideoSelection(id: number, checked: boolean) {
@@ -494,6 +524,11 @@ const {
   refreshVideos,
   locale,
 });
+
+async function handleSelectFolderWithAiBrowser(id: number | null) {
+  closeAiCategoryBrowser();
+  await handleSelectFolder(id);
+}
 
 function handleBatchPanelToggle() {
   if (batchPanelOpen.value) {
@@ -953,42 +988,128 @@ async function refreshAiSettings() {
   }
 }
 
-async function refreshSelectedFolderAiAnalysis(folderId: number | null) {
+function setFolderAiCategoryCache(
+  folderId: number,
+  categories: FolderAiCategories | null
+) {
+  const next = { ...folderAiCategoriesCache.value };
+  if (categories) {
+    next[folderId] = categories;
+  } else {
+    delete next[folderId];
+  }
+  folderAiCategoriesCache.value = next;
+}
+
+function clearAiBrowserFolderVideosCache(folderId: number) {
+  const nextVideos = { ...aiBrowserFolderVideos.value };
+  const nextLoading = { ...aiBrowserFolderVideosLoading.value };
+  delete nextVideos[folderId];
+  delete nextLoading[folderId];
+  aiBrowserFolderVideos.value = nextVideos;
+  aiBrowserFolderVideosLoading.value = nextLoading;
+}
+
+async function ensureAiBrowserFolderVideos(folderId: number) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) return;
+  if (aiBrowserFolderVideos.value[folderId]) return;
+  if (aiBrowserFolderVideosLoading.value[folderId]) return;
+
+  aiBrowserFolderVideosLoading.value = {
+    ...aiBrowserFolderVideosLoading.value,
+    [folderId]: true,
+  };
+
+  try {
+    const loaded = await loadAllAiBrowserVideos({
+      folderId,
+      pageSize: 100,
+      fetchPage: fetchVideos,
+    });
+
+    aiBrowserFolderVideos.value = {
+      ...aiBrowserFolderVideos.value,
+      [folderId]: loaded,
+    };
+  } catch (error) {
+    notifyError(t("toast.folderAiBrowserVideosLoadFail"), error);
+  } finally {
+    aiBrowserFolderVideosLoading.value = {
+      ...aiBrowserFolderVideosLoading.value,
+      [folderId]: false,
+    };
+  }
+}
+
+async function openAiCategoryBrowser() {
+  const folderId = selectedFolderId.value;
+  if (!EXTENSION_LOCAL_API_RUNTIME || trashMode.value || folderId === null) return;
+
+  if (!selectedFolderAiCategories.value) {
+    selectedFolderAiCategories.value = folderAiCategoriesCache.value[folderId] ?? null;
+  }
+  if (!canOpenAiCategoryBrowser(selectedFolderAiCategories.value)) return;
+
+  aiCategoryBrowserCategory.value = null;
+  aiCategoryBrowserOpen.value = true;
+  void ensureAiBrowserFolderVideos(folderId);
+}
+
+function closeAiCategoryBrowser() {
+  aiCategoryBrowserOpen.value = false;
+  aiCategoryBrowserCategory.value = null;
+}
+
+function openAiCategory(category: AiCategoryKey) {
+  aiCategoryBrowserCategory.value = category;
+}
+
+async function refreshSelectedFolderAiCategories(folderId: number | null) {
   const requestToken = ++folderAiFetchToken;
   if (!EXTENSION_LOCAL_API_RUNTIME || trashMode.value || folderId === null) {
-    selectedFolderAiAnalysis.value = null;
+    selectedFolderAiCategories.value = null;
     return;
   }
 
   try {
-    const analysis = await fetchFolderAiAnalysis(folderId);
+    const categories = await fetchFolderAiCategories(folderId);
     if (requestToken !== folderAiFetchToken) return;
     if (selectedFolderId.value !== folderId || trashMode.value) return;
-    selectedFolderAiAnalysis.value = analysis;
+    selectedFolderAiCategories.value = categories;
+    setFolderAiCategoryCache(folderId, categories);
   } catch (error) {
     if (requestToken !== folderAiFetchToken) return;
-    selectedFolderAiAnalysis.value = null;
+    selectedFolderAiCategories.value = null;
     notifyError(t("toast.folderAiLoadFail"), error);
   }
 }
 
-async function performFolderAiAnalysis(folderId: number) {
+async function performFolderAiCategories(folderId: number) {
   if (!EXTENSION_LOCAL_API_RUNTIME) {
-    throw new Error("AI analysis is unavailable in this runtime.");
+    throw new Error("AI categorization is unavailable in this runtime.");
+  }
+  if (selectedFolderId.value !== folderId || trashMode.value) {
+    throw new Error("Please categorize the active folder.");
   }
   if (aiRunningFolderId.value !== null) {
-    throw new Error("AI analysis is already running.");
+    throw new Error("AI categorization is already running.");
   }
 
   aiRunningFolderId.value = folderId;
   try {
-    const analysis = await runFolderAiAnalysis(folderId);
+    const categories = await runFolderAiCategories(folderId);
     if (selectedFolderId.value === folderId && !trashMode.value) {
-      selectedFolderAiAnalysis.value = analysis;
+      selectedFolderAiCategories.value = categories;
+      setFolderAiCategoryCache(folderId, categories);
+      if (canOpenAiCategoryBrowser(categories)) {
+        aiCategoryBrowserCategory.value = null;
+        aiCategoryBrowserOpen.value = true;
+        void ensureAiBrowserFolderVideos(folderId);
+      }
     }
   } catch (error) {
     if (selectedFolderId.value === folderId && !trashMode.value) {
-      await refreshSelectedFolderAiAnalysis(folderId);
+      await refreshSelectedFolderAiCategories(folderId);
     }
     throw error;
   } finally {
@@ -998,14 +1119,17 @@ async function performFolderAiAnalysis(folderId: number) {
   }
 }
 
-async function performClearFolderAiAnalysis(folderId: number) {
+async function performClearFolderAiCategories(folderId: number) {
   if (!EXTENSION_LOCAL_API_RUNTIME) {
-    throw new Error("AI analysis is unavailable in this runtime.");
+    throw new Error("AI categorization is unavailable in this runtime.");
   }
 
-  await clearFolderAiAnalysis(folderId);
+  await clearFolderAiCategories(folderId);
+  setFolderAiCategoryCache(folderId, null);
+  clearAiBrowserFolderVideosCache(folderId);
   if (selectedFolderId.value === folderId) {
-    selectedFolderAiAnalysis.value = null;
+    selectedFolderAiCategories.value = null;
+    closeAiCategoryBrowser();
   }
 }
 
@@ -1017,6 +1141,7 @@ function openAiSettingsDialog() {
 
 async function saveAiSettings(payload: {
   provider?: AiSettings["provider"];
+  customProviderName?: string;
   baseUrl?: string;
   apiKey?: string;
   model?: string;
@@ -1038,6 +1163,7 @@ async function saveAiSettings(payload: {
 
 async function testAiSettingsFromUi(payload: {
   provider?: AiSettings["provider"];
+  customProviderName?: string;
   baseUrl?: string;
   apiKey?: string;
   model?: string;
@@ -2041,13 +2167,19 @@ watch(
 
 watch(
   [selectedFolderId, trashMode],
-  ([folderId, isTrash]) => {
-    if (isTrash) {
+  ([folderId, isTrash], [previousFolderId, wasTrash] = [null, false]) => {
+    if (isTrash || folderId === null) {
       folderAiFetchToken += 1;
-      selectedFolderAiAnalysis.value = null;
+      selectedFolderAiCategories.value = null;
+      closeAiCategoryBrowser();
       return;
     }
-    void refreshSelectedFolderAiAnalysis(folderId);
+    if (wasTrash || previousFolderId !== folderId) {
+      closeAiCategoryBrowser();
+    }
+    selectedFolderAiCategories.value =
+      folderAiCategoriesCache.value[folderId] ?? null;
+    void refreshSelectedFolderAiCategories(folderId);
   },
   { immediate: true }
 );
@@ -2127,20 +2259,21 @@ onBeforeUnmount(() => {
   >
     <FolderSidebar
       :folders="folders"
+      :active-folder="activeFolder"
       :active-folder-id="selectedFolderId"
-      :selected-folder-ai-summary="selectedFolderAiSummary"
-      :selected-folder-ai-status="selectedFolderAiStatus"
-      :selected-folder-ai-last-error="selectedFolderAiLastError"
+      :has-selected-folder-ai-record="selectedFolderHasAiRecord"
+      :can-open-selected-folder-ai-browser="selectedFolderCanOpenAiBrowser"
       :ai-running-folder-id="aiRunningFolderId"
       :show-ai-actions="EXTENSION_LOCAL_API_RUNTIME && !trashMode"
       :locale="locale"
-      @select="handleSelectFolder"
+      @select="handleSelectFolderWithAiBrowser"
       @create="handleCreateFolder"
       @update="handleUpdateFolder"
       @remove="handleRemoveFolder"
       @reorder="handleReorderFolders"
       @analyze="handleAnalyzeFolder"
       @clear-ai="handleClearFolderAi"
+      @open-ai-browser="openAiCategoryBrowser"
     />
 
     <section class="min-w-0 space-y-4">
@@ -2309,8 +2442,21 @@ onBeforeUnmount(() => {
         </p>
       </section>
 
+      <AiCategoryBrowser
+        v-if="!trashMode && aiCategoryBrowserOpen"
+        :t="t"
+        :locale="locale"
+        :folder="activeFolder"
+        :result="selectedFolderAiCategories"
+        :videos="aiCategoryBrowserVideos"
+        :videos-loading="aiCategoryBrowserVideosLoading"
+        :initial-category="aiCategoryBrowserCategory"
+        @back="closeAiCategoryBrowser"
+        @open-category="openAiCategory"
+      />
+
       <ManagerPanel
-        v-if="!trashMode"
+        v-else-if="!trashMode"
         :t="t"
         :locale="locale"
         :keyword="keyword"
