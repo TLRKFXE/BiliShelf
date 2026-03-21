@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   applyFolderCategoryAttempt,
+  matchFolderAiCategoriesPath,
   runFolderAiCategories,
 } from "../shared/ai-analysis.js";
 
@@ -126,4 +127,16 @@ test("category rerun failure keeps previous successful categorized videos", () =
   assert.equal(next.startedAt, 200);
   assert.equal(next.finishedAt, 205);
   assert.equal("summary" in next, false);
+});
+
+test("matchFolderAiCategoriesPath supports preferred route and legacy alias", () => {
+  const preferred = matchFolderAiCategoriesPath("/folders/42/ai-categories");
+  const legacy = matchFolderAiCategoriesPath("/folders/42/ai-analysis");
+  const invalid = matchFolderAiCategoriesPath("/folders/42/ai-summary");
+
+  assert.ok(preferred);
+  assert.ok(legacy);
+  assert.equal(preferred?.[1], "42");
+  assert.equal(legacy?.[1], "42");
+  assert.equal(invalid, null);
 });

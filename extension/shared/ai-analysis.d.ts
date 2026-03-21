@@ -43,6 +43,7 @@ export type RunFolderAiCategoriesOptions = {
   ) => Promise<{ category?: unknown } | null | undefined>;
 };
 
+export function matchFolderAiCategoriesPath(path: string): RegExpMatchArray | null;
 export function buildFolderAnalysisInput(state: unknown, folderId: number): FolderAnalysisInput;
 export function buildFolderCategorizationInput(
   state: unknown,

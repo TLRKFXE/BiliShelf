@@ -11,6 +11,7 @@ import {
 import {
   applyFolderCategoryAttempt,
   buildFolderCategorizationInput,
+  matchFolderAiCategoriesPath,
   runFolderAiCategories
 } from "../shared/ai-analysis.js";
 import type {
@@ -2178,13 +2179,6 @@ async function requestAiJson(meta: AiMeta, prompt: string) {
         : extractOpenAiLikeText(payload);
 
   return extractJsonObject(text);
-}
-
-function matchFolderAiCategoriesPath(path: string) {
-  return (
-    path.match(/^\/folders\/(\d+)\/ai-categories$/) ||
-    path.match(/^\/folders\/(\d+)\/ai-analysis$/)
-  );
 }
 
 async function categorizeFolderVideo(meta: AiMeta, input: FolderAnalysisInput, video: FolderAnalysisInput["videos"][number]) {

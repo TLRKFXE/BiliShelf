@@ -4,6 +4,13 @@ function normalizeText(value) {
 
 const DEFAULT_CATEGORY_KEY = "other";
 
+export function matchFolderAiCategoriesPath(path) {
+  return (
+    String(path ?? "").match(/^\/folders\/(\d+)\/ai-categories$/) ||
+    String(path ?? "").match(/^\/folders\/(\d+)\/ai-analysis$/)
+  );
+}
+
 function toIntOrNull(value) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
