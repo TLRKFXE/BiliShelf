@@ -1,8 +1,9 @@
 import type {
-  AiFolderAnalysis,
+  AiCategoryKey,
   AiProvider,
   AiSettings,
   CreateVideoPayload,
+  FolderAiCategories,
   Folder,
   Pagination,
   Tag,
@@ -87,7 +88,7 @@ function parseRequestBody(init?: RequestInit): unknown {
 function resolveExtensionRequestTimeout(path: string, method: string) {
   if (
     method === "POST" &&
-    /^\/folders\/\d+\/ai-(categories|analysis)$/.test(path)
+    /^\/folders\/\d+\/ai-categories$/.test(path)
   ) {
     return EXTENSION_REQUEST_TIMEOUT_AI_CATEGORIES_MS;
   }
@@ -292,7 +293,7 @@ export async function fetchVideoById(id: number) {
       folders?: Array<{ id: number; name: string }>;
       tags?: Array<{ id: number; name: string; type: "system" | "custom" }>;
       aiAnalysis?: {
-        categories: string[];
+        category: AiCategoryKey;
         analyzedAt: number | null;
         provider: string;
         model: string;
@@ -741,18 +742,18 @@ export async function testAiSettings(payload?: {
   });
 }
 
-export async function fetchFolderAiAnalysis(folderId: number) {
-  return request<AiFolderAnalysis | null>(`/folders/${folderId}/ai-analysis`);
+export async function fetchFolderAiCategories(folderId: number) {
+  return request<FolderAiCategories | null>(`/folders/${folderId}/ai-categories`);
 }
 
-export async function runFolderAiAnalysis(folderId: number) {
-  return request<AiFolderAnalysis>(`/folders/${folderId}/ai-analysis`, {
+export async function runFolderAiCategories(folderId: number) {
+  return request<FolderAiCategories>(`/folders/${folderId}/ai-categories`, {
     method: "POST",
   });
 }
 
-export async function clearFolderAiAnalysis(folderId: number) {
-  return request<void>(`/folders/${folderId}/ai-analysis`, {
+export async function clearFolderAiCategories(folderId: number) {
+  return request<void>(`/folders/${folderId}/ai-categories`, {
     method: "DELETE",
   });
 }

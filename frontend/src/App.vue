@@ -38,10 +38,10 @@ import { useManagerRouteSync } from "./composables/use-manager-route-sync";
 import { useRenameTagDialog } from "./composables/use-rename-tag-dialog";
 import { useVideoDetail } from "./composables/use-video-detail";
 import {
-  clearFolderAiAnalysis,
+  clearFolderAiCategories,
   exportLibrary,
   fetchAiSettings,
-  fetchFolderAiAnalysis,
+  fetchFolderAiCategories,
   fetchHistoryModelSyncStatus,
   fetchTagEnrichmentStatus,
   fetchBidirectionalSyncSettings,
@@ -53,7 +53,7 @@ import {
   pauseTagEnrichment,
   resumeTagEnrichment,
   restoreWebDavBackup,
-  runFolderAiAnalysis,
+  runFolderAiCategories,
   runTagEnrichmentNow,
   startHistoryModelSync,
   testWebDavConnection,
@@ -69,7 +69,7 @@ import {
   updateVideo,
   type SyncRemoteFolder,
 } from "./lib/api";
-import type { AiFolderAnalysis, AiSettings, Tag } from "./types";
+import type { AiSettings, FolderAiCategories, Tag } from "./types";
 
 const uiStore = useAppUiStore();
 const { locale, isDark } = storeToRefs(uiStore);
@@ -177,7 +177,7 @@ const tagEnrichmentLoading = ref(false);
 const aiSettingsDialogOpen = ref(false);
 const aiSettings = ref<AiSettings | null>(null);
 const aiSettingsBusy = ref(false);
-const selectedFolderAiAnalysis = ref<AiFolderAnalysis | null>(null);
+const selectedFolderAiCategories = ref<FolderAiCategories | null>(null);
 const aiRunningFolderId = ref<number | null>(null);
 const bidirectionalSyncDialogOpen = ref(false);
 const bidirectionalSyncSettings = ref<BidirectionalSyncSettings | null>(null);
@@ -242,7 +242,7 @@ const detailVideoWithAi = computed(() => {
   const currentDetailVideo = detailVideo.value;
   if (!currentDetailVideo) return null;
 
-  const matchedAnalysis = selectedFolderAiAnalysis.value?.videos.find(
+  const matchedAnalysis = selectedFolderAiCategories.value?.videos.find(
     (item) => item.videoId === currentDetailVideo.id
   );
 
@@ -253,7 +253,7 @@ const detailVideoWithAi = computed(() => {
   return {
     ...currentDetailVideo,
     aiAnalysis: {
-      categories: matchedAnalysis.category ? [matchedAnalysis.category] : [],
+      category: matchedAnalysis.category,
       analyzedAt: matchedAnalysis.analyzedAt,
       provider: matchedAnalysis.provider,
       model: matchedAnalysis.model,
@@ -261,10 +261,10 @@ const detailVideoWithAi = computed(() => {
   };
 });
 const selectedFolderAiStatus = computed(
-  () => selectedFolderAiAnalysis.value?.status ?? null
+  () => selectedFolderAiCategories.value?.status ?? null
 );
 const selectedFolderAiLastError = computed(
-  () => selectedFolderAiAnalysis.value?.lastError ?? null
+  () => selectedFolderAiCategories.value?.lastError ?? null
 );
 const {
   currentViewLabel: headerCurrentViewLabel,
@@ -419,8 +419,8 @@ const {
   refreshTrashAndVideos,
   refreshTrashFoldersAndVideos,
   openVideoDetail,
-  performFolderAiAnalysis,
-  performClearFolderAiAnalysis,
+  performFolderAiAnalysis: performFolderAiCategories,
+  performClearFolderAiAnalysis: performClearFolderAiCategories,
 });
 
 function setVideoSelection(id: number, checked: boolean) {
@@ -949,26 +949,26 @@ async function refreshAiSettings() {
   }
 }
 
-async function refreshSelectedFolderAiAnalysis(folderId: number | null) {
+async function refreshSelectedFolderAiCategories(folderId: number | null) {
   const requestToken = ++folderAiFetchToken;
   if (!EXTENSION_LOCAL_API_RUNTIME || trashMode.value || folderId === null) {
-    selectedFolderAiAnalysis.value = null;
+    selectedFolderAiCategories.value = null;
     return;
   }
 
   try {
-    const analysis = await fetchFolderAiAnalysis(folderId);
+    const categories = await fetchFolderAiCategories(folderId);
     if (requestToken !== folderAiFetchToken) return;
     if (selectedFolderId.value !== folderId || trashMode.value) return;
-    selectedFolderAiAnalysis.value = analysis;
+    selectedFolderAiCategories.value = categories;
   } catch (error) {
     if (requestToken !== folderAiFetchToken) return;
-    selectedFolderAiAnalysis.value = null;
+    selectedFolderAiCategories.value = null;
     notifyError(t("toast.folderAiLoadFail"), error);
   }
 }
 
-async function performFolderAiAnalysis(folderId: number) {
+async function performFolderAiCategories(folderId: number) {
   if (!EXTENSION_LOCAL_API_RUNTIME) {
     throw new Error("AI analysis is unavailable in this runtime.");
   }
@@ -978,13 +978,13 @@ async function performFolderAiAnalysis(folderId: number) {
 
   aiRunningFolderId.value = folderId;
   try {
-    const analysis = await runFolderAiAnalysis(folderId);
+    const categories = await runFolderAiCategories(folderId);
     if (selectedFolderId.value === folderId && !trashMode.value) {
-      selectedFolderAiAnalysis.value = analysis;
+      selectedFolderAiCategories.value = categories;
     }
   } catch (error) {
     if (selectedFolderId.value === folderId && !trashMode.value) {
-      await refreshSelectedFolderAiAnalysis(folderId);
+      await refreshSelectedFolderAiCategories(folderId);
     }
     throw error;
   } finally {
@@ -994,14 +994,14 @@ async function performFolderAiAnalysis(folderId: number) {
   }
 }
 
-async function performClearFolderAiAnalysis(folderId: number) {
+async function performClearFolderAiCategories(folderId: number) {
   if (!EXTENSION_LOCAL_API_RUNTIME) {
     throw new Error("AI analysis is unavailable in this runtime.");
   }
 
-  await clearFolderAiAnalysis(folderId);
+  await clearFolderAiCategories(folderId);
   if (selectedFolderId.value === folderId) {
-    selectedFolderAiAnalysis.value = null;
+    selectedFolderAiCategories.value = null;
   }
 }
 
@@ -2040,10 +2040,10 @@ watch(
   ([folderId, isTrash]) => {
     if (isTrash) {
       folderAiFetchToken += 1;
-      selectedFolderAiAnalysis.value = null;
+      selectedFolderAiCategories.value = null;
       return;
     }
-    void refreshSelectedFolderAiAnalysis(folderId);
+    void refreshSelectedFolderAiCategories(folderId);
   },
   { immediate: true }
 );

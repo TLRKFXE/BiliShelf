@@ -89,27 +89,38 @@ export type AiSettings = {
   updatedAt: number;
 };
 
-export type AiFolderAnalysisStatus = "idle" | "running" | "success" | "error";
+export type AiCategoryKey =
+  | "animation"
+  | "music"
+  | "dance"
+  | "game"
+  | "knowledge"
+  | "tech"
+  | "sports"
+  | "car"
+  | "life"
+  | "food"
+  | "animal"
+  | "fashion"
+  | "ent"
+  | "cinephile"
+  | "news"
+  | "other";
 
-export type AiCategoryKey = string;
-
-export type AiVideoAnalysis = {
+export type FolderAiCategories = {
   folderId: number;
-  videoId: number;
-  category: AiCategoryKey;
-  analyzedAt: number | null;
-  provider: string;
-  model: string;
-};
-
-export type AiFolderAnalysis = {
-  folderId: number;
-  status: AiFolderAnalysisStatus;
+  status: "running" | "success" | "error";
   lastError: string | null;
   startedAt: number | null;
   finishedAt: number | null;
   updatedAt: number;
   provider: string;
   model: string;
-  videos: AiVideoAnalysis[];
+  videos: Array<{
+    videoId: number;
+    category: AiCategoryKey;
+    analyzedAt: number | null;
+    provider: string;
+    model: string;
+  }>;
 };
