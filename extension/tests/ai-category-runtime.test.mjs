@@ -194,3 +194,54 @@ test("returns provider quota error instead of a generic timeout message", async 
     },
   );
 });
+
+test("keeps non-quota 429 provider errors without rewriting to quota exceeded", async () => {
+  const provider429Body = JSON.stringify({
+    error: {
+      code: 429,
+      status: "RATE_LIMITED",
+      message: "Too many requests. Please slow down.",
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      categorizeFolderVideo(
+        {
+          provider: "gemini",
+          baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+          apiKey: "test-key",
+          model: "gemini-2.5-flash",
+        },
+        {
+          folderId: 1,
+          folderName: "Favorites",
+          folderDescription: "",
+          videos: [],
+        },
+        {
+          videoId: 100,
+          bvid: "BVTEST2",
+          title: "Test Video 2",
+          uploader: "Uploader",
+          description: "",
+          publishAt: null,
+          addedAt: null,
+          customTags: [],
+          systemTags: [],
+        },
+        {
+          fetchImpl: async () => ({
+            ok: false,
+            status: 429,
+            text: async () => provider429Body,
+          }),
+        },
+      ),
+    (error) => {
+      assert.match(String(error?.message), /too many requests/i);
+      assert.doesNotMatch(String(error?.message), /quota exceeded/i);
+      return true;
+    },
+  );
+});

@@ -2,6 +2,16 @@ function normalizeText(value) {
   return String(value ?? "").replace(/^\uFEFF/, "").trim();
 }
 
+function hasQuotaOrExhaustedSignal(value) {
+  const text = normalizeText(value).toLowerCase();
+  return (
+    text.includes("quota") ||
+    text.includes("resource_exhausted") ||
+    text.includes("resource exhausted") ||
+    text.includes("exhausted")
+  );
+}
+
 export function formatAiProviderErrorMessage(statusCode, responseText) {
   const fallback = normalizeText(responseText) || `AI request failed (${statusCode})`;
   let parsed;
@@ -14,7 +24,6 @@ export function formatAiProviderErrorMessage(statusCode, responseText) {
 
   const rootError =
     parsed.error && typeof parsed.error === "object" ? parsed.error : parsed;
-  const code = Number(rootError.code);
   const providerStatus = normalizeText(rootError.status).toUpperCase();
   const providerMessage = normalizeText(rootError.message);
   const details = Array.isArray(rootError.details) ? rootError.details : [];
@@ -30,11 +39,9 @@ export function formatAiProviderErrorMessage(statusCode, responseText) {
   }
 
   const isQuotaError =
-    statusCode === 429 ||
-    code === 429 ||
     providerStatus === "RESOURCE_EXHAUSTED" ||
-    providerStatus.includes("QUOTA") ||
-    providerMessage.toLowerCase().includes("quota");
+    hasQuotaOrExhaustedSignal(providerStatus) ||
+    hasQuotaOrExhaustedSignal(providerMessage);
   if (!isQuotaError) return fallback;
 
   const retrySuffix = retryDelay ? ` Retry after ${retryDelay}.` : "";
