@@ -2,6 +2,7 @@ import type { AiCategoryKey, AiMeta, AiProvider } from "./ai-state.js";
 
 export type AiSettingsResponse = {
   provider: AiProvider;
+  customProviderName: string;
   baseUrl: string;
   model: string;
   enabled: boolean;

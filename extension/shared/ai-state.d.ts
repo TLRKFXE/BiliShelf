@@ -9,6 +9,7 @@ export type AiProvider =
 
 export type AiMeta = {
   provider: AiProvider;
+  customProviderName: string;
   baseUrl: string;
   apiKey: string;
   model: string;

@@ -1141,6 +1141,7 @@ function openAiSettingsDialog() {
 
 async function saveAiSettings(payload: {
   provider?: AiSettings["provider"];
+  customProviderName?: string;
   baseUrl?: string;
   apiKey?: string;
   model?: string;
@@ -1162,6 +1163,7 @@ async function saveAiSettings(payload: {
 
 async function testAiSettingsFromUi(payload: {
   provider?: AiSettings["provider"];
+  customProviderName?: string;
   baseUrl?: string;
   apiKey?: string;
   model?: string;

@@ -2,6 +2,7 @@ import type {
   AiCategoryKey,
   AiProvider,
   AiSettings,
+  AiSettingsModelsResponse,
   CreateVideoPayload,
   FolderAiCategories,
   Folder,
@@ -718,6 +719,7 @@ export async function fetchAiSettings() {
 
 export async function updateAiSettings(payload: {
   provider?: AiProvider;
+  customProviderName?: string;
   baseUrl?: string;
   apiKey?: string;
   model?: string;
@@ -731,6 +733,7 @@ export async function updateAiSettings(payload: {
 
 export async function testAiSettings(payload?: {
   provider?: AiProvider;
+  customProviderName?: string;
   baseUrl?: string;
   apiKey?: string;
   model?: string;
@@ -749,6 +752,18 @@ export async function fetchFolderAiCategories(folderId: number) {
 export async function runFolderAiCategories(folderId: number) {
   return request<FolderAiCategories>(`/folders/${folderId}/ai-categories`, {
     method: "POST",
+  });
+}
+
+export async function fetchAiSettingsModels(payload?: {
+  provider?: AiProvider;
+  customProviderName?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}) {
+  return request<AiSettingsModelsResponse>("/ai/settings/models", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
   });
 }
 

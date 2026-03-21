@@ -352,6 +352,14 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "提供商",
     "en-US": "Provider",
   },
+  "ai.settings.customProvider": {
+    "zh-CN": "自定义运营商",
+    "en-US": "Custom Provider",
+  },
+  "ai.settings.customProviderName": {
+    "zh-CN": "运营商名称",
+    "en-US": "Provider Name",
+  },
   "ai.settings.baseUrl": {
     "zh-CN": "Base URL",
     "en-US": "Base URL",
@@ -372,6 +380,10 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "例如：gpt-4.1-mini",
     "en-US": "For example: gpt-4.1-mini",
   },
+  "ai.settings.customProviderNamePlaceholder": {
+    "zh-CN": "例如：My Custom Provider",
+    "en-US": "For example: My Custom Provider",
+  },
   "ai.settings.apiKeyPlaceholder": {
     "zh-CN": "输入新的 API Key",
     "en-US": "Enter a new API key",
@@ -387,6 +399,34 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "ai.settings.test": {
     "zh-CN": "测试设置",
     "en-US": "Test settings",
+  },
+  "ai.settings.refreshModels": {
+    "zh-CN": "刷新模型列表",
+    "en-US": "Refresh models",
+  },
+  "ai.settings.baseUrlAuto": {
+    "zh-CN": "官方运营商地址已自动填入。",
+    "en-US": "Official provider base URL is filled automatically.",
+  },
+  "ai.settings.modelsBuiltin": {
+    "zh-CN": "当前使用内置推荐模型。",
+    "en-US": "Using built-in recommended models.",
+  },
+  "ai.settings.modelsRemote": {
+    "zh-CN": "当前使用实时获取的模型列表。",
+    "en-US": "Using models fetched live from the provider.",
+  },
+  "ai.settings.modelsHintNeedKey": {
+    "zh-CN": "填入 API Key 后可刷新实时模型列表。",
+    "en-US": "Enter an API key to refresh live model options.",
+  },
+  "ai.settings.modelsHintCustom": {
+    "zh-CN": "自定义运营商会按 OpenAI-compatible 的方式获取模型列表。",
+    "en-US": "Custom providers fetch model lists using the OpenAI-compatible flow.",
+  },
+  "ai.settings.modelsEmpty": {
+    "zh-CN": "当前没有可选模型，请先刷新模型列表。",
+    "en-US": "No models are available yet. Refresh the model list first.",
   },
   "ai.settings.statusTest": {
     "zh-CN": "最近测试：{time}",

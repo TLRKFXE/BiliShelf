@@ -303,7 +303,7 @@ function triggerClear() {
 </script>
 
 <template>
-  <aside class="panel-surface h-full p-5">
+  <aside class="panel-surface flex h-full min-h-0 flex-col p-5">
     <div class="mb-5 flex items-center gap-2">
       <span
         class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/12 text-primary"
@@ -360,113 +360,6 @@ function triggerClear() {
       </p>
     </div>
 
-    <div class="mt-4 space-y-2.5">
-      <button
-        type="button"
-        class="interactive-lift flex w-full items-center gap-2 rounded-xl border border-border/70 bg-accent/35 px-3 py-2.5 text-left text-sm font-medium text-foreground"
-        @click="createDialogOpen = true"
-      >
-        <span
-          class="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/15 text-primary"
-        >
-          <FolderPlus class="h-3.5 w-3.5" />
-        </span>
-        <span>{{ t("createFolder") }}</span>
-      </button>
-
-      <button
-        type="button"
-        class="interactive-lift w-full rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition"
-        :class="
-          props.activeFolderId === null
-            ? 'border-primary/45 bg-primary/10 text-primary'
-            : 'border-border/80 bg-card/80 hover:bg-accent/45'
-        "
-        @click="emit('select', null)"
-      >
-        {{ t("allVideos") }}
-      </button>
-
-      <div
-        v-for="folder in displayedFolders"
-        :key="folder.id"
-        class="interactive-lift rounded-xl border p-2.5"
-        :class="[
-          props.activeFolderId === folder.id
-            ? 'border-primary/45 bg-primary/10'
-            : 'border-border/80 bg-card/85',
-          dragOverFolderId === folder.id ? 'ring-2 ring-primary/45' : '',
-        ]"
-        :draggable="canDragSort"
-        @dragstart="handleDragStart(folder.id)"
-        @dragover.prevent="handleDragOver(folder.id)"
-        @drop.prevent="handleDrop(folder.id)"
-        @dragend="handleDragEnd"
-      >
-        <template v-if="editingId === folder.id">
-          <div class="space-y-2">
-            <Input v-model="editingName" :placeholder="t('folderName')" />
-            <Textarea
-              v-model="editingDescription"
-              :rows="2"
-              :placeholder="t('folderDescription')"
-              class="text-xs"
-            />
-            <div class="flex justify-end gap-2">
-              <Button size="sm" variant="ghost" @click="cancelEdit">
-                {{ t("cancel") }}
-              </Button>
-              <Button size="sm" @click="submitEdit">{{ t("save") }}</Button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else>
-          <button
-            type="button"
-            class="w-full text-left"
-            @click="emit('select', folder.id)"
-          >
-            <div class="flex items-start justify-between gap-2">
-              <div class="flex min-w-0 items-center gap-2">
-                <FolderOpen class="h-4 w-4 shrink-0 text-muted-foreground" />
-                <p class="line-clamp-1 text-sm font-semibold">{{ folder.name }}</p>
-              </div>
-              <GripVertical
-                v-if="canDragSort"
-                class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-              />
-            </div>
-            <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
-              {{ folder.description || t("noDescription") }}
-            </p>
-            <p class="mt-1 text-[11px] text-muted-foreground">
-              {{ t("videosCount", { count: folder.itemCount ?? 0 }) }}
-            </p>
-          </button>
-
-          <div class="mt-2 flex justify-end gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              class="h-8 w-8"
-              @click="startEdit(folder)"
-            >
-              <Pencil class="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              class="h-8 w-8 text-red-500"
-              @click="handleDelete(folder.id)"
-            >
-              <Trash2 class="h-4 w-4" />
-            </Button>
-          </div>
-        </template>
-      </div>
-    </div>
-
     <section
       v-if="props.showAiActions"
       class="mt-4 space-y-3 rounded-xl border border-border/80 bg-card/70 p-3"
@@ -511,6 +404,115 @@ function triggerClear() {
         </Button>
       </div>
     </section>
+
+    <div class="mt-4 min-h-0 flex-1 overflow-y-auto">
+      <div class="space-y-2.5">
+        <button
+          type="button"
+          class="interactive-lift flex w-full items-center gap-2 rounded-xl border border-border/70 bg-accent/35 px-3 py-2.5 text-left text-sm font-medium text-foreground"
+          @click="createDialogOpen = true"
+        >
+          <span
+            class="inline-flex h-5 w-5 items-center justify-center rounded bg-primary/15 text-primary"
+          >
+            <FolderPlus class="h-3.5 w-3.5" />
+          </span>
+          <span>{{ t("createFolder") }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="interactive-lift w-full rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition"
+          :class="
+            props.activeFolderId === null
+              ? 'border-primary/45 bg-primary/10 text-primary'
+              : 'border-border/80 bg-card/80 hover:bg-accent/45'
+          "
+          @click="emit('select', null)"
+        >
+          {{ t("allVideos") }}
+        </button>
+
+        <div
+          v-for="folder in displayedFolders"
+          :key="folder.id"
+          class="interactive-lift rounded-xl border p-2.5"
+          :class="[
+            props.activeFolderId === folder.id
+              ? 'border-primary/45 bg-primary/10'
+              : 'border-border/80 bg-card/85',
+            dragOverFolderId === folder.id ? 'ring-2 ring-primary/45' : '',
+          ]"
+          :draggable="canDragSort"
+          @dragstart="handleDragStart(folder.id)"
+          @dragover.prevent="handleDragOver(folder.id)"
+          @drop.prevent="handleDrop(folder.id)"
+          @dragend="handleDragEnd"
+        >
+          <template v-if="editingId === folder.id">
+            <div class="space-y-2">
+              <Input v-model="editingName" :placeholder="t('folderName')" />
+              <Textarea
+                v-model="editingDescription"
+                :rows="2"
+                :placeholder="t('folderDescription')"
+                class="text-xs"
+              />
+              <div class="flex justify-end gap-2">
+                <Button size="sm" variant="ghost" @click="cancelEdit">
+                  {{ t("cancel") }}
+                </Button>
+                <Button size="sm" @click="submitEdit">{{ t("save") }}</Button>
+              </div>
+            </div>
+          </template>
+
+          <template v-else>
+            <button
+              type="button"
+              class="w-full text-left"
+              @click="emit('select', folder.id)"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex min-w-0 items-center gap-2">
+                  <FolderOpen class="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <p class="line-clamp-1 text-sm font-semibold">{{ folder.name }}</p>
+                </div>
+                <GripVertical
+                  v-if="canDragSort"
+                  class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+                />
+              </div>
+              <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                {{ folder.description || t("noDescription") }}
+              </p>
+              <p class="mt-1 text-[11px] text-muted-foreground">
+                {{ t("videosCount", { count: folder.itemCount ?? 0 }) }}
+              </p>
+            </button>
+
+            <div class="mt-2 flex justify-end gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                class="h-8 w-8"
+                @click="startEdit(folder)"
+              >
+                <Pencil class="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                class="h-8 w-8 text-red-500"
+                @click="handleDelete(folder.id)"
+              >
+                <Trash2 class="h-4 w-4" />
+              </Button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
 
     <Dialog v-model:open="createDialogOpen">
       <DialogContent class="max-w-lg border-border/80 p-0">

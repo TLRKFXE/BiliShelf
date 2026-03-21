@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ArrowLeft, FolderOpen, Sparkles } from "lucide-vue-next";
+import { ArrowLeft, FolderOpen } from "lucide-vue-next";
 import type { AiCategoryKey, Folder, FolderAiCategories, Video } from "../types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -289,10 +289,5 @@ function handleOpenCategory(category: AiCategoryKey) {
         </div>
       </div>
     </template>
-
-    <div class="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-      <Sparkles class="h-3.5 w-3.5" />
-      <span>{{ t("ai.browser.footerHint") }}</span>
-    </div>
   </section>
 </template>

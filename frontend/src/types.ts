@@ -79,6 +79,7 @@ export type AiProvider =
 
 export type AiSettings = {
   provider: AiProvider;
+  customProviderName: string;
   baseUrl: string;
   model: string;
   enabled: boolean;
@@ -87,6 +88,20 @@ export type AiSettings = {
   lastTestOk: boolean;
   lastError: string | null;
   updatedAt: number;
+};
+
+export type AiSettingsModelOption = {
+  id: string;
+  label: string;
+};
+
+export type AiSettingsModelsResponse = {
+  provider: AiProvider;
+  customProviderName: string;
+  baseUrl: string;
+  models: AiSettingsModelOption[];
+  source: "builtin" | "remote";
+  supportsRemoteFetch: boolean;
 };
 
 export type AiCategoryKey =

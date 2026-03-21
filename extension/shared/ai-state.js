@@ -76,6 +76,7 @@ function normalizeVideoAnalysisRecord(record) {
 export function createDefaultAiState(nowValue = Date.now()) {
   return {
     provider: "openai-compatible",
+    customProviderName: "",
     baseUrl: "",
     apiKey: "",
     model: "",
@@ -93,6 +94,7 @@ export function normalizeAiState(rawState, nowValue = Date.now()) {
   const base = createDefaultAiState(nowValue);
   return {
     provider: normalizeAiProvider(rawState?.provider),
+    customProviderName: normalizeText(rawState?.customProviderName),
     baseUrl: normalizeText(rawState?.baseUrl),
     apiKey: String(rawState?.apiKey ?? ""),
     model: normalizeText(rawState?.model),

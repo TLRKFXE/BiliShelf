@@ -52,6 +52,7 @@ export const normalizeClassificationPayload = normalizeVideoCategoryPayload;
 export function maskApiKeyStateForResponse(state) {
   return {
     provider: normalizeAiProvider(state?.provider),
+    customProviderName: normalizeText(state?.customProviderName),
     baseUrl: normalizeText(state?.baseUrl),
     model: normalizeText(state?.model),
     enabled: Boolean(state?.enabled),

@@ -13,6 +13,10 @@ import {
   normalizeFolderAiCategoriesResponse,
   runFolderAiCategories
 } from "../shared/ai-analysis.js";
+import {
+  listAiProviderModels,
+  normalizeAiProviderBaseUrl,
+} from "../shared/ai-provider-settings.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
 import type {
   AiMeta as SharedAiMeta,
@@ -1961,6 +1965,7 @@ function ensureAiMeta(state: LocalState) {
   const normalized = normalizeAiState(state.ai, now());
   state.ai = normalized;
   state.ai.provider = normalizeAiProvider(state.ai.provider);
+  state.ai.customProviderName = normalizeText(state.ai.customProviderName);
   state.ai.baseUrl = normalizeText(state.ai.baseUrl);
   state.ai.apiKey = String(state.ai.apiKey ?? "");
   state.ai.model = normalizeText(state.ai.model);
@@ -1979,8 +1984,15 @@ function applyAiSettingsPatch(meta: AiMeta, body: Record<string, unknown>) {
     meta.provider = normalizeAiProvider(body.provider);
     configChanged = true;
   }
+  if (Object.prototype.hasOwnProperty.call(body, "customProviderName")) {
+    meta.customProviderName = normalizeText(body.customProviderName);
+    configChanged = true;
+  }
   if (Object.prototype.hasOwnProperty.call(body, "baseUrl")) {
-    meta.baseUrl = normalizeAiBaseUrl(body.baseUrl);
+    meta.baseUrl = normalizeAiProviderBaseUrl(
+      meta.provider,
+      normalizeAiBaseUrl(body.baseUrl)
+    );
     configChanged = true;
   }
   if (Object.prototype.hasOwnProperty.call(body, "apiKey")) {
@@ -3063,6 +3075,7 @@ function isWriteRequestBlockedByFavoritesSync(method: string, path: string) {
   if (path === "/sync/bilibili/bidirectional/settings") return false;
   if (path === "/ai/settings") return false;
   if (path === "/ai/settings/test") return false;
+  if (path === "/ai/settings/models") return false;
   if (path === "/backup/webdav/settings") return false;
   if (path === "/backup/webdav/test") return false;
   if (path === "/backup/webdav/upload") return false;
@@ -3737,6 +3750,42 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           meta.lastTestOk = false;
           meta.lastError = message;
           return fail(400, message);
+        }
+      }
+
+      if (method === "POST" && path === "/ai/settings/models") {
+        const current = ensureAiMeta(state);
+        const provider = normalizeAiProvider(body.provider ?? current.provider);
+        const customProviderName = normalizeText(
+          body.customProviderName ?? current.customProviderName
+        );
+        const baseUrl = normalizeAiProviderBaseUrl(
+          provider,
+          Object.prototype.hasOwnProperty.call(body, "baseUrl")
+            ? normalizeAiBaseUrl(body.baseUrl)
+            : current.baseUrl
+        );
+        const apiKey = normalizeText(body.apiKey ?? current.apiKey);
+
+        try {
+          const result = await listAiProviderModels({
+            provider,
+            baseUrl,
+            apiKey,
+          });
+          return ok({
+            provider,
+            customProviderName,
+            baseUrl: result.baseUrl,
+            models: result.models,
+            source: result.source,
+            supportsRemoteFetch: result.supportsRemoteFetch,
+          });
+        } catch (error) {
+          return fail(
+            400,
+            error instanceof Error ? error.message : "Failed to load AI models"
+          );
         }
       }
 

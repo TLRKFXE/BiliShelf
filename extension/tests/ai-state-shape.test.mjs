@@ -14,6 +14,7 @@ test("normalize ai state fills missing arrays and coerces provider fields", () =
   const state = normalizeAiState(
     {
       provider: "invalid-provider",
+      customProviderName: 456,
       apiKey: 123,
       folderAnalyses: null,
       videoAnalyses: undefined,
@@ -22,6 +23,7 @@ test("normalize ai state fills missing arrays and coerces provider fields", () =
   );
 
   assert.equal(state.provider, "openai-compatible");
+  assert.equal(state.customProviderName, "456");
   assert.equal(state.apiKey, "123");
   assert.deepEqual(state.folderAnalyses, []);
   assert.deepEqual(state.videoAnalyses, []);

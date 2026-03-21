@@ -33,6 +33,7 @@ test("exports stable category keys for prompt/runtime alignment", () => {
 test("masks raw api key state for settings responses", () => {
   const result = maskApiKeyStateForResponse({
     provider: "openai-compatible",
+    customProviderName: "My Provider",
     baseUrl: "https://example.com/v1",
     apiKey: "secret",
     model: "gpt-test",
@@ -46,4 +47,5 @@ test("masks raw api key state for settings responses", () => {
   assert.equal(result.apiKeySet, true);
   assert.equal("apiKey" in result, false);
   assert.equal(result.provider, "openai-compatible");
+  assert.equal(result.customProviderName, "My Provider");
 });
