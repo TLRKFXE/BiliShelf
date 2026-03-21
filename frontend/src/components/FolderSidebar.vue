@@ -10,6 +10,7 @@ import {
   ListOrdered,
   Pencil,
   Search,
+  Sparkles,
   Trash2,
   Video,
 } from "lucide-vue-next";
@@ -32,9 +33,10 @@ type Locale = "zh-CN" | "en-US";
 const props = withDefaults(
   defineProps<{
     folders: Folder[];
+    activeFolder: Folder | null;
     activeFolderId: number | null;
-    selectedFolderAiStatus: "idle" | "running" | "success" | "error" | null;
-    selectedFolderAiLastError: string | null;
+    hasSelectedFolderAiRecord?: boolean;
+    canOpenSelectedFolderAiBrowser?: boolean;
     aiRunningFolderId: number | null;
     showAiActions?: boolean;
     locale?: Locale;
@@ -42,6 +44,8 @@ const props = withDefaults(
   {
     locale: "zh-CN",
     showAiActions: false,
+    hasSelectedFolderAiRecord: false,
+    canOpenSelectedFolderAiBrowser: false,
   }
 );
 
@@ -53,6 +57,7 @@ const emit = defineEmits<{
   reorder: [number[]];
   analyze: [number];
   clearAi: [number];
+  openAiBrowser: [];
 }>();
 
 const folderName = ref("");
@@ -89,15 +94,13 @@ const SIDEBAR_TEXT: Record<
   | "namePlaceholder"
   | "descriptionPlaceholder"
   | "create"
+  | "aiTitle"
+  | "aiNoFolder"
+  | "aiTarget"
   | "aiAnalyze"
   | "aiAnalyzing"
-  | "aiClear"
-  | "aiAnalysis"
-  | "aiStatus"
-  | "aiStatusRunning"
-  | "aiStatusSuccess"
-  | "aiStatusError"
-  | "aiLastError",
+  | "aiOpen"
+  | "aiClear",
   Record<Locale, string>
 > = {
   folders: { "zh-CN": "收藏夹", "en-US": "Folders" },
@@ -117,10 +120,7 @@ const SIDEBAR_TEXT: Record<
   createFolder: { "zh-CN": "新建收藏夹", "en-US": "New Folder" },
   allVideos: { "zh-CN": "全部视频", "en-US": "All Videos" },
   folderName: { "zh-CN": "收藏夹名称", "en-US": "Folder Name" },
-  folderDescription: {
-    "zh-CN": "收藏夹简介",
-    "en-US": "Folder Description",
-  },
+  folderDescription: { "zh-CN": "收藏夹简介", "en-US": "Folder Description" },
   cancel: { "zh-CN": "取消", "en-US": "Cancel" },
   save: { "zh-CN": "保存", "en-US": "Save" },
   noDescription: { "zh-CN": "暂无简介", "en-US": "No description" },
@@ -128,24 +128,22 @@ const SIDEBAR_TEXT: Record<
   newFolderTitle: { "zh-CN": "创建收藏夹", "en-US": "Create Folder" },
   name: { "zh-CN": "名称", "en-US": "Name" },
   description: { "zh-CN": "简介", "en-US": "Description" },
-  namePlaceholder: {
-    "zh-CN": "请输入收藏夹名称",
-    "en-US": "Enter folder name",
-  },
+  namePlaceholder: { "zh-CN": "请输入收藏夹名称", "en-US": "Enter folder name" },
   descriptionPlaceholder: {
     "zh-CN": "可填写该收藏夹的用途说明",
     "en-US": "Describe this folder",
   },
   create: { "zh-CN": "创建", "en-US": "Create" },
-  aiAnalyze: { "zh-CN": "AI 分析", "en-US": "AI Analyze" },
-  aiAnalyzing: { "zh-CN": "分析中...", "en-US": "Analyzing..." },
-  aiClear: { "zh-CN": "清除 AI", "en-US": "Clear AI" },
-  aiAnalysis: { "zh-CN": "AI 分析状态", "en-US": "AI Analysis" },
-  aiStatus: { "zh-CN": "状态", "en-US": "Status" },
-  aiStatusRunning: { "zh-CN": "分析中", "en-US": "Running" },
-  aiStatusSuccess: { "zh-CN": "已完成", "en-US": "Success" },
-  aiStatusError: { "zh-CN": "失败", "en-US": "Error" },
-  aiLastError: { "zh-CN": "最近错误", "en-US": "Last Error" },
+  aiTitle: { "zh-CN": "AI 分类", "en-US": "AI Category" },
+  aiNoFolder: {
+    "zh-CN": "请先选择一个收藏夹再运行 AI 分类。",
+    "en-US": "Select a folder first to run AI categorization.",
+  },
+  aiTarget: { "zh-CN": "当前收藏夹：{name}", "en-US": "Current folder: {name}" },
+  aiAnalyze: { "zh-CN": "AI 分类", "en-US": "Run AI Category" },
+  aiAnalyzing: { "zh-CN": "分类中...", "en-US": "Categorizing..." },
+  aiOpen: { "zh-CN": "打开分类页", "en-US": "Open Category Page" },
+  aiClear: { "zh-CN": "清除分类", "en-US": "Clear Categories" },
 };
 
 function t(
@@ -185,22 +183,27 @@ const canDragSort = computed(
 const folderNameLength = computed(() => folderName.value.trim().length);
 const folderDescriptionLength = computed(() => folderDescription.value.length);
 const hasAiTaskRunning = computed(() => props.aiRunningFolderId !== null);
-const hasSelectedFolderAiRecord = computed(
-  () =>
-    props.selectedFolderAiStatus !== null ||
-    Boolean(props.selectedFolderAiLastError)
+const hasActiveFolder = computed(() => props.activeFolderId !== null);
+const canAnalyzeActiveFolder = computed(
+  () => props.showAiActions && hasActiveFolder.value && !hasAiTaskRunning.value
 );
-
-function isFolderAiRunning(folderId: number) {
-  return props.aiRunningFolderId === folderId;
-}
-
-function getAiStatusText(status: "idle" | "running" | "success" | "error" | null) {
-  if (status === "running") return t("aiStatusRunning");
-  if (status === "success") return t("aiStatusSuccess");
-  if (status === "error") return t("aiStatusError");
-  return "";
-}
+const canClearActiveFolderAi = computed(
+  () =>
+    props.showAiActions &&
+    hasActiveFolder.value &&
+    !hasAiTaskRunning.value &&
+    props.hasSelectedFolderAiRecord
+);
+const canOpenActiveFolderAiBrowser = computed(
+  () =>
+    props.showAiActions &&
+    hasActiveFolder.value &&
+    !hasAiTaskRunning.value &&
+    props.canOpenSelectedFolderAiBrowser
+);
+const activeFolderName = computed(
+  () => props.activeFolder?.name || (props.locale === "zh-CN" ? "未选择" : "None")
+);
 
 watch(
   () => props.folders,
@@ -286,6 +289,16 @@ function handleDrop(targetFolderId: number) {
 function handleDragEnd() {
   draggingFolderId.value = null;
   dragOverFolderId.value = null;
+}
+
+function triggerAnalyze() {
+  if (props.activeFolderId === null) return;
+  emit("analyze", props.activeFolderId);
+}
+
+function triggerClear() {
+  if (props.activeFolderId === null) return;
+  emit("clearAi", props.activeFolderId);
 }
 </script>
 
@@ -431,82 +444,73 @@ function handleDragEnd() {
               {{ t("videosCount", { count: folder.itemCount ?? 0 }) }}
             </p>
           </button>
-          <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <div v-if="props.showAiActions" class="flex flex-wrap gap-1">
-              <Button
-                size="sm"
-                variant="outline"
-                class="h-8 gap-1 px-2 text-xs"
-                :disabled="hasAiTaskRunning"
-                @click.stop="emit('analyze', folder.id)"
-              >
-                <Bot class="h-3.5 w-3.5" />
-                {{
-                  isFolderAiRunning(folder.id)
-                    ? t("aiAnalyzing")
-                    : t("aiAnalyze")
-                }}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                class="h-8 px-2 text-xs"
-                :disabled="
-                  hasAiTaskRunning ||
-                  props.activeFolderId !== folder.id ||
-                  !hasSelectedFolderAiRecord
-                "
-                @click.stop="emit('clearAi', folder.id)"
-              >
-                {{ t("aiClear") }}
-              </Button>
-            </div>
-            <div class="flex justify-end gap-1">
-              <Button
-                size="icon"
-                variant="ghost"
-                class="h-8 w-8"
-                @click="startEdit(folder)"
-              >
-                <Pencil class="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                class="h-8 w-8 text-red-500"
-                @click="handleDelete(folder.id)"
-              >
-                <Trash2 class="h-4 w-4" />
-              </Button>
-            </div>
+
+          <div class="mt-2 flex justify-end gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              class="h-8 w-8"
+              @click="startEdit(folder)"
+            >
+              <Pencil class="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              class="h-8 w-8 text-red-500"
+              @click="handleDelete(folder.id)"
+            >
+              <Trash2 class="h-4 w-4" />
+            </Button>
           </div>
         </template>
       </div>
     </div>
 
-    <div
-      v-if="props.showAiActions && props.activeFolderId !== null"
-      class="mt-4 rounded-xl border border-border/80 bg-card/70 p-3"
+    <section
+      v-if="props.showAiActions"
+      class="mt-4 space-y-3 rounded-xl border border-border/80 bg-card/70 p-3"
     >
       <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <Bot class="h-3.5 w-3.5" />
-        <span>{{ t("aiAnalysis") }}</span>
+        <span>{{ t("aiTitle") }}</span>
       </div>
-      <p
-        v-if="props.selectedFolderAiStatus"
-        class="mt-2 text-xs text-muted-foreground"
-      >
-        <span class="font-semibold">{{ t("aiStatus") }}:</span>
-        {{ getAiStatusText(props.selectedFolderAiStatus) }}
+
+      <p v-if="hasActiveFolder" class="text-xs text-muted-foreground">
+        {{ t("aiTarget", { name: activeFolderName }) }}
       </p>
-      <p
-        v-if="props.selectedFolderAiLastError"
-        class="mt-2 whitespace-pre-wrap text-xs text-red-500"
-      >
-        <span class="font-semibold">{{ t("aiLastError") }}:</span>
-        {{ props.selectedFolderAiLastError }}
+      <p v-else class="text-xs text-muted-foreground">
+        {{ t("aiNoFolder") }}
       </p>
-    </div>
+
+      <div class="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          class="gap-1"
+          :disabled="!canAnalyzeActiveFolder"
+          @click="triggerAnalyze"
+        >
+          <Sparkles class="h-3.5 w-3.5" />
+          {{ hasAiTaskRunning ? t("aiAnalyzing") : t("aiAnalyze") }}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          :disabled="!canOpenActiveFolderAiBrowser"
+          @click="emit('openAiBrowser')"
+        >
+          {{ t("aiOpen") }}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          :disabled="!canClearActiveFolderAi"
+          @click="triggerClear"
+        >
+          {{ t("aiClear") }}
+        </Button>
+      </div>
+    </section>
 
     <Dialog v-model:open="createDialogOpen">
       <DialogContent class="max-w-lg border-border/80 p-0">

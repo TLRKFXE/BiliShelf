@@ -14,6 +14,7 @@ import BidirectionalSyncSettingsDialog from "./components/dialogs/BidirectionalS
 import WebDavBackupDialog from "./components/dialogs/WebDavBackupDialog.vue";
 import VideoDetailDialog from "./components/dialogs/VideoDetailDialog.vue";
 import FolderSidebar from "./components/FolderSidebar.vue";
+import AiCategoryBrowser from "./components/AiCategoryBrowser.vue";
 import ManagerHeader from "./components/layout/ManagerHeader.vue";
 import ManagerPanel from "./components/panels/ManagerPanel.vue";
 import TrashPanel from "./components/panels/TrashPanel.vue";
@@ -41,6 +42,7 @@ import {
   clearFolderAiCategories,
   exportLibrary,
   fetchAiSettings,
+  fetchVideos,
   fetchFolderAiCategories,
   fetchHistoryModelSyncStatus,
   fetchTagEnrichmentStatus,
@@ -69,7 +71,14 @@ import {
   updateVideo,
   type SyncRemoteFolder,
 } from "./lib/api";
-import type { AiSettings, FolderAiCategories, Tag } from "./types";
+import type {
+  AiCategoryKey,
+  AiSettings,
+  Folder,
+  FolderAiCategories,
+  Tag,
+  Video,
+} from "./types";
 
 const uiStore = useAppUiStore();
 const { locale, isDark } = storeToRefs(uiStore);
@@ -178,7 +187,12 @@ const aiSettingsDialogOpen = ref(false);
 const aiSettings = ref<AiSettings | null>(null);
 const aiSettingsBusy = ref(false);
 const selectedFolderAiCategories = ref<FolderAiCategories | null>(null);
+const folderAiCategoriesCache = ref<Record<number, FolderAiCategories>>({});
 const aiRunningFolderId = ref<number | null>(null);
+const aiCategoryBrowserOpen = ref(false);
+const aiCategoryBrowserCategory = ref<AiCategoryKey | null>(null);
+const aiBrowserFolderVideos = ref<Record<number, Video[]>>({});
+const aiBrowserFolderVideosLoading = ref<Record<number, boolean>>({});
 const bidirectionalSyncDialogOpen = ref(false);
 const bidirectionalSyncSettings = ref<BidirectionalSyncSettings | null>(null);
 const bidirectionalSyncSaving = ref(false);
@@ -260,12 +274,28 @@ const detailVideoWithAi = computed(() => {
     },
   };
 });
-const selectedFolderAiStatus = computed(
-  () => selectedFolderAiCategories.value?.status ?? null
+const activeFolder = computed<Folder | null>(() => {
+  const folderId = selectedFolderId.value;
+  if (folderId === null) return null;
+  return folders.value.find((item) => item.id === folderId) ?? null;
+});
+const selectedFolderHasAiRecord = computed(
+  () => selectedFolderAiCategories.value !== null
 );
-const selectedFolderAiLastError = computed(
-  () => selectedFolderAiCategories.value?.lastError ?? null
-);
+const selectedFolderCanOpenAiBrowser = computed(() => {
+  if (trashMode.value || selectedFolderId.value === null) return false;
+  return selectedFolderAiCategories.value !== null;
+});
+const aiCategoryBrowserVideos = computed(() => {
+  const folderId = activeFolder.value?.id;
+  if (!folderId) return [] as Video[];
+  return aiBrowserFolderVideos.value[folderId] ?? [];
+});
+const aiCategoryBrowserVideosLoading = computed(() => {
+  const folderId = activeFolder.value?.id;
+  if (!folderId) return false;
+  return Boolean(aiBrowserFolderVideosLoading.value[folderId]);
+});
 const {
   currentViewLabel: headerCurrentViewLabel,
   currentScopeLabel: headerCurrentScopeLabel,
@@ -490,6 +520,11 @@ const {
   refreshVideos,
   locale,
 });
+
+async function handleSelectFolderWithAiBrowser(id: number | null) {
+  closeAiCategoryBrowser();
+  await handleSelectFolder(id);
+}
 
 function handleBatchPanelToggle() {
   if (batchPanelOpen.value) {
@@ -949,6 +984,90 @@ async function refreshAiSettings() {
   }
 }
 
+function setFolderAiCategoryCache(
+  folderId: number,
+  categories: FolderAiCategories | null
+) {
+  const next = { ...folderAiCategoriesCache.value };
+  if (categories) {
+    next[folderId] = categories;
+  } else {
+    delete next[folderId];
+  }
+  folderAiCategoriesCache.value = next;
+}
+
+function clearAiBrowserFolderVideosCache(folderId: number) {
+  const nextVideos = { ...aiBrowserFolderVideos.value };
+  const nextLoading = { ...aiBrowserFolderVideosLoading.value };
+  delete nextVideos[folderId];
+  delete nextLoading[folderId];
+  aiBrowserFolderVideos.value = nextVideos;
+  aiBrowserFolderVideosLoading.value = nextLoading;
+}
+
+async function ensureAiBrowserFolderVideos(folderId: number) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) return;
+  if (aiBrowserFolderVideos.value[folderId]) return;
+  if (aiBrowserFolderVideosLoading.value[folderId]) return;
+
+  aiBrowserFolderVideosLoading.value = {
+    ...aiBrowserFolderVideosLoading.value,
+    [folderId]: true,
+  };
+
+  try {
+    const loaded: Video[] = [];
+    const pageSize = 100;
+    let page = 1;
+    let total = Number.POSITIVE_INFINITY;
+
+    while (loaded.length < total) {
+      const response = await fetchVideos({ folderId, page, pageSize });
+      loaded.push(...(response.items ?? []));
+      total = response.pagination?.total ?? loaded.length;
+      if (!response.items?.length) break;
+      page += 1;
+      if (page > 300) break;
+    }
+
+    aiBrowserFolderVideos.value = {
+      ...aiBrowserFolderVideos.value,
+      [folderId]: loaded,
+    };
+  } catch (error) {
+    notifyError(t("toast.folderAiBrowserVideosLoadFail"), error);
+  } finally {
+    aiBrowserFolderVideosLoading.value = {
+      ...aiBrowserFolderVideosLoading.value,
+      [folderId]: false,
+    };
+  }
+}
+
+async function openAiCategoryBrowser() {
+  const folderId = selectedFolderId.value;
+  if (!EXTENSION_LOCAL_API_RUNTIME || trashMode.value || folderId === null) return;
+
+  if (!selectedFolderAiCategories.value) {
+    selectedFolderAiCategories.value = folderAiCategoriesCache.value[folderId] ?? null;
+  }
+  if (!selectedFolderAiCategories.value) return;
+
+  aiCategoryBrowserCategory.value = null;
+  aiCategoryBrowserOpen.value = true;
+  void ensureAiBrowserFolderVideos(folderId);
+}
+
+function closeAiCategoryBrowser() {
+  aiCategoryBrowserOpen.value = false;
+  aiCategoryBrowserCategory.value = null;
+}
+
+function openAiCategory(category: AiCategoryKey) {
+  aiCategoryBrowserCategory.value = category;
+}
+
 async function refreshSelectedFolderAiCategories(folderId: number | null) {
   const requestToken = ++folderAiFetchToken;
   if (!EXTENSION_LOCAL_API_RUNTIME || trashMode.value || folderId === null) {
@@ -961,6 +1080,7 @@ async function refreshSelectedFolderAiCategories(folderId: number | null) {
     if (requestToken !== folderAiFetchToken) return;
     if (selectedFolderId.value !== folderId || trashMode.value) return;
     selectedFolderAiCategories.value = categories;
+    setFolderAiCategoryCache(folderId, categories);
   } catch (error) {
     if (requestToken !== folderAiFetchToken) return;
     selectedFolderAiCategories.value = null;
@@ -972,6 +1092,9 @@ async function performFolderAiCategories(folderId: number) {
   if (!EXTENSION_LOCAL_API_RUNTIME) {
     throw new Error("AI analysis is unavailable in this runtime.");
   }
+  if (selectedFolderId.value !== folderId || trashMode.value) {
+    throw new Error("Please analyze the active folder.");
+  }
   if (aiRunningFolderId.value !== null) {
     throw new Error("AI analysis is already running.");
   }
@@ -981,6 +1104,10 @@ async function performFolderAiCategories(folderId: number) {
     const categories = await runFolderAiCategories(folderId);
     if (selectedFolderId.value === folderId && !trashMode.value) {
       selectedFolderAiCategories.value = categories;
+      setFolderAiCategoryCache(folderId, categories);
+      aiCategoryBrowserCategory.value = null;
+      aiCategoryBrowserOpen.value = true;
+      void ensureAiBrowserFolderVideos(folderId);
     }
   } catch (error) {
     if (selectedFolderId.value === folderId && !trashMode.value) {
@@ -1000,8 +1127,11 @@ async function performClearFolderAiCategories(folderId: number) {
   }
 
   await clearFolderAiCategories(folderId);
+  setFolderAiCategoryCache(folderId, null);
+  clearAiBrowserFolderVideosCache(folderId);
   if (selectedFolderId.value === folderId) {
     selectedFolderAiCategories.value = null;
+    closeAiCategoryBrowser();
   }
 }
 
@@ -2037,12 +2167,18 @@ watch(
 
 watch(
   [selectedFolderId, trashMode],
-  ([folderId, isTrash]) => {
-    if (isTrash) {
+  ([folderId, isTrash], [previousFolderId, wasTrash] = [null, false]) => {
+    if (isTrash || folderId === null) {
       folderAiFetchToken += 1;
       selectedFolderAiCategories.value = null;
+      closeAiCategoryBrowser();
       return;
     }
+    if (wasTrash || previousFolderId !== folderId) {
+      closeAiCategoryBrowser();
+    }
+    selectedFolderAiCategories.value =
+      folderAiCategoriesCache.value[folderId] ?? null;
     void refreshSelectedFolderAiCategories(folderId);
   },
   { immediate: true }
@@ -2123,19 +2259,21 @@ onBeforeUnmount(() => {
   >
     <FolderSidebar
       :folders="folders"
+      :active-folder="activeFolder"
       :active-folder-id="selectedFolderId"
-      :selected-folder-ai-status="selectedFolderAiStatus"
-      :selected-folder-ai-last-error="selectedFolderAiLastError"
+      :has-selected-folder-ai-record="selectedFolderHasAiRecord"
+      :can-open-selected-folder-ai-browser="selectedFolderCanOpenAiBrowser"
       :ai-running-folder-id="aiRunningFolderId"
       :show-ai-actions="EXTENSION_LOCAL_API_RUNTIME && !trashMode"
       :locale="locale"
-      @select="handleSelectFolder"
+      @select="handleSelectFolderWithAiBrowser"
       @create="handleCreateFolder"
       @update="handleUpdateFolder"
       @remove="handleRemoveFolder"
       @reorder="handleReorderFolders"
       @analyze="handleAnalyzeFolder"
       @clear-ai="handleClearFolderAi"
+      @open-ai-browser="openAiCategoryBrowser"
     />
 
     <section class="min-w-0 space-y-4">
@@ -2304,8 +2442,21 @@ onBeforeUnmount(() => {
         </p>
       </section>
 
+      <AiCategoryBrowser
+        v-if="!trashMode && aiCategoryBrowserOpen"
+        :t="t"
+        :locale="locale"
+        :folder="activeFolder"
+        :result="selectedFolderAiCategories"
+        :videos="aiCategoryBrowserVideos"
+        :videos-loading="aiCategoryBrowserVideosLoading"
+        :initial-category="aiCategoryBrowserCategory"
+        @back="closeAiCategoryBrowser"
+        @open-category="openAiCategory"
+      />
+
       <ManagerPanel
-        v-if="!trashMode"
+        v-else-if="!trashMode"
         :t="t"
         :locale="locale"
         :keyword="keyword"

@@ -556,6 +556,59 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "detail.saving": { "zh-CN": "Saving...", "en-US": "Saving..." },
   "folder.allVideos": { "zh-CN": "全部视频", "en-US": "All Videos" },
   "folder.unknown": { "zh-CN": "未知收藏夹", "en-US": "Unknown Folder" },
+  "ai.browser.title": { "zh-CN": "AI 分类浏览", "en-US": "AI Category Browser" },
+  "ai.browser.unknownFolder": {
+    "zh-CN": "未知收藏夹",
+    "en-US": "Unknown Folder",
+  },
+  "ai.browser.videoCount": {
+    "zh-CN": "{count} 个视频",
+    "en-US": "{count} videos",
+  },
+  "ai.browser.categoryCount": {
+    "zh-CN": "{count} 个分类",
+    "en-US": "{count} categories",
+  },
+  "ai.browser.backToManager": {
+    "zh-CN": "返回管理页",
+    "en-US": "Back To Manager",
+  },
+  "ai.browser.backToOverview": {
+    "zh-CN": "返回分类总览",
+    "en-US": "Back To Overview",
+  },
+  "ai.browser.emptyResult": {
+    "zh-CN": "当前收藏夹暂无 AI 分类结果。",
+    "en-US": "No AI category result for this folder yet.",
+  },
+  "ai.browser.emptyOverview": {
+    "zh-CN": "当前分类结果为空。",
+    "en-US": "No categorized videos available.",
+  },
+  "ai.browser.emptyCategory": {
+    "zh-CN": "该分类暂无可展示的视频。",
+    "en-US": "No videos available in this category.",
+  },
+  "ai.browser.footerHint": {
+    "zh-CN": "点击分类卡片可进入该分类的视频详情页模式。",
+    "en-US": "Open a category card to browse videos in detail mode.",
+  },
+  "ai.category.animation": { "zh-CN": "动画", "en-US": "Animation" },
+  "ai.category.music": { "zh-CN": "音乐", "en-US": "Music" },
+  "ai.category.dance": { "zh-CN": "舞蹈", "en-US": "Dance" },
+  "ai.category.game": { "zh-CN": "游戏", "en-US": "Game" },
+  "ai.category.knowledge": { "zh-CN": "知识", "en-US": "Knowledge" },
+  "ai.category.tech": { "zh-CN": "科技", "en-US": "Tech" },
+  "ai.category.sports": { "zh-CN": "运动", "en-US": "Sports" },
+  "ai.category.car": { "zh-CN": "汽车", "en-US": "Car" },
+  "ai.category.life": { "zh-CN": "生活", "en-US": "Life" },
+  "ai.category.food": { "zh-CN": "美食", "en-US": "Food" },
+  "ai.category.animal": { "zh-CN": "动物", "en-US": "Animal" },
+  "ai.category.fashion": { "zh-CN": "时尚", "en-US": "Fashion" },
+  "ai.category.ent": { "zh-CN": "娱乐", "en-US": "Entertainment" },
+  "ai.category.cinephile": { "zh-CN": "影视", "en-US": "Cinephile" },
+  "ai.category.news": { "zh-CN": "资讯", "en-US": "News" },
+  "ai.category.other": { "zh-CN": "其他", "en-US": "Other" },
   "toast.loadFoldersFail": {
     "zh-CN": "Failed to load folders",
     "en-US": "Failed to load folders",
@@ -849,6 +902,10 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "toast.folderAiLoadFail": {
     "zh-CN": "加载文件夹 AI 结果失败",
     "en-US": "Failed to load folder AI analysis",
+  },
+  "toast.folderAiBrowserVideosLoadFail": {
+    "zh-CN": "加载分类视频失败",
+    "en-US": "Failed to load categorized videos",
   },
   "toast.folderAiAnalyzeDone": {
     "zh-CN": "文件夹 AI 分析完成",
