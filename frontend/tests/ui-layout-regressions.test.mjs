@@ -8,7 +8,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function readComponentSource(relativePath) {
   const fullPath = path.resolve(__dirname, "..", "src", ...relativePath);
-  return readFile(fullPath, "utf8");
+  const source = await readFile(fullPath, "utf8");
+  return source.replace(/\r\n/g, "\n");
 }
 
 test("manager header keeps both action rows in stable four-column grids", async () => {
