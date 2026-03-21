@@ -6,6 +6,7 @@ import {
   matchFolderAiCategoriesPath,
   runFolderAiCategories,
 } from "../shared/ai-analysis.js";
+import { formatAiProviderErrorMessage } from "../shared/ai-provider-error.js";
 
 test("runFolderAiCategories groups videos without generating a folder summary", async () => {
   const input = {
@@ -141,23 +142,7 @@ test("matchFolderAiCategoriesPath supports preferred route and legacy alias", ()
   assert.equal(invalid, null);
 });
 
-test("returns provider quota error instead of a generic timeout message", async () => {
-  const input = {
-    folderId: 42,
-    folderName: "Test Folder",
-    folderDescription: "",
-    videos: [
-      {
-        videoId: 9001,
-        title: "Test Video",
-        uploader: "Uploader",
-        description: "",
-        customTags: [],
-        systemTags: [],
-      },
-    ],
-  };
-
+test("returns provider quota error instead of a generic timeout message", () => {
   const provider429Body = JSON.stringify({
     error: {
       code: 429,
@@ -167,22 +152,9 @@ test("returns provider quota error instead of a generic timeout message", async 
     },
   });
 
-  await assert.rejects(
-    () =>
-      runFolderAiCategories({
-        folderId: 42,
-        input,
-        provider: "gemini",
-        model: "gemini-2.5-flash",
-        now: () => 1234,
-        classifyVideo: async () => {
-          throw new Error(provider429Body);
-        },
-      }),
-    (error) => {
-      assert.match(String(error?.message), /quota/i);
-      assert.doesNotMatch(String(error?.message), /timeout/i);
-      return true;
-    },
-  );
+  const message = formatAiProviderErrorMessage(429, provider429Body);
+
+  assert.match(message, /quota/i);
+  assert.match(message, /retry after 7s/i);
+  assert.doesNotMatch(message, /timeout/i);
 });

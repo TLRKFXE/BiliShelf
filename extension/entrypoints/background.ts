@@ -14,6 +14,7 @@ import {
   matchFolderAiCategoriesPath,
   runFolderAiCategories
 } from "../shared/ai-analysis.js";
+import { formatAiProviderErrorMessage } from "../shared/ai-provider-error.js";
 import type {
   AiMeta as SharedAiMeta,
   AiProvider as SharedAiProvider,
@@ -2093,48 +2094,6 @@ function extractGeminiText(payload: Record<string, unknown>) {
     )
     .filter(Boolean)
     .join("\n");
-}
-
-function formatAiProviderErrorMessage(statusCode: number, responseText: string) {
-  const fallback = normalizeText(responseText) || `AI request failed (${statusCode})`;
-  let parsed: Record<string, unknown> | null = null;
-  try {
-    parsed = JSON.parse(responseText) as Record<string, unknown>;
-  } catch {
-    return fallback;
-  }
-  if (!parsed || typeof parsed !== "object") return fallback;
-
-  const rootError =
-    parsed.error && typeof parsed.error === "object"
-      ? (parsed.error as Record<string, unknown>)
-      : parsed;
-  const code = Number(rootError.code);
-  const providerStatus = normalizeText(rootError.status).toUpperCase();
-  const providerMessage = normalizeText(rootError.message);
-  const details = Array.isArray(rootError.details) ? rootError.details : [];
-
-  let retryDelay = "";
-  for (const detail of details) {
-    if (!detail || typeof detail !== "object") continue;
-    const candidate = normalizeText((detail as { retryDelay?: unknown }).retryDelay);
-    if (candidate) {
-      retryDelay = candidate;
-      break;
-    }
-  }
-
-  const isQuotaError =
-    statusCode === 429 ||
-    code === 429 ||
-    providerStatus === "RESOURCE_EXHAUSTED" ||
-    providerStatus.includes("QUOTA") ||
-    providerMessage.toLowerCase().includes("quota");
-  if (!isQuotaError) return fallback;
-
-  const retrySuffix = retryDelay ? ` Retry after ${retryDelay}.` : "";
-  const detailSuffix = providerMessage ? ` ${providerMessage}` : "";
-  return `AI provider quota exceeded.${detailSuffix}${retrySuffix}`.trim();
 }
 
 async function requestAiJson(meta: AiMeta, prompt: string) {
