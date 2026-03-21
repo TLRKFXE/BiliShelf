@@ -5,11 +5,10 @@ import {
 } from "../shared/ai-state.js";
 import {
   maskApiKeyStateForResponse,
-  normalizeClassificationPayload,
-  normalizeFolderSummaryPayload
+  normalizeClassificationPayload
 } from "../shared/ai-provider.js";
 import {
-  applyFolderAnalysisAttempt,
+  applyFolderCategoryAttempt,
   buildFolderAnalysisInput
 } from "../shared/ai-analysis.js";
 import type {
@@ -2196,22 +2195,6 @@ async function classifyFolderVideo(meta: AiMeta, input: FolderAnalysisInput, vid
   return normalizeClassificationPayload(payload);
 }
 
-async function summarizeFolder(meta: AiMeta, input: FolderAnalysisInput, classifiedVideos: Array<{ title: string; categories: string[] }>) {
-  const payload = await requestAiJson(
-    meta,
-    [
-      "You summarize a folder and return JSON only.",
-      'Return schema: {"summary":"short summary"}',
-      `Folder: ${input.folderName}`,
-      `Folder description: ${input.folderDescription || "-"}`,
-      `Videos: ${classifiedVideos
-        .map((video) => `${video.title} -> ${video.categories.join(", ") || "Uncategorized"}`)
-        .join(" | ")}`
-    ].join("\n")
-  );
-  return normalizeFolderSummaryPayload(payload);
-}
-
 function getFolderAiAnalysis(state: LocalState, folderId: number) {
   const folderRecord = ensureAiMeta(state).folderAnalyses.find(
     (item) => item.folderId === folderId
@@ -2240,7 +2223,6 @@ function writeFolderAiAnalysis(
   );
   aiMeta.folderAnalyses.push({
     folderId: snapshot.folderId,
-    summary: snapshot.summary,
     status: snapshot.status,
     lastError: snapshot.lastError,
     startedAt: snapshot.startedAt,
@@ -2274,27 +2256,15 @@ async function runFolderAiAnalysisInState(state: LocalState, folderId: number) {
     nextVideoAnalyses.push({
       folderId,
       videoId: video.videoId,
-      categories: classified.categories,
-      reasoningSnippet: classified.reasoningSnippet,
+      category: classified.categories[0] || "",
       analyzedAt: now(),
       provider: aiMeta.provider,
       model: aiMeta.model
     });
   }
 
-  const summaryPayload = await summarizeFolder(
-    aiMeta,
-    input,
-    input.videos.map((video) => ({
-      title: video.title,
-      categories:
-        nextVideoAnalyses.find((item) => item.videoId === video.videoId)?.categories ?? []
-    }))
-  );
-
   const folderRecord: FolderAiAnalysisRecord = {
     folderId,
-    summary: summaryPayload.summary,
     status: "success",
     lastError: null,
     startedAt,
@@ -2307,7 +2277,7 @@ async function runFolderAiAnalysisInState(state: LocalState, folderId: number) {
   const previousAnalysis = getFolderAiAnalysis(state, folderId);
   return writeFolderAiAnalysis(
     state,
-    applyFolderAnalysisAttempt(previousAnalysis, {
+    applyFolderCategoryAttempt(previousAnalysis, {
       ...folderRecord,
       videos: nextVideoAnalyses
     })
@@ -3804,9 +3774,8 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         const startedAt = now();
         writeFolderAiAnalysis(
           state,
-          applyFolderAnalysisAttempt(currentAnalysis, {
+          applyFolderCategoryAttempt(currentAnalysis, {
             folderId,
-            summary: null,
             status: "running",
             lastError: null,
             startedAt,
@@ -3837,9 +3806,8 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           const finishedAt = now();
           writeFolderAiAnalysis(
             state,
-            applyFolderAnalysisAttempt(currentAnalysis, {
+            applyFolderCategoryAttempt(currentAnalysis, {
               folderId,
-              summary: null,
               status: "error",
               lastError: message,
               startedAt: currentAnalysis?.startedAt ?? finishedAt,

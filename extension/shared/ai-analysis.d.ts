@@ -22,12 +22,12 @@ export type FolderAnalysisInput = {
   videos: FolderAnalysisVideoInput[];
 };
 
-export type FolderAnalysisSnapshot = FolderAiAnalysisRecord & {
+export type FolderCategorySnapshot = FolderAiAnalysisRecord & {
   videos: VideoAiAnalysisRecord[];
 };
 
 export function buildFolderAnalysisInput(state: unknown, folderId: number): FolderAnalysisInput;
-export function applyFolderAnalysisAttempt(
-  previousAnalysis: FolderAnalysisSnapshot | null | undefined,
-  nextAttempt: FolderAnalysisSnapshot | null | undefined,
-): FolderAnalysisSnapshot | null;
+export function applyFolderCategoryAttempt(
+  previousAnalysis: FolderCategorySnapshot | null | undefined,
+  nextAttempt: FolderCategorySnapshot | null | undefined,
+): FolderCategorySnapshot | null;

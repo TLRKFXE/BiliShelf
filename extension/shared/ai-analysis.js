@@ -26,9 +26,7 @@ function normalizeStatus(value) {
 }
 
 function normalizeVideoAnalysisRecord(record, fallbackFolderId, fallbackProvider, fallbackModel) {
-  const category =
-    normalizeText(record?.category) ||
-    normalizeText(Array.isArray(record?.categories) ? record.categories[0] : "");
+  const category = normalizeText(record?.category);
   return {
     folderId: Number(record?.folderId) > 0 ? Number(record.folderId) : Number(fallbackFolderId),
     videoId: Number(record?.videoId) > 0 ? Number(record.videoId) : 0,
@@ -104,8 +102,6 @@ export function applyFolderCategoryAttempt(previousAnalysis, nextAttempt) {
     model: next.model || previous.model,
   };
 }
-
-export const applyFolderAnalysisAttempt = applyFolderCategoryAttempt;
 
 export function buildFolderAnalysisInput(state, folderId) {
   const folder = Array.isArray(state?.folders)

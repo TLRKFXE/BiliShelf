@@ -56,9 +56,7 @@ function normalizeFolderAnalysisRecord(record, nowValue) {
 function normalizeVideoAnalysisRecord(record) {
   const folderId = toInt(record?.folderId, 0);
   const videoId = toInt(record?.videoId, 0);
-  const category =
-    normalizeText(record?.category) ||
-    normalizeText(Array.isArray(record?.categories) ? record.categories[0] : "");
+  const category = normalizeText(record?.category);
   if (folderId <= 0 || videoId <= 0 || !category) return null;
 
   return {

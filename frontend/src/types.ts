@@ -94,6 +94,7 @@ export type AiFolderAnalysisStatus = "idle" | "running" | "success" | "error";
 export type AiCategoryKey = string;
 
 export type AiVideoAnalysis = {
+  folderId: number;
   videoId: number;
   category: AiCategoryKey;
   analyzedAt: number | null;

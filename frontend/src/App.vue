@@ -253,17 +253,14 @@ const detailVideoWithAi = computed(() => {
   return {
     ...currentDetailVideo,
     aiAnalysis: {
-      categories: matchedAnalysis.categories,
+      categories: matchedAnalysis.category ? [matchedAnalysis.category] : [],
       analyzedAt: matchedAnalysis.analyzedAt,
       provider: matchedAnalysis.provider,
       model: matchedAnalysis.model,
     },
   };
 });
-const selectedFolderAiSummary = computed(() => {
-  const summary = selectedFolderAiAnalysis.value?.summary?.trim();
-  return summary ? summary : null;
-});
+const selectedFolderAiSummary = computed(() => null);
 const selectedFolderAiStatus = computed(
   () => selectedFolderAiAnalysis.value?.status ?? null
 );
