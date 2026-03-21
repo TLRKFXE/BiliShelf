@@ -2184,7 +2184,7 @@ async function classifyFolderVideo(meta: AiMeta, input: FolderAnalysisInput, vid
     meta,
     [
       "You analyze one video inside a folder and return JSON only.",
-      'Return schema: {"categories":["Category"]}',
+      'Return schema: {"category":"CategoryKey"}',
       `Folder: ${input.folderName}`,
       `Video title: ${video.title}`,
       `Uploader: ${video.uploader}`,
@@ -2194,13 +2194,6 @@ async function classifyFolderVideo(meta: AiMeta, input: FolderAnalysisInput, vid
     ].join("\n")
   );
   return normalizeClassificationPayload(payload);
-}
-
-function resolveAiCategoryKey(categories: string[]) {
-  const normalized = Array.isArray(categories)
-    ? categories.map((item) => normalizeText(item)).find(Boolean)
-    : "";
-  return normalized || DEFAULT_AI_CATEGORY_KEY;
 }
 
 function getFolderAiAnalysis(state: LocalState, folderId: number) {
@@ -2264,7 +2257,7 @@ async function runFolderAiAnalysisInState(state: LocalState, folderId: number) {
     nextVideoAnalyses.push({
       folderId,
       videoId: video.videoId,
-      category: resolveAiCategoryKey(classified.categories),
+      category: classified.category || DEFAULT_AI_CATEGORY_KEY,
       analyzedAt: now(),
       provider: aiMeta.provider,
       model: aiMeta.model
