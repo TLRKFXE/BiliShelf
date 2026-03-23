@@ -197,8 +197,6 @@ const PAGE_FETCH_MESSAGE_TYPE = "BILISHELF_PAGE_FETCH_JSON";
 const TAG_ENRICH_ALARM = "bilishelf-tag-enrich";
 const STAGE3_RECONCILE_ALARM = "bilishelf-stage3-reconcile";
 const TAG_ENRICH_BATCH_SIZE = 2;
-const TAG_ENRICH_RETRY_DELAY_MINUTES = 1;
-const TAG_ENRICH_RISK_DELAY_MINUTES = 20;
 const STAGE3_RECONCILE_DEFAULT_INTERVAL_MINUTES = 30;
 const STAGE3_RECONCILE_RETRY_DELAY_MINUTES = 5;
 const STAGE3_RECONCILE_RISK_DELAY_MINUTES = 20;
@@ -2266,14 +2264,7 @@ function bindSystemTagsToVideo(state: LocalState, videoId: number, tagNames: str
   return boundCount;
 }
 
-function scheduleTagEnrichment(minutes: number) {
-  if (!chrome.alarms?.create) return;
-  chrome.alarms.create(TAG_ENRICH_ALARM, {
-    delayInMinutes: Math.max(1, Math.ceil(minutes))
-  });
-}
-
-async function runTagEnrichmentBatch(trigger: "sync" | "alarm" | "startup") {
+async function runTagEnrichmentBatch() {
   const plan = await withState((state) => {
     const meta = ensureTagEnrichmentMeta(state);
     const batch = collectMissingSystemTagCandidateDtos(
@@ -2346,7 +2337,9 @@ async function runTagEnrichmentBatch(trigger: "sync" | "alarm" | "startup") {
     meta.lastBatchBound = bound;
     meta.totalMissing = countMissingSystemTagVideos(state);
     meta.cursorAfterVideoId = lastProcessedVideoId;
-    meta.lastError = riskBlocked ? lastErrorMessage || "Risk-control blocked (412)" : null;
+    meta.lastError = riskBlocked
+      ? lastErrorMessage || "Risk-control blocked (412). Run tag enrichment manually after cooldown."
+      : null;
     if (meta.totalMissing <= 0) {
       meta.cursorAfterVideoId = 0;
       meta.lastError = null;
@@ -2357,26 +2350,16 @@ async function runTagEnrichmentBatch(trigger: "sync" | "alarm" | "startup") {
     };
   }, true);
 
-  if (riskBlocked) {
-    scheduleTagEnrichment(TAG_ENRICH_RISK_DELAY_MINUTES);
-    return;
-  }
-  if (result.missing > 0) {
-    scheduleTagEnrichment(TAG_ENRICH_RETRY_DELAY_MINUTES);
-    return;
-  }
-
-  if (trigger === "startup" && result.missing === 0 && chrome.alarms?.clear) {
+  if (!riskBlocked && result.missing <= 0 && chrome.alarms?.clear) {
     chrome.alarms.clear(TAG_ENRICH_ALARM);
   }
 }
 
-function triggerTagEnrichment(trigger: "sync" | "alarm" | "startup") {
+function triggerTagEnrichment() {
   if (tagEnrichmentTask) return tagEnrichmentTask;
-  tagEnrichmentTask = runTagEnrichmentBatch(trigger)
+  tagEnrichmentTask = runTagEnrichmentBatch()
     .catch((error) => {
       console.warn("[tag-enrich] failed:", error);
-      scheduleTagEnrichment(TAG_ENRICH_RETRY_DELAY_MINUTES);
     })
     .finally(() => {
       tagEnrichmentTask = null;
@@ -3175,10 +3158,6 @@ function startFavoritesSyncTask(params: {
         summary: result.summary,
         errors: result.errors
       });
-      if (TAG_SYNC_ENABLED && result.summary.videosProcessed > 0) {
-        scheduleTagEnrichment(1);
-        void triggerTagEnrichment("sync");
-      }
     })
     .catch((error) => {
       const message = isBiliRequestError(error)
@@ -3703,8 +3682,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         const meta = ensureTagEnrichmentMeta(state);
         meta.paused = false;
         meta.lastError = null;
-        scheduleTagEnrichment(1);
-        void triggerTagEnrichment("sync");
+        void triggerTagEnrichment();
         return ok({
           ok: true,
           ...getTagEnrichmentStatus(state)
@@ -3720,8 +3698,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         }
         const meta = ensureTagEnrichmentMeta(state);
         if (!meta.paused) {
-          scheduleTagEnrichment(1);
-          void triggerTagEnrichment("sync");
+          void triggerTagEnrichment();
         }
         return ok({
           ok: true,
@@ -4945,19 +4922,19 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
 }
 
 export default defineBackground(() => {
+  if (chrome.alarms?.clear) {
+    chrome.alarms.clear(TAG_ENRICH_ALARM);
+  }
+
   if (chrome.alarms?.onAlarm) {
     chrome.alarms.onAlarm.addListener((alarm) => {
       if (alarm.name === TAG_ENRICH_ALARM) {
-        if (TAG_SYNC_ENABLED) {
-          void triggerTagEnrichment("alarm");
+        if (chrome.alarms?.clear) {
+          chrome.alarms.clear(TAG_ENRICH_ALARM);
         }
         return;
       }
     });
-  }
-
-  if (TAG_SYNC_ENABLED) {
-    void triggerTagEnrichment("startup");
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

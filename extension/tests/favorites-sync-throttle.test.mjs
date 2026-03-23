@@ -70,3 +70,50 @@ test("background sync imports the throttle helper instead of fixed favorites pac
   assert.doesNotMatch(source, /FAVORITES_PAGE_GAP_MS/);
   assert.doesNotMatch(source, /FAVORITES_PAGE_GAP_JITTER_MS/);
 });
+
+test("background startup does not auto-trigger tag enrichment requests", async () => {
+  const source = await readFile(
+    path.join(repoRoot, "extension", "entrypoints", "background.ts"),
+    "utf8"
+  );
+
+  assert.doesNotMatch(source, /triggerTagEnrichment\("startup"\)/);
+});
+
+test("background favorites sync completion does not auto-trigger tag enrichment requests", async () => {
+  const source = await readFile(
+    path.join(repoRoot, "extension", "entrypoints", "background.ts"),
+    "utf8"
+  );
+
+  assert.doesNotMatch(
+    source,
+    /result\.summary\.videosProcessed > 0[\s\S]{0,240}scheduleTagEnrichment\(1\)/
+  );
+  assert.doesNotMatch(
+    source,
+    /result\.summary\.videosProcessed > 0[\s\S]{0,240}triggerTagEnrichment\("sync"\)/
+  );
+});
+
+test("background alarm handler does not resume tag enrichment requests", async () => {
+  const source = await readFile(
+    path.join(repoRoot, "extension", "entrypoints", "background.ts"),
+    "utf8"
+  );
+
+  assert.doesNotMatch(source, /triggerTagEnrichment\("alarm"\)/);
+});
+
+test("background startup clears stale tag enrichment alarms", async () => {
+  const source = await readFile(
+    path.join(repoRoot, "extension", "entrypoints", "background.ts"),
+    "utf8"
+  );
+
+  const startupIndex = source.indexOf("export default defineBackground(() => {");
+  assert.notEqual(startupIndex, -1);
+  const startupBlock = source.slice(startupIndex, startupIndex + 600);
+
+  assert.match(startupBlock, /chrome\.alarms\.clear\(TAG_ENRICH_ALARM\)/);
+});
