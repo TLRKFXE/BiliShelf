@@ -17,6 +17,7 @@ export type Video = {
   uploader: string;
   uploaderSpaceUrl?: string | null;
   description: string;
+  partition?: string;
   publishAt: number | null;
   bvidUrl: string;
   isInvalid: boolean;
@@ -24,6 +25,7 @@ export type Video = {
   createdAt?: number;
   updatedAt?: number;
   addedAt?: number;
+  folderCount?: number;
   tags?: string[];
   customTags?: string[];
   systemTags?: string[];
@@ -50,6 +52,7 @@ export type CreateVideoPayload = {
   uploader: string;
   uploaderSpaceUrl?: string | null;
   description: string;
+  partition?: string;
   publishAt?: number | null;
   bvidUrl: string;
   isInvalid?: boolean;

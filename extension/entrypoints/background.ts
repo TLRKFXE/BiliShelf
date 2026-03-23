@@ -24,6 +24,12 @@ import {
   resolveFavoritesPageGapMs,
   updateFavoritesSyncThrottleState,
 } from "../shared/favorites-sync-throttle.js";
+import {
+  buildExportVideoMetadata,
+  buildVideoExportMaps,
+  LIBRARY_EXPORT_VIDEO_CSV_HEADER,
+  normalizeVideoPartition,
+} from "../shared/export-video-metadata.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
 import type { FavoritesSyncThrottleState } from "../shared/favorites-sync-throttle.js";
 import type {
@@ -53,6 +59,7 @@ type VideoRecord = {
   uploader: string;
   uploaderSpaceUrl: string | null;
   description: string;
+  partition: string;
   publishAt: number | null;
   bvidUrl: string;
   isInvalid: boolean;
@@ -485,6 +492,7 @@ async function readState() {
         })),
         videos: (raw.videos ?? []).map((video) => ({
           ...video,
+          partition: normalizeVideoPartition((video as Partial<VideoRecord>).partition),
           uploaderSpaceUrl: normalizeBiliSpaceUrl(
             (video as Partial<VideoRecord>).uploaderSpaceUrl
           )
@@ -1117,7 +1125,7 @@ function parseImportRows(format: "json" | "csv", content: string) {
       bvidUrl,
       isInvalid: Boolean(row.isInvalid),
       addedAt: parseTimestampInput(row.addedAt) ?? nowTs,
-      partition: normalizeText(row.partition) || "uncategorized",
+      partition: normalizeVideoPartition(row.partition),
       folders: uniqueTextList((row.folders ?? []) as unknown[]),
       customTags: uniqueTextList((row.customTags ?? []) as unknown[]),
       systemTags: uniqueTextList((row.systemTags ?? []) as unknown[])
@@ -1213,7 +1221,7 @@ function parseImportRows(format: "json" | "csv", content: string) {
         publishAt: parseTimestampInput(video.publishAt ?? video.publishAtText),
         bvidUrl: normalizeText(video.bvidUrl),
         isInvalid: Boolean(video.isInvalid),
-        partition: normalizeText(video.partition) || "uncategorized",
+        partition: normalizeVideoPartition(video.partition),
         addedAt: favoriteAt,
         folders: foldersByVideoId.get(key) ?? ["Imported"],
         customTags: customTagsByVideoId.get(key) ?? [],
@@ -1786,6 +1794,7 @@ function upsertVideoFromRemoteDetail(state: LocalState, detail: Record<string, u
   const existing = state.videos.find((video) => normalizeKey(video.bvid) === normalizeKey(bvid));
   const publishAtRaw = toInt(detail?.pubdate, 0);
   const publishAt = publishAtRaw > 0 ? publishAtRaw * 1000 : null;
+  const partition = normalizeVideoPartition(detail?.tname);
   const owner = (detail?.owner || {}) as { name?: unknown; mid?: unknown };
   const uploader = normalizeText(owner.name) || "Unknown uploader";
   const uploaderMid = toInt(owner.mid, 0);
@@ -1797,6 +1806,7 @@ function upsertVideoFromRemoteDetail(state: LocalState, detail: Record<string, u
     uploader,
     uploaderSpaceUrl: uploaderMid > 0 ? `${BILI_ORIGIN}/space/${uploaderMid}` : null,
     description: normalizeText(detail?.desc),
+    partition,
     publishAt,
     bvidUrl: normalizeBiliVideoUrl("", bvid),
     isInvalid: false,
@@ -1811,6 +1821,7 @@ function upsertVideoFromRemoteDetail(state: LocalState, detail: Record<string, u
   video.uploader = uploader;
   video.uploaderSpaceUrl = uploaderMid > 0 ? `${BILI_ORIGIN}/space/${uploaderMid}` : null;
   video.description = normalizeText(detail?.desc);
+  video.partition = partition;
   video.publishAt = publishAt;
   video.bvidUrl = normalizeBiliVideoUrl("", bvid);
   video.isInvalid = false;
@@ -2911,6 +2922,7 @@ async function syncFromBilibiliToState(
               (media.upper as { mid?: number } | undefined)?.mid
             ),
             description: normalizeText(media.intro),
+            partition: normalizeVideoPartition(media.tname),
             publishAt,
             bvidUrl: normalizeBiliVideoUrl(media.link, bvid),
             isInvalid: false
@@ -2930,6 +2942,7 @@ async function syncFromBilibiliToState(
           video.uploader = basePayload.uploader;
           video.uploaderSpaceUrl = basePayload.uploaderSpaceUrl;
           video.description = basePayload.description;
+          video.partition = basePayload.partition;
           video.publishAt = basePayload.publishAt;
           video.bvidUrl = basePayload.bvidUrl;
           video.isInvalid = false;
@@ -3203,38 +3216,19 @@ function startFavoritesSyncTask(params: {
 function buildExportPayload(state: LocalState) {
   const exportedAt = now();
   const stamp = new Date(exportedAt).toISOString().replace(/[:.]/g, "-");
-
-  const folderById = new Map(state.folders.map((folder) => [folder.id, folder.name]));
-  const tagById = new Map(state.tags.map((tag) => [tag.id, tag]));
-  const folderNamesByVideo = new Map<number, string[]>();
-  const latestAddedAtByVideo = new Map<number, number>();
-  for (const relation of state.folderItems) {
-    const bucket = folderNamesByVideo.get(relation.videoId) ?? [];
-    const folderName = folderById.get(relation.folderId);
-    if (folderName && !bucket.includes(folderName)) bucket.push(folderName);
-    folderNamesByVideo.set(relation.videoId, bucket);
-
-    const latestAddedAt = latestAddedAtByVideo.get(relation.videoId) ?? 0;
-    if (relation.addedAt > latestAddedAt) {
-      latestAddedAtByVideo.set(relation.videoId, relation.addedAt);
-    }
-  }
-
-  const customTagsByVideo = new Map<number, string[]>();
-  const systemTagsByVideo = new Map<number, string[]>();
-  for (const relation of state.videoTags) {
-    const tag = tagById.get(relation.tagId);
-    if (!tag) continue;
-    const target = tag.type === "custom" ? customTagsByVideo : systemTagsByVideo;
-    const bucket = target.get(relation.videoId) ?? [];
-    if (!bucket.includes(tag.name)) bucket.push(tag.name);
-    target.set(relation.videoId, bucket);
-  }
+  const {
+    folderNamesByVideo,
+    folderCountByVideo,
+    latestAddedAtByVideo,
+    customTagsByVideo,
+    systemTagsByVideo
+  } = buildVideoExportMaps(state);
 
   return {
     exportedAt,
     stamp,
     folderNamesByVideo,
+    folderCountByVideo,
     latestAddedAtByVideo,
     customTagsByVideo,
     systemTagsByVideo
@@ -3250,15 +3244,30 @@ function buildJsonExportResult(state: LocalState) {
   const {
     exportedAt,
     stamp,
-    latestAddedAtByVideo
+    latestAddedAtByVideo,
+    folderCountByVideo,
+    folderNamesByVideo,
+    customTagsByVideo,
+    systemTagsByVideo
   } = buildExportPayload(state);
 
-  const exportVideos = state.videos.map((video) => ({
-    ...video,
-    publishAtText: formatTimestamp(video.publishAt),
-    favoriteAt: latestAddedAtByVideo.get(video.id) ?? null,
-    favoriteAtText: formatTimestamp(latestAddedAtByVideo.get(video.id) ?? null)
-  }));
+  const exportVideos = state.videos.map((video) => {
+    const metadata = buildExportVideoMetadata(video, {
+      folderNamesByVideo,
+      folderCountByVideo,
+      latestAddedAtByVideo,
+      customTagsByVideo,
+      systemTagsByVideo
+    });
+    return {
+      ...video,
+      partition: metadata.partition,
+      folderCount: metadata.folderCount,
+      publishAtText: formatTimestamp(video.publishAt),
+      favoriteAt: metadata.favoriteAt,
+      favoriteAtText: formatTimestamp(metadata.favoriteAt)
+    };
+  });
   const exportFolderItems = state.folderItems.map((item) => ({
     ...item,
     addedAtText: formatTimestamp(item.addedAt)
@@ -3318,6 +3327,7 @@ function applyImportRowsToState(
       uploader: row.uploader,
       uploaderSpaceUrl: normalizeBiliSpaceUrl(row.uploaderSpaceUrl),
       description: row.description,
+      partition: normalizeVideoPartition(row.partition),
       publishAt: row.publishAt,
       bvidUrl: row.bvidUrl,
       isInvalid: row.isInvalid,
@@ -3332,6 +3342,7 @@ function applyImportRowsToState(
     video.uploader = row.uploader || "Unknown uploader";
     video.uploaderSpaceUrl = normalizeBiliSpaceUrl(row.uploaderSpaceUrl);
     video.description = row.description;
+    video.partition = normalizeVideoPartition(row.partition);
     video.publishAt = row.publishAt;
     video.bvidUrl = row.bvidUrl;
     video.isInvalid = row.isInvalid;
@@ -4127,38 +4138,33 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           videos: state.videos.length,
           tags: state.tags.length
         };
-        const { exportedAt, stamp, folderNamesByVideo, latestAddedAtByVideo, customTagsByVideo, systemTagsByVideo } =
+        const {
+          exportedAt,
+          stamp,
+          folderNamesByVideo,
+          folderCountByVideo,
+          latestAddedAtByVideo,
+          customTagsByVideo,
+          systemTagsByVideo
+        } =
           buildExportPayload(state);
 
         if (format === "json") {
           return ok(buildJsonExportResult(state));
         }
 
-        const header = [
-          "bvid",
-          "title",
-          "uploader",
-          "uploaderSpaceUrl",
-          "description",
-          "coverUrl",
-          "bvidUrl",
-          "partition",
-          "publishAt",
-          "publishAtMs",
-          "favoriteAt",
-          "favoriteAtMs",
-          "addedAt",
-          "addedAtMs",
-          "folders",
-          "customTags",
-          "systemTags",
-          "isInvalid",
-          "deletedAt"
-        ];
+        const header = [...LIBRARY_EXPORT_VIDEO_CSV_HEADER];
         const lines = [header.join(",")];
 
         for (const video of state.videos) {
-          const favoriteAtMs = latestAddedAtByVideo.get(video.id) ?? "";
+          const metadata = buildExportVideoMetadata(video, {
+            folderNamesByVideo,
+            folderCountByVideo,
+            latestAddedAtByVideo,
+            customTagsByVideo,
+            systemTagsByVideo
+          });
+          const favoriteAtMs = metadata.favoriteAt ?? "";
           const addedAtMs = latestAddedAtByVideo.get(video.id) ?? "";
           const publishAtMs = video.publishAt ?? "";
           const row = [
@@ -4169,16 +4175,17 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
             video.description,
             video.coverUrl,
             video.bvidUrl,
-            "",
+            metadata.partition,
             formatTimestamp(video.publishAt),
             publishAtMs,
             formatTimestamp(typeof favoriteAtMs === "number" ? favoriteAtMs : null),
             favoriteAtMs,
             formatTimestamp(typeof addedAtMs === "number" ? addedAtMs : null),
             addedAtMs,
-            (folderNamesByVideo.get(video.id) ?? []).join("|"),
-            (customTagsByVideo.get(video.id) ?? []).join("|"),
-            (systemTagsByVideo.get(video.id) ?? []).join("|"),
+            metadata.folderCount,
+            metadata.folders.join("|"),
+            metadata.customTags.join("|"),
+            metadata.systemTags.join("|"),
             video.isInvalid ? "1" : "0",
             video.deletedAt ?? ""
           ].map(csvEscape);
@@ -4377,6 +4384,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           uploader: normalizeText(body.uploader),
           uploaderSpaceUrl: normalizeBiliSpaceUrl(body.uploaderSpaceUrl),
           description: normalizeText(body.description),
+          partition: normalizeVideoPartition(body.partition),
           publishAt: toIntOrNull(body.publishAt),
           bvidUrl,
           isInvalid: false,
@@ -4391,6 +4399,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         video.uploader = normalizeText(body.uploader);
         video.uploaderSpaceUrl = normalizeBiliSpaceUrl(body.uploaderSpaceUrl);
         video.description = normalizeText(body.description);
+        video.partition = normalizeVideoPartition(body.partition);
         video.publishAt = toIntOrNull(body.publishAt);
         video.bvidUrl = bvidUrl;
         video.isInvalid = Boolean(body.isInvalid);
@@ -4461,6 +4470,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           "uploader",
           "uploaderSpaceUrl",
           "description",
+          "partition",
           "publishAt",
           "bvidUrl",
           "isInvalid",
@@ -4487,6 +4497,9 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         }
         if (Object.prototype.hasOwnProperty.call(body, "description")) {
           video.description = normalizeText(body.description);
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "partition")) {
+          video.partition = normalizeVideoPartition(body.partition);
         }
         if (Object.prototype.hasOwnProperty.call(body, "publishAt")) {
           video.publishAt = parseTimestampInput(body.publishAt);
@@ -4650,6 +4663,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
             uploader: video.uploader,
             uploaderSpaceUrl: video.uploaderSpaceUrl,
             description: video.description,
+            partition: video.partition,
             publishAt: video.publishAt,
             bvidUrl: video.bvidUrl,
             isInvalid: video.isInvalid,
