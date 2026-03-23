@@ -24,6 +24,11 @@ import {
   resolveFavoritesPageGapMs,
   updateFavoritesSyncThrottleState,
 } from "../shared/favorites-sync-throttle.js";
+import {
+  isFavoriteMediaInvalid,
+  LIBRARY_EXPORT_VIDEO_CSV_HEADER,
+  normalizeBiliSpaceUrl,
+} from "../shared/library-export.js";
 import { reconcileRemoteFolderSortOrder } from "../shared/remote-folder-order.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
 import type { FavoritesSyncThrottleState } from "../shared/favorites-sync-throttle.js";
@@ -856,25 +861,6 @@ function normalizeBiliVideoUrl(input: unknown, bvidFallback?: unknown) {
   if (/^https?:\/\//i.test(value)) return value;
 
   return fallback || value;
-}
-
-function normalizeBiliSpaceUrl(input: unknown, midFallback?: unknown) {
-  const value = normalizeText(input);
-  const fallbackMid = normalizeText(midFallback);
-  const fallback = /^\d+$/.test(fallbackMid) ? `${BILI_ORIGIN}/space/${fallbackMid}` : "";
-
-  if (!value) return fallback || null;
-  if (/^\d+$/.test(value)) return `${BILI_ORIGIN}/space/${value}`;
-  if (value.startsWith("//")) return `https:${value}`;
-
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return fallback || null;
-    if (parsed.protocol === "http:") parsed.protocol = "https:";
-    return parsed.toString();
-  } catch {
-    return fallback || null;
-  }
 }
 
 function parseTimestampInput(value: unknown) {
@@ -1796,7 +1782,7 @@ function upsertVideoFromRemoteDetail(state: LocalState, detail: Record<string, u
     title: normalizeText(detail?.title) || bvid,
     coverUrl: normalizeCoverUrl(detail?.pic),
     uploader,
-    uploaderSpaceUrl: uploaderMid > 0 ? `${BILI_ORIGIN}/space/${uploaderMid}` : null,
+    uploaderSpaceUrl: normalizeBiliSpaceUrl(uploaderMid),
     description: normalizeText(detail?.desc),
     publishAt,
     bvidUrl: normalizeBiliVideoUrl("", bvid),
@@ -1810,7 +1796,7 @@ function upsertVideoFromRemoteDetail(state: LocalState, detail: Record<string, u
   video.title = normalizeText(detail?.title) || bvid;
   video.coverUrl = normalizeCoverUrl(detail?.pic);
   video.uploader = uploader;
-  video.uploaderSpaceUrl = uploaderMid > 0 ? `${BILI_ORIGIN}/space/${uploaderMid}` : null;
+  video.uploaderSpaceUrl = normalizeBiliSpaceUrl(uploaderMid);
   video.description = normalizeText(detail?.desc);
   video.publishAt = publishAt;
   video.bvidUrl = normalizeBiliVideoUrl("", bvid);
@@ -2915,7 +2901,7 @@ async function syncFromBilibiliToState(
             description: normalizeText(media.intro),
             publishAt,
             bvidUrl: normalizeBiliVideoUrl(media.link, bvid),
-            isInvalid: false
+            isInvalid: isFavoriteMediaInvalid(media)
           };
 
           const video: VideoRecord = existing || {
@@ -2934,7 +2920,7 @@ async function syncFromBilibiliToState(
           video.description = basePayload.description;
           video.publishAt = basePayload.publishAt;
           video.bvidUrl = basePayload.bvidUrl;
-          video.isInvalid = false;
+          video.isInvalid = basePayload.isInvalid;
           video.deletedAt = null;
           video.updatedAt = timestamp;
 
@@ -3257,6 +3243,7 @@ function buildJsonExportResult(state: LocalState) {
 
   const exportVideos = state.videos.map((video) => ({
     ...video,
+    uploaderSpaceUrl: normalizeBiliSpaceUrl(video.uploaderSpaceUrl),
     publishAtText: formatTimestamp(video.publishAt),
     favoriteAt: latestAddedAtByVideo.get(video.id) ?? null,
     favoriteAtText: formatTimestamp(latestAddedAtByVideo.get(video.id) ?? null)
@@ -4136,38 +4123,17 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           return ok(buildJsonExportResult(state));
         }
 
-        const header = [
-          "bvid",
-          "title",
-          "uploader",
-          "uploaderSpaceUrl",
-          "description",
-          "coverUrl",
-          "bvidUrl",
-          "partition",
-          "publishAt",
-          "publishAtMs",
-          "favoriteAt",
-          "favoriteAtMs",
-          "addedAt",
-          "addedAtMs",
-          "folders",
-          "customTags",
-          "systemTags",
-          "isInvalid",
-          "deletedAt"
-        ];
+        const header = [...LIBRARY_EXPORT_VIDEO_CSV_HEADER];
         const lines = [header.join(",")];
 
         for (const video of state.videos) {
           const favoriteAtMs = latestAddedAtByVideo.get(video.id) ?? "";
-          const addedAtMs = latestAddedAtByVideo.get(video.id) ?? "";
           const publishAtMs = video.publishAt ?? "";
           const row = [
             video.bvid,
             video.title,
             video.uploader,
-            video.uploaderSpaceUrl ?? "",
+            normalizeBiliSpaceUrl(video.uploaderSpaceUrl) ?? "",
             video.description,
             video.coverUrl,
             video.bvidUrl,
@@ -4176,8 +4142,6 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
             publishAtMs,
             formatTimestamp(typeof favoriteAtMs === "number" ? favoriteAtMs : null),
             favoriteAtMs,
-            formatTimestamp(typeof addedAtMs === "number" ? addedAtMs : null),
-            addedAtMs,
             (folderNamesByVideo.get(video.id) ?? []).join("|"),
             (customTagsByVideo.get(video.id) ?? []).join("|"),
             (systemTagsByVideo.get(video.id) ?? []).join("|"),
