@@ -963,6 +963,7 @@
           ? `https://space.bilibili.com/${Math.trunc(detail.owner.mid)}`
           : base.uploaderSpaceUrl || ""),
       description: pickSafeDescription(detail),
+      partition: typeof detail?.tname === "string" ? detail.tname.trim() : "",
       publishAt,
       systemTags: mergeSystemTags(apiSystemTags, detail)
     };

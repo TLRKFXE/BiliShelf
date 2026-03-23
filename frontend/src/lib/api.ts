@@ -311,6 +311,7 @@ export async function updateVideo(
     uploader?: string;
     uploaderSpaceUrl?: string | null;
     description?: string;
+    partition?: string;
     publishAt?: number | null;
     bvidUrl?: string;
     isInvalid?: boolean;

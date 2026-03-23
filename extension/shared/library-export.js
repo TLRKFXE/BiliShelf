@@ -1,3 +1,5 @@
+export { LIBRARY_EXPORT_VIDEO_CSV_HEADER } from "./export-video-metadata.js";
+
 const BILI_SPACE_ORIGIN = "https://space.bilibili.com";
 
 function normalizeText(value) {
@@ -43,26 +45,6 @@ function extractMidFromUrl(value) {
     return "";
   }
 }
-
-export const LIBRARY_EXPORT_VIDEO_CSV_HEADER = Object.freeze([
-  "bvid",
-  "title",
-  "uploader",
-  "uploaderSpaceUrl",
-  "description",
-  "coverUrl",
-  "bvidUrl",
-  "partition",
-  "publishAt",
-  "publishAtMs",
-  "favoriteAt",
-  "favoriteAtMs",
-  "folders",
-  "customTags",
-  "systemTags",
-  "isInvalid",
-  "deletedAt",
-]);
 
 export function normalizeBiliSpaceUrl(input, midFallback) {
   const value = normalizeUrlCandidate(normalizeText(input));
