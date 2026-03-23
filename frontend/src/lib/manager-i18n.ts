@@ -897,6 +897,22 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US":
       "Video sync is prioritized first, and missing tags will be filled gradually by background low-frequency jobs.",
   },
+  "toast.invalidVideoRecoveryDone": {
+    "zh-CN": "已恢复 {recovered}/{total} 个无效视频",
+    "en-US": "Recovered {recovered}/{total} invalid videos",
+  },
+  "toast.invalidVideoRecoveryPartial": {
+    "zh-CN": "部分无效视频恢复失败 ({failed}/{total})",
+    "en-US": "Some invalid videos failed to recover ({failed}/{total})",
+  },
+  "toast.invalidVideoRecoveryNotFound": {
+    "zh-CN": "未找到 {notFound}/{total} 个无效视频",
+    "en-US": "Could not find {notFound}/{total} invalid videos",
+  },
+  "toast.invalidVideoRecoveryFail": {
+    "zh-CN": "无效视频恢复失败",
+    "en-US": "Invalid video recovery failed",
+  },
   "toast.tagEnrichPaused": {
     "zh-CN": "已暂停后台标签补全",
     "en-US": "Background tag enrichment paused",
@@ -944,6 +960,56 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "toast.aiSettingsTestFail": {
     "zh-CN": "AI 设置测试失败",
     "en-US": "AI settings test failed",
+  },
+  "invalidVideoRecovery.dialogTitle": {
+    "zh-CN": "无效视频信息恢复",
+    "en-US": "Invalid video metadata recovery",
+  },
+  "invalidVideoRecovery.dialogDescription": {
+    "zh-CN":
+      "同步检测到 {count} 个无效视频，是否尝试从缓存恢复标题、封面与简介？",
+    "en-US":
+      "Detected {count} invalid videos during sync. Try recovering their title, cover, and description from cache?",
+  },
+  "invalidVideoRecovery.promptHint": {
+    "zh-CN": "恢复将按顺序逐个处理，可能需要几分钟。",
+    "en-US": "Recovery processes videos sequentially and may take a few minutes.",
+  },
+  "invalidVideoRecovery.recovered": {
+    "zh-CN": "已恢复",
+    "en-US": "Recovered",
+  },
+  "invalidVideoRecovery.notFound": {
+    "zh-CN": "未找到",
+    "en-US": "Not found",
+  },
+  "invalidVideoRecovery.failed": {
+    "zh-CN": "恢复失败",
+    "en-US": "Failed",
+  },
+  "invalidVideoRecovery.progress": {
+    "zh-CN": "已处理 {current}/{total} 个视频",
+    "en-US": "Processed {current}/{total} videos",
+  },
+  "invalidVideoRecovery.start": {
+    "zh-CN": "开始恢复",
+    "en-US": "Start recovery",
+  },
+  "invalidVideoRecovery.running": {
+    "zh-CN": "恢复中",
+    "en-US": "Recovering",
+  },
+  "invalidVideoRecovery.later": {
+    "zh-CN": "稍后再说",
+    "en-US": "Later",
+  },
+  "invalidVideoRecovery.noCandidates": {
+    "zh-CN": "暂无需要恢复的视频",
+    "en-US": "No videos need recovery",
+  },
+  "invalidVideoRecovery.notStarted": {
+    "zh-CN": "恢复任务未启动",
+    "en-US": "Recovery task did not start",
   },
   "toast.folderAiLoadFail": {
     "zh-CN": "加载文件夹 AI 结果失败",

@@ -1,9 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import {
   normalizeRecoveredInvalidVideoMetadata,
   mergeRecoveredInvalidVideoFields,
 } from "../shared/invalid-video-recovery.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "..", "..");
 
 test("normalizeRecoveredInvalidVideoMetadata trims and normalizes", () => {
   const input = {
@@ -79,4 +85,60 @@ test("mergeRecoveredInvalidVideoFields ignores non-invalid videos", () => {
   const result = mergeRecoveredInvalidVideoFields(video, normalized);
   assert.strictEqual(result.changed, false);
   assert.deepStrictEqual(result.updates, {});
+});
+
+test("background sync result and recovery routes expose invalid-video recovery contracts", async () => {
+  const source = await readFile(
+    path.join(repoRoot, "extension", "entrypoints", "background.ts"),
+    "utf8"
+  );
+
+  assert.match(source, /invalidVideosDetected/);
+  assert.match(source, /invalidVideoIds/);
+  assert.match(source, /\/sync\/bilibili\/invalid-video-recovery\/start/);
+  assert.match(source, /\/sync\/bilibili\/invalid-video-recovery\/status/);
+  assert.doesNotMatch(
+    source,
+    /chrome\.alarms\.create\([^)]*invalid-video-recovery/i
+  );
+});
+
+test("frontend wires invalid-video recovery api helpers and prompt dialog", async () => {
+  const apiSource = await readFile(
+    path.join(repoRoot, "frontend", "src", "lib", "api.ts"),
+    "utf8"
+  );
+  const appSource = await readFile(
+    path.join(repoRoot, "frontend", "src", "App.vue"),
+    "utf8"
+  );
+  const dialogSource = await readFile(
+    path.join(
+      repoRoot,
+      "frontend",
+      "src",
+      "components",
+      "dialogs",
+      "InvalidVideoRecoveryDialog.vue"
+    ),
+    "utf8"
+  );
+  const i18nSource = await readFile(
+    path.join(repoRoot, "frontend", "src", "lib", "manager-i18n.ts"),
+    "utf8"
+  );
+
+  assert.match(apiSource, /startInvalidVideoRecovery/);
+  assert.match(apiSource, /fetchInvalidVideoRecoveryStatus/);
+
+  assert.match(appSource, /InvalidVideoRecoveryDialog/);
+  assert.match(appSource, /<InvalidVideoRecoveryDialog/);
+  assert.match(appSource, /invalidVideoIds/);
+  assert.match(appSource, /invalidVideoRecovery/);
+
+  assert.match(dialogSource, /defineProps/);
+  assert.match(dialogSource, /emit\(['"]start['"]\)/);
+
+  assert.match(i18nSource, /invalidVideoRecovery\.dialogTitle/);
+  assert.match(i18nSource, /toast\.invalidVideoRecovery/);
 });

@@ -537,10 +537,39 @@ export type SyncFromBilibiliResult = {
   hasMorePage?: boolean;
   nextPage?: number | null;
   riskBlocked?: boolean;
+  invalidVideosDetected?: number;
+  invalidVideoIds?: number[];
   errors: Array<{ folder: string; message: string }>;
   errorsOmitted?: number;
   syncedAt: number;
 };
+
+export type InvalidVideoRecoveryStatus = {
+  running: boolean;
+  total: number;
+  current: number;
+  recovered: number;
+  notFound: number;
+  failed: number;
+  lastError: string | null;
+};
+
+export async function startInvalidVideoRecovery(videoIds: number[]) {
+  return request<{
+    ok: true;
+    started: boolean;
+    status: InvalidVideoRecoveryStatus;
+  }>("/sync/bilibili/invalid-video-recovery/start", {
+    method: "POST",
+    body: JSON.stringify({ videoIds }),
+  });
+}
+
+export async function fetchInvalidVideoRecoveryStatus() {
+  return request<InvalidVideoRecoveryStatus>(
+    "/sync/bilibili/invalid-video-recovery/status"
+  );
+}
 
 export type SyncRemoteFolder = {
   remoteId: number;
@@ -570,6 +599,8 @@ export type HistoryModelSyncStatus = {
     tagsBound: number;
     errorCount: number;
   };
+  invalidVideosDetected?: number;
+  invalidVideoIds?: number[];
   errors: Array<{ folder: string; message: string }>;
 };
 

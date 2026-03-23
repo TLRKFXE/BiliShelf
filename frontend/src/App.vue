@@ -13,6 +13,7 @@ import AiSettingsDialog from "./components/dialogs/AiSettingsDialog.vue";
 import BidirectionalSyncSettingsDialog from "./components/dialogs/BidirectionalSyncSettingsDialog.vue";
 import WebDavBackupDialog from "./components/dialogs/WebDavBackupDialog.vue";
 import VideoDetailDialog from "./components/dialogs/VideoDetailDialog.vue";
+import InvalidVideoRecoveryDialog from "./components/dialogs/InvalidVideoRecoveryDialog.vue";
 import FolderSidebar from "./components/FolderSidebar.vue";
 import AiCategoryBrowser from "./components/AiCategoryBrowser.vue";
 import ManagerHeader from "./components/layout/ManagerHeader.vue";
@@ -69,6 +70,9 @@ import {
   runFolderAiCategories,
   runTagEnrichmentNow,
   startHistoryModelSync,
+  startInvalidVideoRecovery,
+  fetchInvalidVideoRecoveryStatus,
+  type InvalidVideoRecoveryStatus,
   testWebDavConnection,
   testAiSettings,
   uploadWebDavBackup,
@@ -178,6 +182,11 @@ const {
 const toolsOpen = ref(false);
 const trashMode = computed(() => route.name === "trash");
 const syncingImport = ref(false);
+const invalidVideoRecoveryDialogOpen = ref(false);
+const invalidVideoRecoveryCandidateIds = ref<number[]>([]);
+const invalidVideoRecoveryStatus = ref<InvalidVideoRecoveryStatus | null>(null);
+const invalidVideoRecoveryLoading = ref(false);
+let invalidVideoRecoveryPollTimer: number | null = null;
 const exportingLibrary = ref(false);
 const importingLibrary = ref(false);
 const syncDialogOpen = ref(false);
@@ -234,6 +243,95 @@ let tickTimer: number | null = null;
 let folderAiFetchToken = 0;
 
 const { notifySuccess, notifyError } = useAppToast(t);
+
+function stopInvalidVideoRecoveryPolling() {
+  if (invalidVideoRecoveryPollTimer !== null) {
+    window.clearTimeout(invalidVideoRecoveryPollTimer);
+    invalidVideoRecoveryPollTimer = null;
+  }
+}
+
+async function refreshInvalidVideoRecoveryStatus() {
+  try {
+    const status = await fetchInvalidVideoRecoveryStatus();
+    invalidVideoRecoveryStatus.value = status;
+    if (status.running) {
+      stopInvalidVideoRecoveryPolling();
+      invalidVideoRecoveryPollTimer = window.setTimeout(
+        refreshInvalidVideoRecoveryStatus,
+        2000
+      );
+      return;
+    }
+    stopInvalidVideoRecoveryPolling();
+    await refreshVideos();
+    if (status.recovered > 0) {
+      notifySuccess(
+        t("toast.invalidVideoRecoveryDone", {
+          recovered: status.recovered,
+          total: status.total,
+        })
+      );
+    } else if (status.failed > 0) {
+      notifyError(
+        t("toast.invalidVideoRecoveryPartial", {
+          failed: status.failed,
+          total: status.total,
+        })
+      );
+    } else if (status.notFound > 0) {
+      notifyError(
+        t("toast.invalidVideoRecoveryNotFound", {
+          notFound: status.notFound,
+          total: status.total,
+        })
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    stopInvalidVideoRecoveryPolling();
+    notifyError(t("toast.invalidVideoRecoveryFail"), message);
+  }
+}
+
+async function handleStartInvalidVideoRecovery() {
+  if (invalidVideoRecoveryLoading.value) return;
+  if (invalidVideoRecoveryCandidateIds.value.length === 0) {
+    notifyError(
+      t("toast.invalidVideoRecoveryFail"),
+      t("invalidVideoRecovery.noCandidates")
+    );
+    return;
+  }
+  invalidVideoRecoveryLoading.value = true;
+  try {
+    const response = await startInvalidVideoRecovery(
+      invalidVideoRecoveryCandidateIds.value
+    );
+    invalidVideoRecoveryStatus.value = response.status;
+    if (response.status.running) {
+      stopInvalidVideoRecoveryPolling();
+      invalidVideoRecoveryPollTimer = window.setTimeout(
+        refreshInvalidVideoRecoveryStatus,
+        2000
+      );
+    } else if (!response.started) {
+      notifyError(
+        t("toast.invalidVideoRecoveryFail"),
+        t("invalidVideoRecovery.notStarted")
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    notifyError(t("toast.invalidVideoRecoveryFail"), message);
+  } finally {
+    invalidVideoRecoveryLoading.value = false;
+  }
+}
+
+function handleCloseInvalidVideoRecoveryDialog(nextOpen = false) {
+  invalidVideoRecoveryDialogOpen.value = nextOpen;
+}
 const { detailOpen, detailLoading, detailVideo, openVideoDetail } =
   useVideoDetail(t, notifyError);
 const detailSaving = ref(false);
@@ -1648,6 +1746,18 @@ async function runFavoritesSyncLikeHistory(
       }
     }
 
+    const invalidVideoIds =
+      Array.isArray(status.invalidVideoIds) && status.invalidVideoIds.length > 0
+        ? status.invalidVideoIds
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value > 0)
+        : [];
+    if (invalidVideoIds.length > 0) {
+      invalidVideoRecoveryCandidateIds.value = invalidVideoIds;
+      invalidVideoRecoveryStatus.value = null;
+      invalidVideoRecoveryDialogOpen.value = true;
+    }
+
     return {
       foldersSynced,
       videosImported,
@@ -2240,6 +2350,7 @@ onBeforeUnmount(() => {
     window.clearTimeout(autoInitRetryTimer);
     autoInitRetryTimer = null;
   }
+  stopInvalidVideoRecoveryPolling();
   stopTagEnrichmentPolling();
   stopAutoInitLockHeartbeat();
   releaseAutoInitLock();
@@ -2666,6 +2777,15 @@ onBeforeUnmount(() => {
       :detail-video="detailVideoWithAi"
       @update:open="detailOpen = $event"
       @save="handleSaveVideoDetail"
+    />
+    <InvalidVideoRecoveryDialog
+      :open="invalidVideoRecoveryDialogOpen"
+      :candidate-count="invalidVideoRecoveryCandidateIds.length"
+      :status="invalidVideoRecoveryStatus"
+      :loading="invalidVideoRecoveryLoading"
+      :t="t"
+      @update:open="handleCloseInvalidVideoRecoveryDialog"
+      @start="handleStartInvalidVideoRecovery"
     />
     <input
       ref="importFileInput"

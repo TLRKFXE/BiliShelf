@@ -34,6 +34,10 @@ import {
   LIBRARY_EXPORT_VIDEO_CSV_HEADER,
   normalizeVideoPartition,
 } from "../shared/export-video-metadata.js";
+import {
+  mergeRecoveredInvalidVideoFields,
+  normalizeRecoveredInvalidVideoMetadata,
+} from "../shared/invalid-video-recovery.js";
 import { reconcileRemoteFolderSortOrder } from "../shared/remote-folder-order.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
 import type { FavoritesSyncThrottleState } from "../shared/favorites-sync-throttle.js";
@@ -210,6 +214,9 @@ const WEBDAV_REQUEST_TIMEOUT_MS = 45_000;
 const WEBDAV_LATEST_FILE_NAME = "bilishelf-latest.json";
 const WEBDAV_MAX_DOWNLOAD_SIZE = 30 * 1024 * 1024;
 const SLOW_API_THRESHOLD_MS = 400;
+const INVALID_VIDEO_RECOVERY_API = "https://www.biliplus.com/api/view";
+const INVALID_VIDEO_RECOVERY_TIMEOUT_MS = 15_000;
+const INVALID_VIDEO_RECOVERY_GAP_MS = 1_200;
 
 type SyncFetchStage = "nav" | "folders" | "folderVideos";
 type FetchSource = "extension" | "page";
@@ -250,6 +257,8 @@ type FavoritesSyncStatus = {
   lastError: string | null;
   riskBlocked: boolean;
   resumePageByFolder: Record<string, number>;
+  invalidVideosDetected: number;
+  invalidVideoIds: number[];
   summary: FavoritesSyncSummaryStatus;
   errors: Array<{ folder: string; message: string }>;
 };
@@ -261,6 +270,16 @@ type FavoritesSyncProgress = {
   folderIndex: number;
   folderTotal: number;
   message: string;
+};
+
+type InvalidVideoRecoveryStatus = {
+  running: boolean;
+  total: number;
+  current: number;
+  recovered: number;
+  notFound: number;
+  failed: number;
+  lastError: string | null;
 };
 
 type CookieLike = { name?: unknown; value?: unknown };
@@ -368,8 +387,20 @@ const defaultFavoritesSyncStatus = (): FavoritesSyncStatus => ({
   lastError: null,
   riskBlocked: false,
   resumePageByFolder: {},
+  invalidVideosDetected: 0,
+  invalidVideoIds: [],
   summary: emptyFavoritesSyncSummary(),
   errors: []
+});
+
+const defaultInvalidVideoRecoveryStatus = (): InvalidVideoRecoveryStatus => ({
+  running: false,
+  total: 0,
+  current: 0,
+  recovered: 0,
+  notFound: 0,
+  failed: 0,
+  lastError: null
 });
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -380,6 +411,9 @@ let nextBiliRequestAt = 0;
 let biliRequestThrottleQueue: Promise<void> = Promise.resolve();
 let favoritesSyncTask: Promise<void> | null = null;
 let favoritesSyncStatus: FavoritesSyncStatus = defaultFavoritesSyncStatus();
+let invalidVideoRecoveryTask: Promise<void> | null = null;
+let invalidVideoRecoveryStatus: InvalidVideoRecoveryStatus =
+  defaultInvalidVideoRecoveryStatus();
 let stage3ReconcileTask: Promise<void> | null = null;
 let folderAiCategoryTask: Promise<unknown> | null = null;
 let folderAiCategoryFolderId: number | null = null;
@@ -2774,6 +2808,7 @@ async function syncFromBilibiliToState(
   let folderLinksAdded = 0;
   let tagsBound = 0;
   let riskBlocked = false;
+  const invalidVideoIdSet = new Set<number>();
   const errors: Array<{ folder: string; message: string }> = [];
   let progressCurrent = 0;
   let videosSinceCooldown = 0;
@@ -2919,6 +2954,10 @@ async function syncFromBilibiliToState(
           video.deletedAt = null;
           video.updatedAt = timestamp;
 
+          if (basePayload.isInvalid) {
+            invalidVideoIdSet.add(video.id);
+          }
+
           if (!existing) {
             state.videos.push(video);
           }
@@ -3032,6 +3071,7 @@ async function syncFromBilibiliToState(
   const MAX_RETURN_ERRORS = 20;
   const returnedErrors = errors.slice(0, MAX_RETURN_ERRORS);
   const errorsOmitted = Math.max(0, errors.length - returnedErrors.length);
+  const invalidVideoIds = Array.from(invalidVideoIdSet).sort((a, b) => a - b);
 
   return {
     ok: true,
@@ -3042,6 +3082,8 @@ async function syncFromBilibiliToState(
     nextPage: null,
     riskBlocked,
     resumePageByFolder,
+    invalidVideosDetected: invalidVideoIds.length,
+    invalidVideoIds,
     errors: returnedErrors,
     errorsOmitted,
     syncedAt: now()
@@ -3052,6 +3094,7 @@ function getFavoritesSyncStatus() {
   return {
     ...favoritesSyncStatus,
     resumePageByFolder: { ...favoritesSyncStatus.resumePageByFolder },
+    invalidVideoIds: [...favoritesSyncStatus.invalidVideoIds],
     summary: { ...favoritesSyncStatus.summary },
     errors: favoritesSyncStatus.errors.slice(0, 30)
   };
@@ -3067,8 +3110,188 @@ function updateFavoritesSyncStatus(patch: Partial<FavoritesSyncStatus>) {
     summary: patch.summary
       ? { ...patch.summary }
       : { ...favoritesSyncStatus.summary },
+    invalidVideoIds: patch.invalidVideoIds
+      ? [...patch.invalidVideoIds]
+      : [...favoritesSyncStatus.invalidVideoIds],
     errors: patch.errors ? [...patch.errors] : [...favoritesSyncStatus.errors]
   };
+}
+
+function getInvalidVideoRecoveryStatus() {
+  return {
+    ...invalidVideoRecoveryStatus
+  };
+}
+
+function updateInvalidVideoRecoveryStatus(
+  patch: Partial<InvalidVideoRecoveryStatus>
+) {
+  invalidVideoRecoveryStatus = {
+    ...invalidVideoRecoveryStatus,
+    ...patch
+  };
+}
+
+async function fetchInvalidVideoRecoveryMetadataFromBiliPlus(
+  video: Pick<VideoRecord, "bvid">
+) {
+  const bvid = normalizeOutputBvid(normalizeText(video.bvid));
+  if (!bvid) {
+    return {
+      kind: "not_found" as const
+    };
+  }
+
+  const query = new URLSearchParams({
+    id: bvid
+  });
+
+  const response = await fetchWithTimeout(
+    `${INVALID_VIDEO_RECOVERY_API}?${query.toString()}`,
+    {
+      headers: {
+        Accept: "application/json, text/plain, */*"
+      }
+    },
+    INVALID_VIDEO_RECOVERY_TIMEOUT_MS,
+    "Invalid video recovery request"
+  );
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      return {
+        kind: "not_found" as const
+      };
+    }
+    throw new Error(`Invalid video recovery request failed (${response.status})`);
+  }
+
+  const payload = await response.json() as {
+    code?: number;
+    message?: string;
+    data?: Record<string, unknown> | null;
+  };
+
+  if (payload?.code && payload.code !== 0 && !payload.data) {
+    return {
+      kind: "not_found" as const
+    };
+  }
+
+  const providerData = payload?.data ?? null;
+  const recovered = normalizeRecoveredInvalidVideoMetadata({
+    title: typeof providerData?.title === "string" ? providerData.title : null,
+    coverUrl: typeof providerData?.pic === "string" ? providerData.pic : null,
+    description:
+      typeof providerData?.description === "string"
+        ? providerData.description
+        : null
+  });
+
+  if (!recovered.title && !recovered.coverUrl && !recovered.description) {
+    return {
+      kind: "not_found" as const
+    };
+  }
+
+  return {
+    kind: "ok" as const,
+    recovered
+  };
+}
+
+async function runInvalidVideoRecoveryTask(videoIds: number[]) {
+  const dedupedVideoIds = Array.from(
+    new Set(videoIds.map((id) => toInt(id)).filter((id) => id > 0))
+  );
+  const targets = await withState((state) => {
+    const targetIdSet = new Set(dedupedVideoIds);
+    return state.videos
+      .filter((video) => targetIdSet.has(video.id))
+      .filter((video) => video.deletedAt === null && video.isInvalid)
+      .map((video) => ({
+        id: video.id,
+        bvid: video.bvid
+      }));
+  }, false);
+
+  updateInvalidVideoRecoveryStatus({
+    running: true,
+    total: targets.length,
+    current: 0,
+    recovered: 0,
+    notFound: 0,
+    failed: 0,
+    lastError: null
+  });
+
+  for (const target of targets) {
+    try {
+      const result = await fetchInvalidVideoRecoveryMetadataFromBiliPlus(target);
+      if (result.kind === "not_found") {
+        updateInvalidVideoRecoveryStatus({
+          current: invalidVideoRecoveryStatus.current + 1,
+          notFound: invalidVideoRecoveryStatus.notFound + 1
+        });
+        continue;
+      }
+
+      await withState((state) => {
+        const video = state.videos.find(
+          (item) => item.id === target.id && item.deletedAt === null
+        );
+        if (!video || !video.isInvalid) return false;
+        const merged = mergeRecoveredInvalidVideoFields(video, result.recovered);
+        if (merged.changed) {
+          video.updatedAt = now();
+        }
+        return merged.changed;
+      }, true);
+
+      updateInvalidVideoRecoveryStatus({
+        current: invalidVideoRecoveryStatus.current + 1,
+        recovered: invalidVideoRecoveryStatus.recovered + 1
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      updateInvalidVideoRecoveryStatus({
+        current: invalidVideoRecoveryStatus.current + 1,
+        failed: invalidVideoRecoveryStatus.failed + 1,
+        lastError: message
+      });
+    }
+
+    if (invalidVideoRecoveryStatus.current < invalidVideoRecoveryStatus.total) {
+      await sleep(INVALID_VIDEO_RECOVERY_GAP_MS);
+    }
+  }
+}
+
+async function startInvalidVideoRecoveryTask(videoIds: number[]) {
+  if (invalidVideoRecoveryTask) return false;
+  const dedupedVideoIds = Array.from(
+    new Set(videoIds.map((id) => toInt(id)).filter((id) => id > 0))
+  );
+  if (dedupedVideoIds.length === 0) {
+    throw new Error("No invalid videos selected for recovery");
+  }
+
+  invalidVideoRecoveryTask = runInvalidVideoRecoveryTask(dedupedVideoIds)
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      updateInvalidVideoRecoveryStatus({
+        running: false,
+        lastError: message
+      });
+    })
+    .finally(() => {
+      updateInvalidVideoRecoveryStatus({
+        running: false
+      });
+      invalidVideoRecoveryTask = null;
+    });
+
+  return true;
 }
 
 function isWriteRequestBlockedByFavoritesSync(method: string, path: string) {
@@ -3120,6 +3343,8 @@ function startFavoritesSyncTask(params: {
     lastError: null,
     riskBlocked: false,
     resumePageByFolder,
+    invalidVideosDetected: 0,
+    invalidVideoIds: [],
     summary: emptyFavoritesSyncSummary(),
     errors: []
   });
@@ -3155,6 +3380,10 @@ function startFavoritesSyncTask(params: {
             : null,
         riskBlocked: Boolean(result.riskBlocked),
         resumePageByFolder: result.resumePageByFolder ?? {},
+        invalidVideosDetected: Math.max(0, toInt(result.invalidVideosDetected, 0)),
+        invalidVideoIds: Array.isArray(result.invalidVideoIds)
+          ? result.invalidVideoIds.map((id) => toInt(id)).filter((id) => id > 0)
+          : [],
         summary: result.summary,
         errors: result.errors
       });
@@ -3169,7 +3398,9 @@ function startFavoritesSyncTask(params: {
         running: false,
         finishedAt: now(),
         message: "Favorites sync failed",
-        lastError: message
+        lastError: message,
+        invalidVideosDetected: 0,
+        invalidVideoIds: []
       });
     })
     .finally(() => {
@@ -3532,6 +3763,10 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
   try {
     // Fast-path status endpoints must bypass withState queue, otherwise
     // long-running sync tasks block polling and trigger frontend timeouts.
+    if (method === "GET" && path === "/sync/bilibili/invalid-video-recovery/status") {
+      return ok(getInvalidVideoRecoveryStatus());
+    }
+
     if (method === "GET" && path === "/sync/bilibili/history-model/status") {
       return ok(getFavoritesSyncStatus());
     }
@@ -3713,6 +3948,25 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           localToBiliEnabled: false,
           updatedAt: meta.updatedAt
         });
+      }
+
+      if (method === "POST" && path === "/sync/bilibili/invalid-video-recovery/start") {
+        const videoIds = Array.isArray(body.videoIds)
+          ? body.videoIds
+              .map((item) => toInt(item))
+              .filter((id) => id > 0)
+          : [];
+        try {
+          const started = await startInvalidVideoRecoveryTask(videoIds);
+          return ok({
+            ok: true,
+            started,
+            status: getInvalidVideoRecoveryStatus()
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return fail(400, message);
+        }
       }
 
       if (method === "PATCH" && path === "/ai/settings") {
