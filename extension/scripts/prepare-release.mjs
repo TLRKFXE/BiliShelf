@@ -2,12 +2,6 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-const requiredZipNames = [
-  "bilishelf-extension-0.1.0-chrome.zip",
-  "bilishelf-extension-0.1.0-edge.zip",
-  "bilishelf-extension-0.1.0-firefox.zip"
-];
-
 const extensionRoot = process.cwd();
 const outputDir = path.join(extensionRoot, ".output");
 const releaseDir = path.join(extensionRoot, "release", "packages");
@@ -28,7 +22,24 @@ async function sha256(filePath) {
   return createHash("sha256").update(buf).digest("hex");
 }
 
+async function readPackageVersion() {
+  const packageJsonPath = path.join(extensionRoot, "package.json");
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+  const version = String(packageJson.version || "").trim();
+
+  if (!version) {
+    throw new Error(`Missing package version in ${packageJsonPath}`);
+  }
+
+  return version;
+}
+
 async function main() {
+  const packageVersion = await readPackageVersion();
+  const requiredZipNames = ["chrome", "edge", "firefox"].map(
+    (browser) => `bilishelf-extension-${packageVersion}-${browser}.zip`,
+  );
+
   await fs.mkdir(targetDir, { recursive: true });
 
   const lines = [];

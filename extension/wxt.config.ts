@@ -5,7 +5,7 @@ export default defineConfig({
     name: "BiliShelf Manager",
     short_name: "BiliShelf",
     description: "Capture Bilibili videos into local folders, then search, tag, and batch-manage.",
-    version: "0.1.0",
+    version: "0.2.0",
     permissions: ["storage", "activeTab", "tabs", "scripting", "alarms", "cookies"],
     options_page: "manager/index.html",
     icons: {

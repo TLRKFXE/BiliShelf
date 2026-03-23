@@ -15,11 +15,11 @@
 
 <img width="1111" height="744" alt="a2bd6a4d-5b3b-4768-aaf0-13a1e18d64fa" src="https://github.com/user-attachments/assets/4c5d155a-9e13-4645-ba23-4dfe993f8939" />
 
-## AI Folder Analysis
+## AI Folder Categorization
 
 - Open the extension manager and use the header action `AI 设置` to configure the provider, base URL, model, and API key.
-- Select a folder in the left sidebar, then use `AI 分析` on the folder card to run analysis. The sidebar summary panel shows the latest summary/status, and video detail dialogs show AI categories when the current folder has analysis data.
-- AI settings and AI results are stored in the extension runtime only. This implementation does not add backend AI routes or backend AI persistence.
+- Select a folder in the left sidebar, then use `AI 分类` to group videos for the current folder and open the category browser view.
+- AI settings and AI category results stay in the extension runtime only.
 - Supported provider families: OpenAI, OpenAI-compatible, Claude, Gemini, Grok, DeepSeek, and Kimi.
 
 ## 功能说明
@@ -56,13 +56,11 @@
    pnpm install
    ```
 
-2. 运行 Web 管理端（前后端分离模式）：
+2. 安装管理页与插件依赖：
 
    ```bash
-   pnpm --dir backend install
-   pnpm --dir backend dev
    pnpm --dir frontend install
-   pnpm --dir frontend dev
+   pnpm --dir extension install
    ```
 
 3. 运行插件开发模式：
@@ -82,16 +80,14 @@
 
 ```text
 bili-like/
-├─ backend/         # API 服务（Fastify + Drizzle ORM + SQLite）
 ├─ frontend/        # 管理中心前端（Vue 3 + Vite）
-├─ extension/       # 浏览器插件（WXT，多浏览器构建）
+├─ extension/       # 浏览器插件（WXT，本地运行时 + 内嵌管理页构建）
 └─ README.md
 ```
 
 ## 技术栈
 
 - 前端（`frontend/`）：Vue 3、TypeScript、Vite、Pinia、Vue Router、Tailwind CSS、shadcn-vue、Inspira UI、vue-toastification
-- 后端（`backend/`）：Node.js、Fastify、Drizzle ORM、better-sqlite3（SQLite）、Zod、drizzle-kit
 - 插件（`extension/`）：WXT（Chrome/Edge MV3 + Firefox MV2 构建）、Background + IndexedDB 本地数据层、Content/Popup（TS/JS）
 - 构建与工具链：pnpm 脚本编排、tsup、tsx、Vite、WXT
 

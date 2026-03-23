@@ -49,13 +49,11 @@ BiliShelf is a browser extension that replaces the default Bilibili favorite-man
    pnpm install
    ```
 
-2. Run web manager (frontend + backend):
+2. Install manager and extension dependencies:
 
    ```bash
-   pnpm --dir backend install
-   pnpm --dir backend dev
    pnpm --dir frontend install
-   pnpm --dir frontend dev
+   pnpm --dir extension install
    ```
 
 3. Run extension in dev mode:
@@ -75,16 +73,14 @@ BiliShelf is a browser extension that replaces the default Bilibili favorite-man
 
 ```text
 bili-like/
-├─ backend/         # API service (Fastify + Drizzle ORM + SQLite)
 ├─ frontend/        # Manager frontend (Vue 3 + Vite)
-├─ extension/       # Browser extension (WXT, multi-browser)
+├─ extension/       # Browser extension (WXT, embedded local runtime + manager build)
 └─ README.md
 ```
 
 ## Tech Stack
 
 - Frontend (`frontend/`): Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind CSS, shadcn-vue, Inspira UI, vue-toastification
-- Backend (`backend/`): Node.js, Fastify, Drizzle ORM, better-sqlite3 (SQLite), Zod, drizzle-kit
 - Extension (`extension/`): WXT (Chrome/Edge MV3 + Firefox MV2 builds), Background + IndexedDB local data layer, Content/Popup in TS/JS
 - Tooling: pnpm script orchestration, tsup, tsx, Vite, WXT
 

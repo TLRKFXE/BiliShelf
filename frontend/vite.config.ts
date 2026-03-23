@@ -4,7 +4,7 @@ import vue from "@vitejs/plugin-vue";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const apiTarget = env.VITE_API_PROXY_TARGET || "http://127.0.0.1:4321";
+  const apiTarget = env.VITE_API_PROXY_TARGET?.trim();
 
   return {
     plugins: [vue()],
@@ -15,12 +15,16 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
-      proxy: {
-        "/api": {
-          target: apiTarget,
-          changeOrigin: true,
-        },
-      },
+      ...(apiTarget
+        ? {
+            proxy: {
+              "/api": {
+                target: apiTarget,
+                changeOrigin: true,
+              },
+            },
+          }
+        : {}),
     },
   };
 });

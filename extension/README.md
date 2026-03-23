@@ -20,7 +20,7 @@
 - 在左侧边栏针对当前选中的收藏夹手动触发 `AI 分类`。
 - 分类完成后会进入一个一次性的 AI 分类浏览页，先展示分类卡片总览，再进入分类详情查看视频。
 - 视频详情弹窗会显示当前视频的单一 AI 主分类、分类时间，以及 provider/model。
-- 该 AI 功能只存在于扩展本地运行时，不会给 `backend/` 增加 AI 路由或持久化逻辑。
+- 该 AI 功能只存在于扩展本地运行时，分类结果保存在扩展本地数据中。
 - 当前支持的 provider 家族包括 OpenAI、OpenAI-compatible、Claude、Gemini、Grok、DeepSeek 和 Kimi。
 
 ### 开发与构建命令
@@ -45,9 +45,9 @@ pnpm zip:all
 
 产物：
 
-- `.output/bilishelf-extension-0.1.0-chrome.zip`
-- `.output/bilishelf-extension-0.1.0-edge.zip`
-- `.output/bilishelf-extension-0.1.0-firefox.zip`
+- `.output/bilishelf-extension-0.2.0-chrome.zip`
+- `.output/bilishelf-extension-0.2.0-edge.zip`
+- `.output/bilishelf-extension-0.2.0-firefox.zip`
 
 ### Release 发布（GitHub）
 
@@ -60,11 +60,11 @@ pnpm ext:release:prepare
 ```
 
 2. 打开 GitHub `Releases` -> `Draft a new release`
-3. `Tag` 建议使用 `v0.1.0`，`Target` 选择 `main`
+3. `Tag` 建议使用 `v0.2.0`，`Target` 选择 `main`
 4. 上传并发布以下附件：
-   - `bilishelf-extension-0.1.0-chrome.zip`
-   - `bilishelf-extension-0.1.0-edge.zip`
-   - `bilishelf-extension-0.1.0-firefox.zip`
+   - `bilishelf-extension-0.2.0-chrome.zip`
+   - `bilishelf-extension-0.2.0-edge.zip`
+   - `bilishelf-extension-0.2.0-firefox.zip`
    - `SHA256SUMS.txt`
 
 ### 使用提示
@@ -110,7 +110,7 @@ This is the install-and-use browser extension edition of BiliShelf.
 - Trigger `AI 分类` manually for the currently selected folder from the left sidebar.
 - After categorization finishes, the manager opens a one-time AI category browser that shows category cards first and then category detail browsing.
 - Video detail dialogs show the video's single AI category, categorized time, and provider/model.
-- This AI feature stays extension-only. It does not add AI routes or AI persistence to `backend/`.
+- This AI feature stays extension-only, and categorized results are stored in the extension's local runtime data.
 - Supported provider families: OpenAI, OpenAI-compatible, Claude, Gemini, Grok, DeepSeek, and Kimi.
 
 ### Dev / Build Commands
@@ -135,9 +135,9 @@ pnpm zip:all
 
 Generated artifacts:
 
-- `.output/bilishelf-extension-0.1.0-chrome.zip`
-- `.output/bilishelf-extension-0.1.0-edge.zip`
-- `.output/bilishelf-extension-0.1.0-firefox.zip`
+- `.output/bilishelf-extension-0.2.0-chrome.zip`
+- `.output/bilishelf-extension-0.2.0-edge.zip`
+- `.output/bilishelf-extension-0.2.0-firefox.zip`
 
 ### GitHub Release
 
@@ -150,11 +150,11 @@ pnpm ext:release:prepare
 ```
 
 2. Open GitHub `Releases` -> `Draft a new release`
-3. Use `v0.1.0` as `Tag`, target `main`
+3. Use `v0.2.0` as `Tag`, target `main`
 4. Upload and publish:
-   - `bilishelf-extension-0.1.0-chrome.zip`
-   - `bilishelf-extension-0.1.0-edge.zip`
-   - `bilishelf-extension-0.1.0-firefox.zip`
+   - `bilishelf-extension-0.2.0-chrome.zip`
+   - `bilishelf-extension-0.2.0-edge.zip`
+   - `bilishelf-extension-0.2.0-firefox.zip`
    - `SHA256SUMS.txt`
 
 ### Usage Tip
