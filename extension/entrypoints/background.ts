@@ -24,6 +24,7 @@ import {
   resolveFavoritesPageGapMs,
   updateFavoritesSyncThrottleState,
 } from "../shared/favorites-sync-throttle.js";
+import { reconcileRemoteFolderSortOrder } from "../shared/remote-folder-order.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
 import type { FavoritesSyncThrottleState } from "../shared/favorites-sync-throttle.js";
 import type {
@@ -2765,6 +2766,7 @@ async function syncFromBilibiliToState(
       .filter((id) => Number.isFinite(id) && id > 0)
   );
   const remoteFolders = await fetchRemoteFoldersFromBilibili();
+  reconcileRemoteFolderSortOrder(state.folders, remoteFolders);
   const foldersToSync =
     selectedIdSet.size > 0
       ? Array.from(selectedIdSet)
