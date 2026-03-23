@@ -117,9 +117,9 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   },
   "sync.dialogDesc": {
     "zh-CN":
-      "选择一个收藏夹后，系统将按小批次自动循环导入，减少风控与导入波动。",
+      "选择一个或多个收藏夹后，系统会按当前列表顺序逐个同步。",
     "en-US":
-      "Select one folder, then import runs automatically in small chunks to reduce risk-control and instability.",
+      "Select one or more folders and they will be synced one by one in the current list order.",
   },
   "sync.folderCount": {
     "zh-CN": "已选 {selected} / {total}",
@@ -142,6 +142,12 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
       "系统会按“每批数量”自动分批导入，并在批次之间自动等待，直到该收藏夹导入完成。",
     "en-US":
       "Import runs in chunks automatically with wait intervals between rounds until this folder is done.",
+  },
+  "sync.queueHint": {
+    "zh-CN":
+      "已选收藏夹会按当前列表顺序逐个同步，系统会根据收藏夹体量和页面响应自动调速，以尽量降低风控概率。",
+    "en-US":
+      "Selected folders are synced one by one in the current list order, with wait times adjusted automatically based on folder size and response speed.",
   },
   "sync.includeTagEnrichmentHint": {
     "zh-CN":

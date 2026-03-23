@@ -49,3 +49,24 @@ test("ai settings dialog removes the duplicated local-runtime description copy",
   assert.doesNotMatch(source, /DialogDescription/);
   assert.doesNotMatch(source, /ai\.settings\.desc/);
 });
+
+test("sync dialogs expose bulk-selection controls for folder queues", async () => {
+  const syncSource = await readComponentSource(["components", "dialogs", "SyncImportDialog.vue"]);
+  const autoInitSource = await readComponentSource([
+    "components",
+    "dialogs",
+    "AutoInitSetupDialog.vue",
+  ]);
+
+  assert.match(syncSource, /t\("common\.selectAll"\)/);
+  assert.match(syncSource, /t\("common\.clear"\)/);
+  assert.match(autoInitSource, /t\("common\.selectAll"\)/);
+  assert.match(autoInitSource, /t\("common\.clear"\)/);
+});
+
+test("manual sync dialog no longer renders the misleading chunk-size controls", async () => {
+  const source = await readComponentSource(["components", "dialogs", "SyncImportDialog.vue"]);
+
+  assert.doesNotMatch(source, /sync\.chunkSizeTitle/);
+  assert.doesNotMatch(source, /sync\.autoChunkHint/);
+});

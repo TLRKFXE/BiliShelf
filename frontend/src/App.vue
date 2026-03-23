@@ -31,6 +31,13 @@ import {
   loadAllAiBrowserVideos,
 } from "./lib/ai-category-browser.js";
 import { MANAGER_I18N } from "./lib/manager-i18n";
+import {
+  clearFolderSelection,
+  estimateSelectedVideoCount,
+  orderSelectedFolderIds,
+  selectAllFolderIds,
+  toggleFolderSelection,
+} from "./lib/sync-folder-selection.js";
 import { useAppToast } from "./composables/use-app-toast";
 import { useConfirmDialog } from "./composables/use-confirm-dialog";
 import { useLoadingProgress } from "./composables/use-loading-progress";
@@ -182,9 +189,6 @@ const autoInitFetchingFolders = ref(false);
 const autoInitFolders = ref<SyncRemoteFolder[]>([]);
 const autoInitSelectedFolderIds = ref<number[]>([]);
 const autoInitSubmitting = ref(false);
-const syncChunkSize = ref(20);
-const syncSpeedMode = ref<"stable" | "balanced" | "fast">("balanced");
-const syncIncludeTagEnrichment = ref(false);
 const tagEnrichmentStatus = ref<TagEnrichmentStatus | null>(null);
 const tagEnrichmentLoading = ref(false);
 const aiSettingsDialogOpen = ref(false);
@@ -215,9 +219,6 @@ const AUTO_INIT_PROBE_SCHEDULE_MS = [
 ];
 const AUTO_INIT_STATE_TIMEOUT_MS = 6 * 60 * 1000;
 const SYNC_CURSOR_STORAGE_KEY = "bilishelf-sync-cursors-v1";
-const SYNC_CHUNK_DELAY_MS = 1100;
-const SYNC_CHUNK_DELAY_JITTER_MS = 500;
-const SYNC_MAX_ROUNDS = 800;
 const EXPORT_REMINDER_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const LAST_EXPORT_AT_KEY = "bilishelf-last-export-at";
 const LAST_EXPORT_REMINDER_DAY_KEY = "bilishelf-last-export-reminder-day";
@@ -231,24 +232,6 @@ let tagEnrichmentPollTimer: number | null = null;
 let autoInitRetryTimer: number | null = null;
 let tickTimer: number | null = null;
 let folderAiFetchToken = 0;
-
-const SYNC_SPEED_PROFILES = {
-  stable: {
-    pagesPerRound: 1,
-    delayMs: 900,
-    jitterMs: 280,
-  },
-  balanced: {
-    pagesPerRound: 2,
-    delayMs: 520,
-    jitterMs: 180,
-  },
-  fast: {
-    pagesPerRound: 3,
-    delayMs: 320,
-    jitterMs: 120,
-  },
-} as const;
 
 const { notifySuccess, notifyError } = useAppToast(t);
 const { detailOpen, detailLoading, detailVideo, openVideoDetail } =
@@ -1400,37 +1383,36 @@ function maybePromptAutoInitSetupDialog() {
 }
 
 function toggleAutoInitFolder(remoteId: number, checked: boolean) {
-  if (!checked) {
-    autoInitSelectedFolderIds.value = autoInitSelectedFolderIds.value.filter(
-      (id) => id !== remoteId
-    );
-    return;
-  }
-  autoInitSelectedFolderIds.value = [
-    ...new Set([...autoInitSelectedFolderIds.value, remoteId]),
-  ];
+  autoInitSelectedFolderIds.value = toggleFolderSelection(
+    autoInitSelectedFolderIds.value,
+    remoteId,
+    checked
+  );
+}
+
+function selectAllAutoInitFolders() {
+  autoInitSelectedFolderIds.value = selectAllFolderIds(autoInitFolders.value);
+}
+
+function clearAutoInitFolders() {
+  autoInitSelectedFolderIds.value = clearFolderSelection(
+    autoInitSelectedFolderIds.value
+  );
 }
 
 function estimateTargetVideosByFolders(
   folderIds: number[],
   candidates: SyncRemoteFolder[]
 ) {
-  const selectedSet = new Set(folderIds);
-  return candidates
-    .filter((folder) => selectedSet.has(folder.remoteId))
-    .reduce(
-      (sum, folder) => sum + Math.max(0, Number(folder.mediaCount || 0)),
-      0
-    );
+  return estimateSelectedVideoCount(folderIds, candidates);
 }
 
 function startUnifiedFavoritesSync(
   folderIds: number[],
-  targetVideosEstimate: number
+  targetVideosEstimate: number,
+  candidates: SyncRemoteFolder[]
 ) {
-  const normalizedIds = [
-    ...new Set(folderIds.filter((id) => Number.isFinite(id) && id > 0)),
-  ];
+  const normalizedIds = orderSelectedFolderIds(folderIds, candidates);
   writeAutoInitState({
     status: "running",
     folderIds: normalizedIds,
@@ -1461,7 +1443,8 @@ async function confirmAutoInitSetup() {
   try {
     startUnifiedFavoritesSync(
       autoInitSelectedFolderIds.value,
-      targetVideosEstimate
+      targetVideosEstimate,
+      autoInitFolders.value
     );
   } finally {
     autoInitSubmitting.value = false;
@@ -1478,15 +1461,21 @@ async function openSyncImportDialog() {
 }
 
 function toggleSyncFolder(remoteId: number, checked: boolean) {
-  if (!checked) {
-    syncSelectedFolderIds.value = syncSelectedFolderIds.value.filter(
-      (id) => id !== remoteId
-    );
-    return;
-  }
-  syncSelectedFolderIds.value = [
-    ...new Set([...syncSelectedFolderIds.value, remoteId]),
-  ];
+  syncSelectedFolderIds.value = toggleFolderSelection(
+    syncSelectedFolderIds.value,
+    remoteId,
+    checked
+  );
+}
+
+function selectAllSyncFolders() {
+  syncSelectedFolderIds.value = selectAllFolderIds(syncFolders.value);
+}
+
+function clearSyncFolders() {
+  syncSelectedFolderIds.value = clearFolderSelection(
+    syncSelectedFolderIds.value
+  );
 }
 
 async function submitSyncImport() {
@@ -1500,7 +1489,11 @@ async function submitSyncImport() {
     syncSelectedFolderIds.value,
     syncFolders.value
   );
-  startUnifiedFavoritesSync(syncSelectedFolderIds.value, targetVideosEstimate);
+  startUnifiedFavoritesSync(
+    syncSelectedFolderIds.value,
+    targetVideosEstimate,
+    syncFolders.value
+  );
 }
 
 type FolderSyncRunResult = {
@@ -2577,6 +2570,8 @@ onBeforeUnmount(() => {
       :selected-folder-ids="autoInitSelectedFolderIds"
       @update:open="autoInitDialogOpen = $event"
       @reload="loadAutoInitFolderOptions(true)"
+      @select-all="selectAllAutoInitFolders"
+      @clear-selection="clearAutoInitFolders"
       @toggle-folder="
         (remoteId, checked) => toggleAutoInitFolder(remoteId, checked)
       "
@@ -2625,18 +2620,16 @@ onBeforeUnmount(() => {
       :fetching-folders="syncFetchingFolders"
       :folders="syncFolders"
       :selected-folder-ids="syncSelectedFolderIds"
-      :chunk-size="syncChunkSize"
-      :include-tag-enrichment="syncIncludeTagEnrichment"
       :resume-page="syncResumePage"
       :tag-enrichment-status="tagEnrichmentStatus"
       :tag-enrichment-loading="tagEnrichmentLoading"
       @update:open="syncDialogOpen = $event"
       @reload="loadSyncFolderOptions(true)"
+      @select-all="selectAllSyncFolders"
+      @clear-selection="clearSyncFolders"
       @toggle-folder="
         (remoteId, checked) => toggleSyncFolder(remoteId, checked)
       "
-      @update:chunk-size="syncChunkSize = $event"
-      @update:include-tag-enrichment="syncIncludeTagEnrichment = $event"
       @refresh-tag-enrichment="refreshTagEnrichmentState"
       @pause-tag-enrichment="pauseTagEnrichmentFromUi"
       @resume-tag-enrichment="resumeTagEnrichmentFromUi"

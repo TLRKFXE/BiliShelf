@@ -17,7 +17,15 @@ import {
   listAiProviderModels,
   normalizeAiProviderBaseUrl,
 } from "../shared/ai-provider-settings.js";
+import {
+  createFavoritesSyncThrottleState,
+  resolveFavoritesCooldownPolicy,
+  resolveFavoritesFolderGapMs,
+  resolveFavoritesPageGapMs,
+  updateFavoritesSyncThrottleState,
+} from "../shared/favorites-sync-throttle.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
+import type { FavoritesSyncThrottleState } from "../shared/favorites-sync-throttle.js";
 import type {
   AiMeta as SharedAiMeta,
   AiProvider as SharedAiProvider,
@@ -188,10 +196,6 @@ const BILI_META_API_GAP_MS = 280;
 const BILI_META_API_GAP_JITTER_MS = 100;
 const REMOTE_FOLDERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const ALLOW_PAGE_CONTEXT_FALLBACK = false;
-const FAVORITES_COOLDOWN_EVERY_VIDEOS = 400;
-const FAVORITES_COOLDOWN_MS = 30_000;
-const FAVORITES_PAGE_GAP_MS = 650;
-const FAVORITES_PAGE_GAP_JITTER_MS = 120;
 const WEBDAV_REQUEST_TIMEOUT_MS = 45_000;
 const WEBDAV_LATEST_FILE_NAME = "bilishelf-latest.json";
 const WEBDAV_MAX_DOWNLOAD_SIZE = 30 * 1024 * 1024;
@@ -2810,6 +2814,14 @@ async function syncFromBilibiliToState(
 
   for (const remoteFolder of foldersToSync) {
     try {
+      let throttleState: FavoritesSyncThrottleState =
+        createFavoritesSyncThrottleState({
+          folderMediaCount: Number(remoteFolder.mediaCount || 0),
+          totalVideosProcessed: videosProcessed
+        });
+      if (foldersSynced > 0) {
+        await sleep(resolveFavoritesFolderGapMs(throttleState));
+      }
       const localFolder = ensureLocalFolderByRemoteId(state, remoteFolder);
       foldersSynced += 1;
       emitProgress({
@@ -2843,6 +2855,7 @@ async function syncFromBilibiliToState(
         });
 
         let folderMediaData: BiliFolderMediaListData;
+        const pageFetchStartedAt = now();
         try {
           folderMediaData = await fetchBiliJson<BiliFolderMediaListData>(
             `${BILI_FOLDER_VIDEOS_API}?${query.toString()}`,
@@ -2872,6 +2885,7 @@ async function syncFromBilibiliToState(
         if (medias.length === 0) {
           break;
         }
+        const responseMs = Math.max(0, now() - pageFetchStartedAt);
 
         for (const media of medias) {
           const bvid = normalizeText(media.bvid ?? media.bv_id);
@@ -2949,6 +2963,11 @@ async function syncFromBilibiliToState(
           folderTotal: foldersToSync.length,
           message: `Syncing page ${page}: ${remoteFolder.title}`
         });
+        throttleState = updateFavoritesSyncThrottleState(throttleState, {
+          responseMs,
+          pageMediaCount: medias.length,
+          totalVideosProcessed: videosProcessed
+        });
 
         const remoteHasMore = resolveFolderHasMore(
           folderMediaData,
@@ -2956,9 +2975,13 @@ async function syncFromBilibiliToState(
           pageSize,
           medias.length
         );
-        if (videosSinceCooldown >= FAVORITES_COOLDOWN_EVERY_VIDEOS) {
+        const cooldownPolicy = resolveFavoritesCooldownPolicy(throttleState);
+        if (
+          videosSinceCooldown >= cooldownPolicy.thresholdVideos &&
+          (remoteHasMore || foldersSynced < foldersToSync.length)
+        ) {
           videosSinceCooldown = 0;
-          await sleep(FAVORITES_COOLDOWN_MS);
+          await sleep(cooldownPolicy.delayMs);
         }
         if (!remoteHasMore) {
           delete resumePageByFolder[String(remoteFolder.remoteId)];
@@ -2966,7 +2989,7 @@ async function syncFromBilibiliToState(
         }
         page += 1;
         resumePageByFolder[String(remoteFolder.remoteId)] = page;
-        await sleep(FAVORITES_PAGE_GAP_MS + Math.floor(Math.random() * FAVORITES_PAGE_GAP_JITTER_MS));
+        await sleep(resolveFavoritesPageGapMs(throttleState));
       }
 
       if (!folderFailed) {

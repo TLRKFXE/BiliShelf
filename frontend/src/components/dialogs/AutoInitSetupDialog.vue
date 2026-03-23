@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { SyncRemoteFolder } from "@/lib/api";
+import { estimateSelectedVideoCount } from "@/lib/sync-folder-selection.js";
 
 const props = defineProps<{
   open: boolean;
@@ -25,14 +26,22 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:open": [value: boolean];
   "toggle-folder": [remoteId: number, checked: boolean];
+  "select-all": [];
+  "clear-selection": [];
   reload: [];
   start: [];
 }>();
 
 const selectedVideoCount = computed(() =>
-  props.folders
-    .filter((folder) => props.selectedFolderIds.includes(folder.remoteId))
-    .reduce((sum, folder) => sum + Math.max(0, Number(folder.mediaCount) || 0), 0)
+  estimateSelectedVideoCount(props.selectedFolderIds, props.folders)
+);
+
+const allFoldersSelected = computed(
+  () =>
+    props.folders.length > 0 &&
+    props.folders.every((folder) =>
+      props.selectedFolderIds.includes(folder.remoteId)
+    )
 );
 </script>
 
@@ -72,6 +81,30 @@ const selectedVideoCount = computed(() =>
           >
             <RefreshCcw class="h-3.5 w-3.5" />
             {{ t("autoInit.reloadFolders") }}
+          </Button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            :disabled="
+              loading ||
+              fetchingFolders ||
+              folders.length === 0 ||
+              allFoldersSelected
+            "
+            @click="emit('select-all')"
+          >
+            {{ t("common.selectAll") }}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            :disabled="loading || selectedFolderIds.length === 0"
+            @click="emit('clear-selection')"
+          >
+            {{ t("common.clear") }}
           </Button>
         </div>
 

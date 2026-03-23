@@ -3,7 +3,6 @@ import { computed } from "vue";
 import {
   CirclePause,
   FolderSync,
-  Gauge,
   Play,
   RefreshCcw,
   ShieldCheck,
@@ -19,14 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { SyncRemoteFolder } from "@/lib/api";
+import { estimateSelectedVideoCount } from "@/lib/sync-folder-selection.js";
 
 const props = defineProps<{
   open: boolean;
@@ -35,8 +28,6 @@ const props = defineProps<{
   fetchingFolders: boolean;
   folders: SyncRemoteFolder[];
   selectedFolderIds: number[];
-  chunkSize: number;
-  includeTagEnrichment: boolean;
   resumePage: number;
   tagEnrichmentStatus?: {
     paused: boolean;
@@ -52,22 +43,26 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:open": [value: boolean];
   "toggle-folder": [remoteId: number, checked: boolean];
-  "update:chunk-size": [value: number];
-  "update:include-tag-enrichment": [value: boolean];
   "refresh-tag-enrichment": [];
   "pause-tag-enrichment": [];
   "resume-tag-enrichment": [];
   "run-tag-enrichment": [];
+  "select-all": [];
+  "clear-selection": [];
   reload: [];
   submit: [];
 }>();
 
-const chunkSizeOptions = [10, 20, 30, 40, 60, 80];
-
 const selectedVideoCount = computed(() =>
-  props.folders
-    .filter((folder) => props.selectedFolderIds.includes(folder.remoteId))
-    .reduce((sum, folder) => sum + Math.max(0, Number(folder.mediaCount) || 0), 0)
+  estimateSelectedVideoCount(props.selectedFolderIds, props.folders)
+);
+
+const allFoldersSelected = computed(
+  () =>
+    props.folders.length > 0 &&
+    props.folders.every((folder) =>
+      props.selectedFolderIds.includes(folder.remoteId)
+    )
 );
 </script>
 
@@ -113,32 +108,31 @@ const selectedVideoCount = computed(() =>
           </Button>
         </div>
 
-        <div class="space-y-1.5">
-          <label class="space-y-1.5">
-            <span class="flex items-center gap-1 text-xs text-muted-foreground">
-              <Gauge class="h-3.5 w-3.5" />
-              {{ t("sync.chunkSizeTitle") }}
-            </span>
-            <Select
-              :model-value="String(chunkSize)"
-              :disabled="loading"
-              @update:model-value="emit('update:chunk-size', Number($event))"
+        <div class="space-y-2 rounded-lg border bg-muted/20 p-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="
+                loading ||
+                fetchingFolders ||
+                folders.length === 0 ||
+                allFoldersSelected
+              "
+              @click="emit('select-all')"
             >
-              <SelectTrigger class="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="size in chunkSizeOptions"
-                  :key="size"
-                  :value="String(size)"
-                >
-                  {{ t("sync.chunkSizeOption", { count: size }) }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-          <p class="text-xs text-muted-foreground">{{ t("sync.autoChunkHint") }}</p>
+              {{ t("common.selectAll") }}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="loading || selectedFolderIds.length === 0"
+              @click="emit('clear-selection')"
+            >
+              {{ t("common.clear") }}
+            </Button>
+          </div>
+          <p class="text-xs text-muted-foreground">{{ t("sync.queueHint") }}</p>
           <p class="text-xs text-muted-foreground">{{ t("sync.tagEnrichDisabledHint") }}</p>
         </div>
 
