@@ -21,6 +21,18 @@ test("normalizeRecoveredInvalidVideoMetadata trims and normalizes", () => {
   assert.strictEqual(normalized.description, "Description");
 });
 
+test("normalizeRecoveredInvalidVideoMetadata drops malformed values", () => {
+  const normalized = normalizeRecoveredInvalidVideoMetadata({
+    title: { bad: true },
+    coverUrl: "javascript:alert(1)",
+    description: "   ",
+  });
+
+  assert.strictEqual(normalized.title, null);
+  assert.strictEqual(normalized.coverUrl, null);
+  assert.strictEqual(normalized.description, null);
+});
+
 test("mergeRecoveredInvalidVideoFields only updates invalid video fields", () => {
   const recovered = normalizeRecoveredInvalidVideoMetadata({
     title: "Recovered Title",

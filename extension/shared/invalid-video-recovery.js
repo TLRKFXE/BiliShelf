@@ -1,14 +1,31 @@
 function normalizeText(value) {
-  return String(value ?? "").trim();
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value).trim();
+  }
+  return "";
 }
 
 function normalizeCoverUrl(value) {
   const trimmed = normalizeText(value);
   if (!trimmed) return null;
-  if (trimmed.startsWith("//")) {
-    return `https:${trimmed}`;
+  const candidate = trimmed.startsWith("//")
+    ? `https:${trimmed}`
+    : /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : "";
+  if (!candidate) return null;
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    if (parsed.protocol === "http:") parsed.protocol = "https:";
+    return parsed.toString();
+  } catch {
+    return null;
   }
-  return trimmed;
 }
 
 function normalizeRecoveredInvalidVideoMetadata(input = {}) {
