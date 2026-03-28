@@ -6,6 +6,16 @@
   isCollectorUiUrl,
   normalizeBvidToken,
 } from "./utils/bili-action-sync.js";
+import {
+  buildQuickFavoriteToastMessage,
+  isEditableTarget,
+  matchesQuickFavoriteShortcut,
+} from "./utils/quick-favorite.js";
+import {
+  QUICK_FAVORITE_SHORTCUT_STORAGE_KEY,
+  formatShortcutLabel,
+  resolveStoredShortcut,
+} from "./utils/shortcut-config.js";
 
 (function () {
   const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
@@ -50,9 +60,14 @@
     "button.clear": { [LOCALE_ZH]: "清空", [LOCALE_EN]: "Clear" },
     "button.cancel": { [LOCALE_ZH]: "取消", [LOCALE_EN]: "Cancel" },
     "button.create": { [LOCALE_ZH]: "创建", [LOCALE_EN]: "Create" },
+    "button.quickSave": { [LOCALE_ZH]: "快捷收藏", [LOCALE_EN]: "Quick favorite" },
     "section.folders": { [LOCALE_ZH]: "收藏夹", [LOCALE_EN]: "Folders" },
     "section.customTags": { [LOCALE_ZH]: "自定义标签", [LOCALE_EN]: "Custom Tags" },
     "field.searchFolders": { [LOCALE_ZH]: "搜索收藏夹...", [LOCALE_EN]: "Search folders..." },
+    "field.quickFavoriteSearch": {
+      [LOCALE_ZH]: "搜索并选择收藏夹",
+      [LOCALE_EN]: "Search and pick folders"
+    },
     "field.customTags": {
       [LOCALE_ZH]: "自定义标签（逗号分隔）",
       [LOCALE_EN]: "Custom tags (comma separated)"
@@ -68,6 +83,19 @@
     "status.selectedCount": { [LOCALE_ZH]: "已选 {count}", [LOCALE_EN]: "{count} selected" },
     "status.videosCount": { [LOCALE_ZH]: "{count} 个视频", [LOCALE_EN]: "{count} videos" },
     "status.noFolders": { [LOCALE_ZH]: "没有匹配的收藏夹", [LOCALE_EN]: "No folders found" },
+    "status.savedFoldersNone": {
+      [LOCALE_ZH]: "当前视频尚未收藏到本地收藏夹",
+      [LOCALE_EN]: "This video is not yet stored in local folders"
+    },
+    "status.savedFoldersCurrent": {
+      [LOCALE_ZH]: "当前已在本地收藏夹：{folders}",
+      [LOCALE_EN]: "Already saved in local folders: {folders}"
+    },
+    "status.savedBadge": { [LOCALE_ZH]: "已收藏", [LOCALE_EN]: "Saved" },
+    "status.quickFavoriteHint": {
+      [LOCALE_ZH]: "快捷键 {shortcut}",
+      [LOCALE_EN]: "Shortcut {shortcut}"
+    },
     "modal.createFolder": { [LOCALE_ZH]: "新建收藏夹", [LOCALE_EN]: "Create Folder" },
     "modal.name": { [LOCALE_ZH]: "名称", [LOCALE_EN]: "Name" },
     "modal.description": { [LOCALE_ZH]: "简介", [LOCALE_EN]: "Description" },
@@ -103,6 +131,18 @@
       [LOCALE_EN]: "Video info is incomplete"
     },
     "toast.saved": { [LOCALE_ZH]: "已保存到本地 BiliShelf", [LOCALE_EN]: "Saved to local BiliShelf" },
+    "toast.savedAddedFolders": {
+      [LOCALE_ZH]: "已加入收藏夹 {folders}",
+      [LOCALE_EN]: "Added to folders: {folders}"
+    },
+    "toast.savedDuplicate": {
+      [LOCALE_ZH]: "该视频已在收藏夹 {folders} 中",
+      [LOCALE_EN]: "This video is already in folders: {folders}"
+    },
+    "toast.savedMixedFolders": {
+      [LOCALE_ZH]: "已加入 {addedFolders}；原本已在 {existingFolders} 中",
+      [LOCALE_EN]: "Added to {addedFolders}; already existed in {existingFolders}"
+    },
     "toast.savedWithBiliSync": {
       [LOCALE_ZH]: "已同步写回 B站收藏夹 {count} 个",
       [LOCALE_EN]: "Also synced to {count} Bilibili favorite folders"
@@ -117,6 +157,10 @@
     },
     "toast.saveFail": { [LOCALE_ZH]: "保存失败", [LOCALE_EN]: "Save failed" },
     "status.readingCurrentPage": { [LOCALE_ZH]: "正在读取当前页面...", [LOCALE_EN]: "Reading current page..." },
+    "quickFavorite.title": {
+      [LOCALE_ZH]: "快捷收藏",
+      [LOCALE_EN]: "Quick favorite"
+    },
     "error.unknown": { [LOCALE_ZH]: "未知错误", [LOCALE_EN]: "Unknown error" }
   };
   function resolveLocaleFromBrowser() {
@@ -141,6 +185,15 @@
     return fallback;
   }
 
+  async function resolveQuickFavoriteShortcutPreference() {
+    try {
+      const result = await chrome.storage.local.get([QUICK_FAVORITE_SHORTCUT_STORAGE_KEY]);
+      return resolveStoredShortcut(result?.[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY] ?? null);
+    } catch {
+      return resolveStoredShortcut(null);
+    }
+  }
+
   let activeLocale = LOCALE_EN;
 
   function t(key, vars = {}) {
@@ -152,14 +205,24 @@
 
   let root = null;
   let panel = null;
+  let quickFavoriteLayer = null;
   let floatingBtn = null;
   let modal = null;
   let toastRoot = null;
   let folderListEl = null;
+  let existingFoldersSummaryEl = null;
   let folderSearchInput = null;
   let customTagsInput = null;
   let saveBtn = null;
   let closeBtn = null;
+  let quickFavoriteTitleEl = null;
+  let quickFavoriteShortcutHintEl = null;
+  let quickFavoriteSearchInput = null;
+  let quickFavoriteListEl = null;
+  let quickFavoriteSaveBtn = null;
+  let quickFavoriteCloseBtn = null;
+  let quickFavoriteSelectedCountEl = null;
+  let quickFavoriteExistingSummaryEl = null;
   let openCreateFolderBtn = null;
   let selectAllFoldersBtn = null;
   let clearFolderSelectionBtn = null;
@@ -180,8 +243,12 @@
   let suppressButtonClick = false;
   let allFolders = [];
   let selectedFolderIds = new Set();
+  let quickSelectedFolderIds = new Set();
+  let quickActiveFolderId = 0;
   let currentVideo = null;
+  let currentVideoLocalFolders = [];
   let activeThemePreference = THEME_AUTO;
+  let activeQuickFavoriteShortcut = resolveStoredShortcut(null);
   let bidirectionalSettingsCache = {
     value: null,
     expiresAt: 0
@@ -556,6 +623,62 @@
     return data?.items || [];
   }
 
+  function folderNamesFromIds(folderIds = []) {
+    const idSet = new Set(folderIds.map((id) => Number(id)));
+    return allFolders
+      .filter((folder) => idSet.has(folder.id))
+      .map((folder) => folder.name)
+      .filter(Boolean);
+  }
+
+  function currentVideoLocalFolderNames() {
+    return currentVideoLocalFolders.map((folder) => folder.name).filter(Boolean);
+  }
+
+  function renderExistingFolderSummary(target) {
+    if (!target) return;
+    const folders = currentVideoLocalFolderNames();
+    target.textContent =
+      folders.length > 0
+        ? t("status.savedFoldersCurrent", { folders: folders.join("、") })
+        : t("status.savedFoldersNone");
+  }
+
+  async function fetchCurrentVideoLocalFoldersByBvid(bvid) {
+    const normalizedBvid = normalizeBvidToken(bvid || "");
+    if (!normalizedBvid) return [];
+
+    const query = encodeURIComponent(normalizedBvid);
+    const searchResult = await requestLocalApi(
+      "GET",
+      `/videos/search?q=${query}&page=1&pageSize=20`
+    );
+    const items = Array.isArray(searchResult?.items) ? searchResult.items : [];
+    const matched = items.find(
+      (item) => normalizeBvidToken(item?.bvid || "") === normalizedBvid
+    );
+    if (!matched?.id) return [];
+    const detail = await requestLocalApi("GET", `/videos/${matched.id}`);
+    return Array.isArray(detail?.folders) ? detail.folders : [];
+  }
+
+  async function refreshCurrentVideoLocalFolders() {
+    const bvid = normalizeBvidToken(currentVideo?.bvid || "");
+    if (!bvid) {
+      currentVideoLocalFolders = [];
+      renderExistingFolderSummary(existingFoldersSummaryEl);
+      renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
+      return;
+    }
+    try {
+      currentVideoLocalFolders = await fetchCurrentVideoLocalFoldersByBvid(bvid);
+    } catch {
+      currentVideoLocalFolders = [];
+    }
+    renderExistingFolderSummary(existingFoldersSummaryEl);
+    renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
+  }
+
   async function createFolder(payload) {
     return requestLocalApi("POST", "/folders", payload);
   }
@@ -814,12 +937,18 @@
       videoTitleEl.textContent = t("status.noVideoTitle");
       videoMetaEl.textContent = t("status.noVideoDesc");
       videoCoverEl.src = DEFAULT_COVER;
+      if (quickFavoriteTitleEl) {
+        quickFavoriteTitleEl.textContent = t("status.noVideoTitle");
+      }
       return;
     }
 
     videoTitleEl.textContent = video.title || t("status.untitled");
     videoMetaEl.textContent = `${video.uploader || t("status.unknownUploader")} - ${video.bvid || "-"}`;
     videoCoverEl.src = ensureAbsoluteUrl(video.coverUrl, DEFAULT_COVER);
+    if (quickFavoriteTitleEl) {
+      quickFavoriteTitleEl.textContent = video.title || t("status.untitled");
+    }
   }
 
   function renderSelectedCount() {
@@ -879,6 +1008,118 @@
     renderSelectedCount();
   }
 
+  function renderQuickFavoriteSelectedCount() {
+    if (!quickFavoriteSelectedCountEl) return;
+    quickFavoriteSelectedCountEl.textContent = t("status.selectedCount", {
+      count: quickSelectedFolderIds.size
+    });
+  }
+
+  function renderQuickFavoriteShortcutHint() {
+    if (!quickFavoriteShortcutHintEl) return;
+    quickFavoriteShortcutHintEl.textContent = t("status.quickFavoriteHint", {
+      shortcut: formatShortcutLabel(activeQuickFavoriteShortcut)
+    });
+  }
+
+  function visibleQuickFavoriteFolders(keyword = "") {
+    const lower = keyword.trim().toLowerCase();
+    const existingFolderIdSet = new Set(currentVideoLocalFolders.map((folder) => folder.id));
+    const filtered = allFolders.filter((folder) =>
+      folder.name.toLowerCase().includes(lower)
+    );
+    return filtered.sort((left, right) => {
+      const leftExisting = existingFolderIdSet.has(left.id) ? 1 : 0;
+      const rightExisting = existingFolderIdSet.has(right.id) ? 1 : 0;
+      if (leftExisting !== rightExisting) return rightExisting - leftExisting;
+      return 0;
+    });
+  }
+
+  function moveQuickFavoriteActive(delta) {
+    const visible = visibleQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
+    if (visible.length === 0) {
+      quickActiveFolderId = 0;
+      renderQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
+      return;
+    }
+    const currentIndex = Math.max(
+      0,
+      visible.findIndex((folder) => folder.id === quickActiveFolderId)
+    );
+    const nextIndex = (currentIndex + delta + visible.length) % visible.length;
+    quickActiveFolderId = visible[nextIndex]?.id || 0;
+    renderQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
+  }
+
+  function toggleQuickFavoriteFolder(folderId) {
+    if (!Number.isInteger(folderId) || folderId <= 0) return;
+    if (quickSelectedFolderIds.has(folderId)) quickSelectedFolderIds.delete(folderId);
+    else quickSelectedFolderIds.add(folderId);
+    renderQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
+  }
+
+  function renderQuickFavoriteFolders(keyword = "") {
+    if (!quickFavoriteListEl) return;
+    const visible = visibleQuickFavoriteFolders(keyword);
+    const existingFolderIdSet = new Set(currentVideoLocalFolders.map((folder) => folder.id));
+
+    if (visible.length > 0 && !visible.some((folder) => folder.id === quickActiveFolderId)) {
+      quickActiveFolderId = visible[0]?.id || 0;
+    }
+
+    quickFavoriteListEl.replaceChildren();
+    if (visible.length === 0) {
+      quickFavoriteListEl.appendChild(
+        createEl("div", { className: "bl-empty", text: t("status.noFolders") })
+      );
+      renderQuickFavoriteSelectedCount();
+      return;
+    }
+
+    for (const folder of visible) {
+      const isExisting = existingFolderIdSet.has(folder.id);
+      const node = createEl("label", {
+        className: `bl-folder-item${folder.id === quickActiveFolderId ? " is-active" : ""}`
+      });
+      const checkbox = createEl("input", {
+        attrs: {
+          type: "checkbox",
+          "data-folder-id": String(folder.id)
+        }
+      });
+      checkbox.checked = quickSelectedFolderIds.has(folder.id);
+      const contentChildren = [
+        createEl("p", { className: "bl-folder-name", text: folder.name }),
+        createEl("p", {
+          className: "bl-folder-meta",
+          text: isExisting
+            ? `${t("status.videosCount", { count: folder.itemCount ?? 0 })} · ${t("status.savedBadge")}`
+            : t("status.videosCount", { count: folder.itemCount ?? 0 })
+        })
+      ];
+      const content = createEl("div", { className: "bl-folder-content" }, contentChildren);
+      node.appendChild(checkbox);
+      node.appendChild(content);
+
+      checkbox.addEventListener("change", (event) => {
+        const target = event.target;
+        const id = Number(target?.dataset?.folderId);
+        if (!Number.isInteger(id)) return;
+        quickActiveFolderId = id;
+        if (target.checked) quickSelectedFolderIds.add(id);
+        else quickSelectedFolderIds.delete(id);
+        renderQuickFavoriteSelectedCount();
+      });
+      node.addEventListener("mouseenter", () => {
+        quickActiveFolderId = folder.id;
+      });
+      quickFavoriteListEl.appendChild(node);
+    }
+
+    renderQuickFavoriteSelectedCount();
+  }
+
   function openPanel() {
     if (!panel) return;
     panel.classList.remove("bl-hidden");
@@ -889,6 +1130,80 @@
     if (!panel) return;
     panel.classList.add("bl-hidden");
     closeCreateFolderModal();
+  }
+
+  function openQuickFavoriteLayer() {
+    if (!quickFavoriteLayer) return;
+    quickFavoriteLayer.classList.remove("bl-hidden");
+    renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
+    renderQuickFavoriteFolders("");
+    renderQuickFavoriteSelectedCount();
+    if (quickFavoriteSearchInput) {
+      quickFavoriteSearchInput.value = "";
+      quickFavoriteSearchInput.focus();
+    }
+  }
+
+  function closeQuickFavoriteLayer() {
+    if (!quickFavoriteLayer) return;
+    quickFavoriteLayer.classList.add("bl-hidden");
+  }
+
+  async function refreshCollectorData() {
+    await Promise.all([loadVideo(), loadFolders()]);
+  }
+
+  async function openQuickFavoriteFromShortcut() {
+    quickSelectedFolderIds = new Set();
+    quickActiveFolderId = 0;
+    openQuickFavoriteLayer();
+    await refreshCollectorData();
+  }
+
+  function handleQuickFavoriteShortcut(event) {
+    if (matchesQuickFavoriteShortcut(event, activeQuickFavoriteShortcut)) {
+      if (isEditableTarget(event.target)) return;
+      if (!isCollectorUiUrl(location.href)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void openQuickFavoriteFromShortcut();
+      return;
+    }
+
+    if (quickFavoriteLayer?.classList.contains("bl-hidden")) return;
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeQuickFavoriteLayer();
+      return;
+    }
+
+    if (isEditableTarget(event.target)) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveQuickFavoriteActive(1);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveQuickFavoriteActive(-1);
+      return;
+    }
+
+    if (event.key === " " || event.key === "Spacebar") {
+      event.preventDefault();
+      if (quickActiveFolderId > 0) {
+        toggleQuickFavoriteFolder(quickActiveFolderId);
+      }
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void saveQuickFavorite();
+    }
   }
 
   function openCreateFolderModal() {
@@ -920,7 +1235,10 @@
     const base = pickBasePayload();
     if (!base.bvid) {
       currentVideo = null;
+      currentVideoLocalFolders = [];
       renderVideo(null);
+      renderExistingFolderSummary(existingFoldersSummaryEl);
+      renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
       setStatus(t("toast.detectBvidFail"), "err");
       return;
     }
@@ -970,12 +1288,16 @@
 
     if (!currentVideo.title) {
       currentVideo = null;
+      currentVideoLocalFolders = [];
       renderVideo(null);
+      renderExistingFolderSummary(existingFoldersSummaryEl);
+      renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
       setStatus(t("toast.videoLoadFail"), "err");
       return;
     }
 
     renderVideo(currentVideo);
+    await refreshCurrentVideoLocalFolders();
   }
 
   async function loadFolders() {
@@ -985,7 +1307,11 @@
       selectedFolderIds = new Set(
         [...selectedFolderIds].filter((id) => idSet.has(id))
       );
+      quickSelectedFolderIds = new Set(
+        [...quickSelectedFolderIds].filter((id) => idSet.has(id))
+      );
       renderFolders(folderSearchInput?.value || "");
+      renderQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : t("toast.folderLoadFail"),
@@ -1045,34 +1371,77 @@
     }
   }
 
-  async function saveVideo() {
+  function folderNamesFromSaveResult(result, key) {
+    const folderIds = Array.isArray(result?.[key]) ? result[key] : [];
+    const fromLoadedFolders = folderNamesFromIds(folderIds);
+    if (fromLoadedFolders.length > 0) return fromLoadedFolders;
+    const idSet = new Set(folderIds.map((id) => Number(id)));
+    const finalFolders = Array.isArray(result?.finalFolders) ? result.finalFolders : [];
+    return finalFolders
+      .filter((folder) => idSet.has(Number(folder?.id)))
+      .map((folder) => String(folder?.name || "").trim())
+      .filter(Boolean);
+  }
+
+  async function saveVideoWithFolderIds(folderIds, options = {}) {
     if (!currentVideo?.bvid || !currentVideo?.title || !currentVideo?.bvidUrl) {
       setStatus(t("toast.videoIncomplete"), "err");
       return;
     }
-    if (!saveBtn) return;
-
-    saveBtn.disabled = true;
+    const triggerButton = options.button || null;
+    if (triggerButton) triggerButton.disabled = true;
     try {
       const payload = {
         ...currentVideo,
-        folderIds: [...selectedFolderIds],
+        folderIds: [...folderIds],
         customTags: parseTags(customTagsInput?.value || ""),
         systemTags: currentVideo.systemTags || [],
         isInvalid: false
       };
       const result = await requestLocalApi("POST", "/videos", payload);
+      const addedFolderNames = folderNamesFromSaveResult(result, "addedFolderIds");
+      const existingFolderNames = folderNamesFromSaveResult(result, "existingFolderIds");
+      const toastMessage =
+        addedFolderNames.length > 0 || existingFolderNames.length > 0
+          ? buildQuickFavoriteToastMessage(
+              {
+                addedFolderNames,
+                existingFolderNames
+              },
+              t
+            )
+          : t("toast.saved");
 
-      setStatus(t("toast.saved"), "ok");
+      setStatus(toastMessage, "ok");
+      currentVideoLocalFolders = Array.isArray(result?.finalFolders) ? result.finalFolders : [];
+      renderExistingFolderSummary(existingFoldersSummaryEl);
+      renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
       await loadFolders();
+      if (options.closeQuickLayer) {
+        closeQuickFavoriteLayer();
+      }
+      return result;
     } catch (error) {
       setStatus(
         `${t("toast.saveFail")}: ${error instanceof Error ? error.message : t("error.unknown")}`,
         "err"
       );
     } finally {
-      saveBtn.disabled = false;
+      if (triggerButton) triggerButton.disabled = false;
     }
+  }
+
+  async function saveVideo() {
+    if (!saveBtn) return;
+    return saveVideoWithFolderIds(selectedFolderIds, { button: saveBtn });
+  }
+
+  async function saveQuickFavorite() {
+    if (!quickFavoriteSaveBtn) return;
+    return saveVideoWithFolderIds(quickSelectedFolderIds, {
+      button: quickFavoriteSaveBtn,
+      closeQuickLayer: true
+    });
   }
 
   function readButtonPositionFromLocalStorage(key) {
@@ -1384,6 +1753,7 @@
     root.classList.toggle("bl-fullscreen-hidden", shouldHide);
     if (shouldHide) {
       closePanel();
+      closeQuickFavoriteLayer();
       closeCreateFolderModal();
     }
   }
@@ -1437,6 +1807,7 @@
   function applyTheme() {
     const mode = resolveThemeMode(activeThemePreference);
     if (panel) panel.dataset.theme = mode;
+    if (quickFavoriteLayer) quickFavoriteLayer.dataset.theme = mode;
     if (floatingBtn) floatingBtn.dataset.theme = mode;
     if (modal) modal.dataset.theme = mode;
   }
@@ -1569,6 +1940,24 @@
       .bl-video-meta { margin-top: 6px; font-size: 12px; }
       #bl-floating-panel[data-theme="light"] .bl-video-meta { color: #60708e; }
       #bl-floating-panel[data-theme="dark"] .bl-video-meta { color: #98a8c5; }
+      .bl-existing-folders-summary {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.45;
+        border-radius: 10px;
+        border: 1px dashed;
+        padding: 8px 10px;
+      }
+      #bl-floating-panel[data-theme="light"] .bl-existing-folders-summary {
+        color: #47597d;
+        border-color: #cdd8ef;
+        background: rgba(243, 247, 255, .92);
+      }
+      #bl-floating-panel[data-theme="dark"] .bl-existing-folders-summary {
+        color: #c6d4ee;
+        border-color: #42557d;
+        background: rgba(18, 31, 58, .86);
+      }
 
       .bl-card { margin-top: 12px; border: 1px solid; border-radius: 14px; padding: 10px; }
       #bl-floating-panel[data-theme="light"] .bl-card { border-color: rgba(210, 223, 249, .96); background: rgba(255, 255, 255, .94); }
@@ -1609,6 +1998,10 @@
       #bl-floating-panel[data-theme="light"] .bl-folder-list { border-color: #d9e3f6; background: rgba(255, 255, 255, .94); }
       #bl-floating-panel[data-theme="dark"] .bl-folder-list { border-color: #455984; background: rgba(12, 21, 41, .92); }
       .bl-folder-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px; border-radius: 8px; }
+      .bl-folder-item.is-active {
+        outline: 2px solid rgba(93, 126, 255, .32);
+        outline-offset: -1px;
+      }
       #bl-floating-panel[data-theme="light"] .bl-folder-item:hover { background: rgba(107, 134, 255, .1); }
       #bl-floating-panel[data-theme="dark"] .bl-folder-item:hover { background: rgba(108, 139, 255, .16); }
       .bl-folder-item input { margin-top: 2px; }
@@ -1741,6 +2134,113 @@
       #bl-create-folder-modal[data-theme="dark"] .bl-input,
       #bl-create-folder-modal[data-theme="dark"] .bl-textarea { border-color: #405075; background: #101b34; color: #edf2ff; }
       .bl-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+      #bl-quick-favorite-layer {
+        pointer-events: auto;
+        position: fixed;
+        inset: 0;
+        z-index: 1000000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 14, 30, .42);
+        padding: 14px;
+        box-sizing: border-box;
+      }
+      .bl-quick-favorite-panel {
+        width: min(460px, calc(100vw - 28px));
+        max-height: min(80vh, 720px);
+        overflow: auto;
+        border-radius: 18px;
+        border: 1px solid;
+        padding: 14px;
+        box-shadow: 0 28px 52px rgba(8, 14, 30, .28);
+      }
+      #bl-quick-favorite-layer[data-theme="light"] .bl-quick-favorite-panel {
+        border-color: #d5dff3;
+        background: #ffffff;
+        color: #17213b;
+      }
+      #bl-quick-favorite-layer[data-theme="dark"] .bl-quick-favorite-panel {
+        border-color: #455984;
+        background: #101b34;
+        color: #e2e8f0;
+      }
+      .bl-quick-favorite-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .bl-quick-favorite-title {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .bl-quick-favorite-subtitle {
+        margin-top: 4px;
+        font-size: 12px;
+      }
+      #bl-quick-favorite-layer[data-theme="light"] .bl-quick-favorite-subtitle {
+        color: #60708e;
+      }
+      #bl-quick-favorite-layer[data-theme="dark"] .bl-quick-favorite-subtitle {
+        color: #94a3c0;
+      }
+      .bl-quick-favorite-video-title {
+        margin: 0 0 10px;
+        font-size: 13px;
+        line-height: 1.45;
+        font-weight: 650;
+      }
+      #bl-quick-favorite-layer .bl-existing-folders-summary {
+        margin-bottom: 10px;
+      }
+      #bl-quick-favorite-layer[data-theme="light"] .bl-existing-folders-summary {
+        color: #47597d;
+        border-color: #cdd8ef;
+        background: rgba(243, 247, 255, .92);
+      }
+      #bl-quick-favorite-layer[data-theme="dark"] .bl-existing-folders-summary {
+        color: #c6d4ee;
+        border-color: #42557d;
+        background: rgba(18, 31, 58, .86);
+      }
+      #bl-quick-favorite-layer .bl-input {
+        margin-bottom: 10px;
+      }
+      #bl-quick-favorite-layer[data-theme="light"] .bl-input {
+        border-color: #d5def1;
+        background: rgba(255, 255, 255, .92);
+        color: #15213e;
+      }
+      #bl-quick-favorite-layer[data-theme="dark"] .bl-input {
+        border-color: #405075;
+        background: #101b34;
+        color: #edf2ff;
+      }
+      #bl-quick-favorite-layer .bl-folder-list {
+        max-height: 300px;
+        margin-bottom: 10px;
+      }
+      #bl-quick-favorite-layer[data-theme="light"] .bl-folder-list {
+        border-color: #d9e3f6;
+        background: rgba(255, 255, 255, .94);
+      }
+      #bl-quick-favorite-layer[data-theme="dark"] .bl-folder-list {
+        border-color: #455984;
+        background: rgba(12, 21, 41, .92);
+      }
+      .bl-quick-favorite-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .bl-quick-favorite-footer .bl-btn {
+        min-width: 120px;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -1756,14 +2256,20 @@
       }
 
       openPanel();
-      await Promise.all([loadVideo(), loadFolders()]);
+      await refreshCollectorData();
     });
 
     closeBtn?.addEventListener("click", () => closePanel());
     saveBtn?.addEventListener("click", saveVideo);
+    quickFavoriteCloseBtn?.addEventListener("click", closeQuickFavoriteLayer);
+    quickFavoriteSaveBtn?.addEventListener("click", saveQuickFavorite);
 
     folderSearchInput?.addEventListener("input", (event) => {
       renderFolders(event.target.value || "");
+    });
+    quickFavoriteSearchInput?.addEventListener("input", (event) => {
+      quickActiveFolderId = 0;
+      renderQuickFavoriteFolders(event.target.value || "");
     });
 
     openCreateFolderBtn?.addEventListener("click", () => {
@@ -1803,6 +2309,12 @@
       }
     });
 
+    quickFavoriteLayer?.addEventListener("click", (event) => {
+      if (event.target === quickFavoriteLayer) {
+        closeQuickFavoriteLayer();
+      }
+    });
+
     window.addEventListener("resize", () => {
       updateFloatingUiVisibility();
       if (!panel.classList.contains("bl-hidden")) {
@@ -1811,6 +2323,7 @@
       const rect = floatingBtn.getBoundingClientRect();
       placeFloatingButtonAt(rect.left, rect.top, false);
     });
+    window.addEventListener("keydown", handleQuickFavoriteShortcut);
   }
 
   function injectUi() {
@@ -1867,6 +2380,11 @@
               id: "bl-video-meta",
               className: "bl-video-meta",
               text: "-"
+            }),
+            createEl("p", {
+              id: "bl-panel-existing-folders-summary",
+              className: "bl-existing-folders-summary",
+              text: t("status.savedFoldersNone")
             })
           ])
         ]),
@@ -1935,6 +2453,73 @@
           })
         ]),
         createEl("p", { className: "bl-credit", text: t("footer.credit") })
+      ]
+    );
+
+    quickFavoriteLayer = createEl(
+      "div",
+      {
+        id: "bl-quick-favorite-layer",
+        className: "bl-hidden",
+        attrs: { "data-theme": "light" }
+      },
+      [
+        createEl("div", { className: "bl-quick-favorite-panel" }, [
+          createEl("div", { className: "bl-quick-favorite-header" }, [
+            createEl("div", {}, [
+              createEl("h3", {
+                id: "bl-quick-favorite-title",
+                className: "bl-quick-favorite-title",
+                text: t("quickFavorite.title")
+              }),
+                  createEl("p", {
+                    id: "bl-quick-favorite-hint",
+                    className: "bl-quick-favorite-subtitle",
+                    text: t("status.quickFavoriteHint", {
+                      shortcut: formatShortcutLabel(activeQuickFavoriteShortcut)
+                    })
+                  })
+                ]),
+            createEl("button", {
+              id: "bl-quick-favorite-close",
+              className: "bl-btn bl-btn-outline",
+              attrs: { type: "button" },
+              text: t("button.close")
+            })
+          ]),
+          createEl("p", {
+            id: "bl-quick-favorite-video-title",
+            className: "bl-quick-favorite-video-title",
+            text: t("status.noVideoTitle")
+          }),
+          createEl("p", {
+            id: "bl-existing-folders-summary",
+            className: "bl-existing-folders-summary",
+            text: t("status.savedFoldersNone")
+          }),
+          createEl("input", {
+            id: "bl-quick-favorite-search",
+            className: "bl-input",
+            attrs: { placeholder: t("field.quickFavoriteSearch") }
+          }),
+          createEl("div", {
+            id: "bl-quick-favorite-list",
+            className: "bl-folder-list"
+          }),
+          createEl("div", { className: "bl-quick-favorite-footer" }, [
+            createEl("span", {
+              id: "bl-quick-favorite-selected-count",
+              className: "bl-selected-count",
+              text: t("status.selectedCount", { count: 0 })
+            }),
+            createEl("button", {
+              id: "bl-quick-favorite-save",
+              className: "bl-btn bl-btn-primary",
+              attrs: { type: "button" },
+              text: t("button.quickSave")
+            })
+          ])
+        ])
       ]
     );
 
@@ -2042,16 +2627,26 @@
     });
 
     root.appendChild(panel);
+    root.appendChild(quickFavoriteLayer);
     root.appendChild(modal);
     root.appendChild(floatingBtn);
     root.appendChild(toastRoot);
     document.body.appendChild(root);
 
     folderListEl = panel.querySelector("#bl-folder-list");
+    existingFoldersSummaryEl = panel.querySelector("#bl-panel-existing-folders-summary");
     folderSearchInput = panel.querySelector("#bl-folder-search");
     customTagsInput = panel.querySelector("#bl-custom-tags");
     saveBtn = panel.querySelector("#bl-save-btn");
     closeBtn = panel.querySelector("#bl-close-btn");
+    quickFavoriteTitleEl = quickFavoriteLayer.querySelector("#bl-quick-favorite-video-title");
+    quickFavoriteShortcutHintEl = quickFavoriteLayer.querySelector("#bl-quick-favorite-hint");
+    quickFavoriteSearchInput = quickFavoriteLayer.querySelector("#bl-quick-favorite-search");
+    quickFavoriteListEl = quickFavoriteLayer.querySelector("#bl-quick-favorite-list");
+    quickFavoriteSaveBtn = quickFavoriteLayer.querySelector("#bl-quick-favorite-save");
+    quickFavoriteCloseBtn = quickFavoriteLayer.querySelector("#bl-quick-favorite-close");
+    quickFavoriteSelectedCountEl = quickFavoriteLayer.querySelector("#bl-quick-favorite-selected-count");
+    quickFavoriteExistingSummaryEl = quickFavoriteLayer.querySelector("#bl-existing-folders-summary");
     openCreateFolderBtn = panel.querySelector("#bl-folder-create-open");
     selectAllFoldersBtn = panel.querySelector("#bl-select-all-folders");
     clearFolderSelectionBtn = panel.querySelector("#bl-clear-folders");
@@ -2078,6 +2673,10 @@
     startFullscreenWatch();
     renderVideo(null);
     renderFolders("");
+    renderQuickFavoriteFolders("");
+    renderQuickFavoriteShortcutHint();
+    renderExistingFolderSummary(existingFoldersSummaryEl);
+    renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
     syncCreateFolderCounter();
   }
 
@@ -2100,15 +2699,23 @@
 
     if (chrome?.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== "local" || !changes[THEME_STORAGE_KEY]) return;
-        const next = changes[THEME_STORAGE_KEY].newValue;
-        if (
-          next === THEME_AUTO ||
-          next === THEME_LIGHT ||
-          next === THEME_DARK
-        ) {
-          activeThemePreference = next;
-          applyTheme();
+        if (areaName !== "local") return;
+        if (changes[THEME_STORAGE_KEY]) {
+          const next = changes[THEME_STORAGE_KEY].newValue;
+          if (
+            next === THEME_AUTO ||
+            next === THEME_LIGHT ||
+            next === THEME_DARK
+          ) {
+            activeThemePreference = next;
+            applyTheme();
+          }
+        }
+        if (changes[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY]) {
+          activeQuickFavoriteShortcut = resolveStoredShortcut(
+            changes[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY].newValue ?? null
+          );
+          renderQuickFavoriteShortcutHint();
         }
       });
     }
@@ -2135,6 +2742,7 @@
     bindNativeFavoriteActionListener();
     void fetchBidirectionalSettings(true);
     if (!isCollectorUiUrl(location.href)) return;
+    activeQuickFavoriteShortcut = await resolveQuickFavoriteShortcutPreference();
     injectUi();
     setupThemeSync();
   }

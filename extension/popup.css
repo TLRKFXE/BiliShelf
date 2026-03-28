@@ -84,6 +84,40 @@ body[data-theme="light"] .muted {
   gap: 8px;
 }
 
+.shortcut-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shortcut-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shortcut-pill,
+body[data-theme="light"] .shortcut-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef3ff;
+  border: 1px solid #d8e4ff;
+  color: #28437c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.shortcut-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .option-chip {
   position: relative;
   cursor: pointer;
@@ -150,6 +184,17 @@ body[data-theme="light"] .option-chip span {
   color: #27406f;
 }
 
+.ghost-btn {
+  border: 1px solid #d5deef;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
 body[data-theme="dark"] {
   background: #0b1020;
   color: #e5e7eb;
@@ -188,6 +233,18 @@ body[data-theme="dark"] .option-chip[data-mode="dark"] input:checked + span {
 body[data-theme="dark"] .secondary-btn {
   background: #233355;
   color: #d8e7ff;
+}
+
+body[data-theme="dark"] .shortcut-pill {
+  background: #192743;
+  border-color: #28406d;
+  color: #dce8ff;
+}
+
+body[data-theme="dark"] .ghost-btn {
+  border-color: #334463;
+  background: #121b31;
+  color: #d5def2;
 }
 
 .toast-root {

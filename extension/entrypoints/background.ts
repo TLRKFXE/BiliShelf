@@ -205,6 +205,7 @@ const STAGE3_RECONCILE_DEFAULT_INTERVAL_MINUTES = 30;
 const STAGE3_RECONCILE_RETRY_DELAY_MINUTES = 5;
 const STAGE3_RECONCILE_RISK_DELAY_MINUTES = 20;
 const TAG_SYNC_ENABLED = true;
+const AI_CATEGORIES_ENABLED = false;
 const BILI_FETCH_TIMEOUT_MS = 18_000;
 const BILI_META_API_GAP_MS = 280;
 const BILI_META_API_GAP_JITTER_MS = 100;
@@ -3744,6 +3745,9 @@ function handleReadOnlyApi(
 
   const folderAiCategoryMatch = matchFolderAiCategoriesPath(path);
   if (folderAiCategoryMatch) {
+    if (!AI_CATEGORIES_ENABLED) {
+      return ok(null);
+    }
     const folderId = toInt(folderAiCategoryMatch[1]);
     return ok(normalizeFolderAiCategoriesResponse(getFolderAiAnalysis(state, folderId)));
   }
@@ -3809,6 +3813,9 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
 
     const folderAiCategoryMatch = matchFolderAiCategoriesPath(path);
     if (folderAiCategoryMatch && method === "POST") {
+      if (!AI_CATEGORIES_ENABLED) {
+        return fail(403, "AI categorization is temporarily disabled");
+      }
       const folderId = toInt(folderAiCategoryMatch[1]);
       if (folderAiCategoryTask || folderAiCategoryFolderId !== null) {
         return fail(
@@ -4456,6 +4463,9 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       const folderMatch = path.match(/^\/folders\/(\d+)$/);
       const folderAiCategoryWriteMatch = matchFolderAiCategoriesPath(path);
       if (folderAiCategoryWriteMatch && method === "DELETE") {
+        if (!AI_CATEGORIES_ENABLED) {
+          return fail(403, "AI categorization is temporarily disabled");
+        }
         const folderId = toInt(folderAiCategoryWriteMatch[1]);
         ensureAiMeta(state);
         state.ai.folderAnalyses = state.ai.folderAnalyses.filter(
@@ -4626,14 +4636,20 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           state.videos.push(video);
         }
 
+        const addedFolderIds: number[] = [];
+        const existingFolderIds: number[] = [];
         for (const folderId of validFolderIds) {
-          if (folderItemExists(state, folderId, video.id)) continue;
+          if (folderItemExists(state, folderId, video.id)) {
+            existingFolderIds.push(folderId);
+            continue;
+          }
           state.folderItems.push({
             id: state.counters.folderItem++,
             folderId,
             videoId: video.id,
             addedAt: timestamp
           });
+          addedFolderIds.push(folderId);
         }
 
         const customTags = Array.isArray(body.customTags) ? body.customTags : [];
@@ -4647,7 +4663,21 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           if (tag) ensureVideoTag(state, video.id, tag.id);
         }
 
-        return ok(mapVideo(state, video), existed ? 200 : 201);
+        const finalFolders = state.folderItems
+          .filter((item) => item.videoId === video.id)
+          .map((item) => state.folders.find((folder) => folder.id === item.folderId))
+          .filter((folder): folder is FolderRecord => !!folder && folder.deletedAt === null)
+          .sort((left, right) => left.sortOrder - right.sortOrder)
+          .map((folder) => ({ id: folder.id, name: folder.name }));
+
+        return ok({
+          video: mapVideo(state, video),
+          created: !existed,
+          addedFolderIds,
+          existingFolderIds,
+          finalFolderIds: finalFolders.map((folder) => folder.id),
+          finalFolders,
+        }, existed ? 200 : 201);
       }
 
       const videoByIdMatch = path.match(/^\/videos\/(\d+)$/);
