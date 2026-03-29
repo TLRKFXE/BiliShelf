@@ -216,6 +216,7 @@ const bidirectionalSyncSaving = ref(false);
 const webdavDialogOpen = ref(false);
 const webdavSettings = ref<WebDavSettings | null>(null);
 const webdavBusy = ref(false);
+const AI_CATEGORIES_ENABLED = false;
 const EXTENSION_LOCAL_API_RUNTIME = isExtensionLocalApiRuntime();
 const TAG_SYNC_ENABLED = EXTENSION_LOCAL_API_RUNTIME;
 const BILIBILI_LISTENER_SETTINGS_ENABLED = EXTENSION_LOCAL_API_RUNTIME;
@@ -365,10 +366,12 @@ const activeFolder = computed<Folder | null>(() => {
   return folders.value.find((item) => item.id === folderId) ?? null;
 });
 const selectedFolderHasAiRecord = computed(
-  () => selectedFolderAiCategories.value !== null
+  () => AI_CATEGORIES_ENABLED && selectedFolderAiCategories.value !== null
 );
 const selectedFolderCanOpenAiBrowser = computed(() => {
-  if (trashMode.value || selectedFolderId.value === null) return false;
+  if (!AI_CATEGORIES_ENABLED || trashMode.value || selectedFolderId.value === null) {
+    return false;
+  }
   return canOpenAiCategoryBrowser(selectedFolderAiCategories.value);
 });
 const aiCategoryBrowserVideos = computed(() => {
@@ -1124,7 +1127,14 @@ async function ensureAiBrowserFolderVideos(folderId: number) {
 
 async function openAiCategoryBrowser() {
   const folderId = selectedFolderId.value;
-  if (!EXTENSION_LOCAL_API_RUNTIME || trashMode.value || folderId === null) return;
+  if (
+    !AI_CATEGORIES_ENABLED ||
+    !EXTENSION_LOCAL_API_RUNTIME ||
+    trashMode.value ||
+    folderId === null
+  ) {
+    return;
+  }
 
   if (!selectedFolderAiCategories.value) {
     selectedFolderAiCategories.value = folderAiCategoriesCache.value[folderId] ?? null;
@@ -1147,7 +1157,12 @@ function openAiCategory(category: AiCategoryKey) {
 
 async function refreshSelectedFolderAiCategories(folderId: number | null) {
   const requestToken = ++folderAiFetchToken;
-  if (!EXTENSION_LOCAL_API_RUNTIME || trashMode.value || folderId === null) {
+  if (
+    !AI_CATEGORIES_ENABLED ||
+    !EXTENSION_LOCAL_API_RUNTIME ||
+    trashMode.value ||
+    folderId === null
+  ) {
     selectedFolderAiCategories.value = null;
     return;
   }
@@ -1166,7 +1181,7 @@ async function refreshSelectedFolderAiCategories(folderId: number | null) {
 }
 
 async function performFolderAiCategories(folderId: number) {
-  if (!EXTENSION_LOCAL_API_RUNTIME) {
+  if (!AI_CATEGORIES_ENABLED || !EXTENSION_LOCAL_API_RUNTIME) {
     throw new Error("AI categorization is unavailable in this runtime.");
   }
   if (selectedFolderId.value !== folderId || trashMode.value) {
@@ -1201,7 +1216,7 @@ async function performFolderAiCategories(folderId: number) {
 }
 
 async function performClearFolderAiCategories(folderId: number) {
-  if (!EXTENSION_LOCAL_API_RUNTIME) {
+  if (!AI_CATEGORIES_ENABLED || !EXTENSION_LOCAL_API_RUNTIME) {
     throw new Error("AI categorization is unavailable in this runtime.");
   }
 
@@ -2271,7 +2286,7 @@ watch(
 watch(
   [selectedFolderId, trashMode],
   ([folderId, isTrash], [previousFolderId, wasTrash] = [null, false]) => {
-    if (isTrash || folderId === null) {
+    if (!AI_CATEGORIES_ENABLED || isTrash || folderId === null) {
       folderAiFetchToken += 1;
       selectedFolderAiCategories.value = null;
       closeAiCategoryBrowser();
@@ -2368,7 +2383,7 @@ onBeforeUnmount(() => {
       :has-selected-folder-ai-record="selectedFolderHasAiRecord"
       :can-open-selected-folder-ai-browser="selectedFolderCanOpenAiBrowser"
       :ai-running-folder-id="aiRunningFolderId"
-      :show-ai-actions="EXTENSION_LOCAL_API_RUNTIME && !trashMode"
+      :show-ai-actions="AI_CATEGORIES_ENABLED && EXTENSION_LOCAL_API_RUNTIME && !trashMode"
       :locale="locale"
       @select="handleSelectFolderWithAiBrowser"
       @create="handleCreateFolder"
@@ -2384,7 +2399,7 @@ onBeforeUnmount(() => {
       <ManagerHeader
         :t="t"
         :trash-mode="trashMode"
-        :show-ai-settings="EXTENSION_LOCAL_API_RUNTIME"
+        :show-ai-settings="AI_CATEGORIES_ENABLED && EXTENSION_LOCAL_API_RUNTIME"
         :show-sync-settings="BILIBILI_LISTENER_SETTINGS_ENABLED"
         :current-view-label="headerCurrentViewLabel"
         :current-scope-label="headerCurrentScopeLabel"
@@ -2547,7 +2562,7 @@ onBeforeUnmount(() => {
       </section>
 
       <AiCategoryBrowser
-        v-if="!trashMode && aiCategoryBrowserOpen"
+        v-if="AI_CATEGORIES_ENABLED && !trashMode && aiCategoryBrowserOpen"
         :t="t"
         :locale="locale"
         :folder="activeFolder"
@@ -2690,6 +2705,7 @@ onBeforeUnmount(() => {
     />
 
     <AiSettingsDialog
+      v-if="AI_CATEGORIES_ENABLED"
       :open="aiSettingsDialogOpen"
       :t="t"
       :loading="aiSettingsBusy"

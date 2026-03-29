@@ -70,3 +70,25 @@ test("manual sync dialog no longer renders the misleading chunk-size controls", 
   assert.doesNotMatch(source, /sync\.chunkSizeTitle/);
   assert.doesNotMatch(source, /sync\.autoChunkHint/);
 });
+
+test("app temporarily disables ai category entry points and background fetches", async () => {
+  const source = await readComponentSource(["App.vue"]);
+
+  assert.match(source, /const AI_CATEGORIES_ENABLED = false;/);
+  assert.match(
+    source,
+    /:show-ai-actions="AI_CATEGORIES_ENABLED && EXTENSION_LOCAL_API_RUNTIME && !trashMode"/,
+  );
+  assert.match(
+    source,
+    /:show-ai-settings="AI_CATEGORIES_ENABLED && EXTENSION_LOCAL_API_RUNTIME"/,
+  );
+  assert.match(
+    source,
+    /v-if="AI_CATEGORIES_ENABLED && !trashMode && aiCategoryBrowserOpen"/,
+  );
+  assert.match(
+    source,
+    /if \(\s*!AI_CATEGORIES_ENABLED\s*\|\|\s*!EXTENSION_LOCAL_API_RUNTIME\s*\|\|\s*trashMode\.value\s*\|\|\s*folderId === null\s*\) \{/s,
+  );
+});

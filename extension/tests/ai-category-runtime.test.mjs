@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import {
   applyFolderCategoryAttempt,
@@ -7,6 +10,9 @@ import {
   runFolderAiCategories,
 } from "../shared/ai-analysis.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "..", "..");
 
 test("runFolderAiCategories groups videos without generating summary fields", async () => {
   const input = {
@@ -243,5 +249,26 @@ test("keeps non-quota 429 provider errors without rewriting to quota exceeded", 
       assert.doesNotMatch(String(error?.message), /quota exceeded/i);
       return true;
     },
+  );
+});
+
+test("background temporarily disables ai categorization routes", async () => {
+  const source = await readFile(
+    path.join(repoRoot, "extension", "entrypoints", "background.ts"),
+    "utf8",
+  );
+
+  assert.match(source, /const AI_CATEGORIES_ENABLED = false;/);
+  assert.match(
+    source,
+    /if \(folderAiCategoryMatch\) \{\s*if \(!AI_CATEGORIES_ENABLED\) \{\s*return ok\(null\);/s,
+  );
+  assert.match(
+    source,
+    /if \(folderAiCategoryMatch && method === "POST"\) \{\s*if \(!AI_CATEGORIES_ENABLED\) \{\s*return fail\(403, "AI categorization is temporarily disabled"\);/s,
+  );
+  assert.match(
+    source,
+    /if \(folderAiCategoryWriteMatch && method === "DELETE"\) \{\s*if \(!AI_CATEGORIES_ENABLED\) \{\s*return fail\(403, "AI categorization is temporarily disabled"\);/s,
   );
 });
