@@ -43,6 +43,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "open-tags": [];
+  "open-ai-placeholder": [];
   "open-ai-settings": [];
   "open-sync-settings": [];
   "open-webdav-settings": [];
@@ -56,8 +57,8 @@ const emit = defineEmits<{
 }>();
 
 const exportDialogOpen = ref(false);
-const topActionButtonClass = "h-12 w-full justify-start rounded-2xl px-4";
-const secondaryActionButtonClass = "h-12 w-full justify-start rounded-2xl px-4";
+const topActionButtonClass = "h-12 w-full justify-start rounded-2xl border border-border/80 bg-card/80 px-4 shadow-sm shadow-black/5";
+const secondaryActionButtonClass = "h-12 w-full justify-start rounded-2xl border border-border/80 bg-card/80 px-4 shadow-sm shadow-black/5";
 
 function openExportDialog() {
   exportDialogOpen.value = true;
@@ -143,6 +144,16 @@ function submitExport(format: "json" | "csv") {
       >
         <Tags class="h-3.5 w-3.5" />
         {{ props.t("header.manageTags") }}
+      </Button>
+      <Button
+        v-if="!props.trashMode"
+        size="sm"
+        variant="outline"
+        :class="topActionButtonClass"
+        @click="emit('open-ai-placeholder')"
+      >
+        <Bot class="h-3.5 w-3.5" />
+        {{ props.t("header.aiPlaceholder") }}
       </Button>
       <Button
         v-if="!props.trashMode && props.showAiSettings"

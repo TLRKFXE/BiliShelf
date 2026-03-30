@@ -1223,6 +1223,10 @@ async function handleStartFolderPlayback(folderId: number) {
   }
 }
 
+function handleOpenAiPlaceholder() {
+  notifySuccess(t("toast.comingSoon"));
+}
+
 async function performFolderAiCategories(folderId: number) {
   if (!AI_CATEGORIES_ENABLED || !EXTENSION_LOCAL_API_RUNTIME) {
     throw new Error("AI categorization is unavailable in this runtime.");
@@ -2455,6 +2459,7 @@ onBeforeUnmount(() => {
         :exporting="exportingLibrary"
         :importing="importingLibrary"
         @open-tags="toolsOpen = true"
+        @open-ai-placeholder="handleOpenAiPlaceholder"
         @open-ai-settings="openAiSettingsDialog"
         @open-sync-settings="openBidirectionalSyncSettingsDialog"
         @open-webdav-settings="openWebDavDialog"

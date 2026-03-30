@@ -23,13 +23,16 @@ test("content script reads the active playback session and renders a dedicated o
   assert.match(source, /function refreshPlaybackOverlay\(\)/);
 });
 
-test("playback overlay exposes previous next open-manager and end-session controls", async () => {
+test("playback overlay exposes previous next list and collapse controls", async () => {
   const source = await readContentSource();
 
   assert.match(source, /id: "bl-playback-prev"/);
   assert.match(source, /id: "bl-playback-next"/);
-  assert.match(source, /id: "bl-playback-open-manager"/);
-  assert.match(source, /id: "bl-playback-end-session"/);
+  assert.match(source, /id: "bl-playback-list-toggle"/);
+  assert.match(source, /id: "bl-playback-collapse"/);
+  assert.match(source, /id: "bl-playback-list"/);
+  assert.doesNotMatch(source, /id: "bl-playback-open-manager"/);
+  assert.doesNotMatch(source, /id: "bl-playback-end-session"/);
 });
 
 test("playback overlay updates the active cursor before rendering controls", async () => {
@@ -45,4 +48,13 @@ test("playback overlay stays hidden on non-queued pages", async () => {
 
   assert.match(source, /if \(!session\) \{\s*hidePlaybackOverlay\(\);/s);
   assert.match(source, /if \(currentIndex < 0\) \{\s*hidePlaybackOverlay\(\);/s);
+});
+
+test("playback overlay renders an in-page queue list and supports collapsed state", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /function renderPlaybackQueueList\(/);
+  assert.match(source, /playbackListOpen/);
+  assert.match(source, /playbackCollapsed/);
+  assert.match(source, /togglePlaybackOverlayCollapsed/);
 });

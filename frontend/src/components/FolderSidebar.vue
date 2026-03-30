@@ -402,10 +402,12 @@ function triggerClear() {
         {{ t("playbackNoFolder") }}
       </p>
 
-      <Button size="sm" class="gap-1" :disabled="!canStartActiveFolderPlayback" @click="triggerPlayback">
-        <Play class="h-3.5 w-3.5" />
-        {{ t("playbackStart") }}
-      </Button>
+      <div class="flex justify-end">
+        <Button size="sm" class="gap-1" :disabled="!canStartActiveFolderPlayback" @click="triggerPlayback">
+          <Play class="h-3.5 w-3.5" />
+          {{ t("playbackStart") }}
+        </Button>
+      </div>
     </section>
 
     <section

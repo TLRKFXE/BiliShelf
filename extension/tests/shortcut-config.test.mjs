@@ -16,10 +16,10 @@ test("resolveStoredShortcut falls back to default shortcut when storage is empty
   assert.equal(resolved.mode, "default");
   assert.equal(resolved.disabled, false);
   assert.equal(resolved.altKey, true);
-  assert.equal(resolved.ctrlKey, false);
-  assert.equal(resolved.shiftKey, true);
-  assert.equal(resolved.code, "KeyS");
-  assert.equal(formatShortcutLabel(resolved), "Alt+Shift+S");
+  assert.equal(resolved.ctrlKey, true);
+  assert.equal(resolved.shiftKey, false);
+  assert.equal(resolved.code, "Digit1");
+  assert.equal(formatShortcutLabel(resolved), "Ctrl+Alt+1");
 });
 
 test("resolveStoredShortcut keeps explicit disabled state stable", () => {
@@ -110,7 +110,8 @@ test("shortcut storage key and default shortcut contract stay stable", () => {
     QUICK_FAVORITE_SHORTCUT_STORAGE_KEY,
     "bili_like_quick_favorite_shortcut_v1",
   );
-  assert.equal(DEFAULT_QUICK_FAVORITE_SHORTCUT.code, "KeyS");
+  assert.equal(DEFAULT_QUICK_FAVORITE_SHORTCUT.code, "Digit1");
   assert.equal(DEFAULT_QUICK_FAVORITE_SHORTCUT.altKey, true);
-  assert.equal(DEFAULT_QUICK_FAVORITE_SHORTCUT.shiftKey, true);
+  assert.equal(DEFAULT_QUICK_FAVORITE_SHORTCUT.ctrlKey, true);
+  assert.equal(DEFAULT_QUICK_FAVORITE_SHORTCUT.shiftKey, false);
 });

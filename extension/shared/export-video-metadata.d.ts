@@ -11,10 +11,9 @@ export declare function buildVideoExportMaps(state: unknown): {
 };
 
 export declare function buildExportVideoMetadata(
-  video: { id: number; partition?: unknown },
+  video: { id: number },
   maps: ReturnType<typeof buildVideoExportMaps>,
 ): {
-  partition: string;
   folderCount: number;
   folders: string[];
   favoriteAt: number | null;

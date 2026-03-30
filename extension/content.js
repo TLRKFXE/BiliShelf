@@ -68,6 +68,10 @@ import {
     "button.quickSave": { [LOCALE_ZH]: "快捷收藏", [LOCALE_EN]: "Quick favorite" },
     "button.previous": { [LOCALE_ZH]: "上一个", [LOCALE_EN]: "Previous" },
     "button.next": { [LOCALE_ZH]: "下一个", [LOCALE_EN]: "Next" },
+    "button.showList": { [LOCALE_ZH]: "查看列表", [LOCALE_EN]: "Show queue" },
+    "button.hideList": { [LOCALE_ZH]: "收起列表", [LOCALE_EN]: "Hide queue" },
+    "button.collapse": { [LOCALE_ZH]: "收起", [LOCALE_EN]: "Collapse" },
+    "button.expand": { [LOCALE_ZH]: "展开", [LOCALE_EN]: "Expand" },
     "button.openManager": { [LOCALE_ZH]: "回到管理页", [LOCALE_EN]: "Open manager" },
     "button.endPlayback": { [LOCALE_ZH]: "结束播放", [LOCALE_EN]: "End playback" },
     "section.folders": { [LOCALE_ZH]: "收藏夹", [LOCALE_EN]: "Folders" },
@@ -148,6 +152,10 @@ import {
       [LOCALE_ZH]: "已加入 {addedFolders}；原本已在 {existingFolders} 中",
       [LOCALE_EN]: "Added to {addedFolders}; already existed in {existingFolders}"
     },
+    "toast.savedRemovedFolders": {
+      [LOCALE_ZH]: "已从本地收藏夹移除 {folders}",
+      [LOCALE_EN]: "Removed from local folders: {folders}"
+    },
     "toast.savedWithBiliSync": {
       [LOCALE_ZH]: "已同步写回 B站收藏夹 {count} 个",
       [LOCALE_EN]: "Also synced to {count} Bilibili favorite folders"
@@ -177,6 +185,18 @@ import {
     "playback.folder": {
       [LOCALE_ZH]: "收藏夹 #{folderId}",
       [LOCALE_EN]: "Folder #{folderId}"
+    },
+    "playback.queueEmpty": {
+      [LOCALE_ZH]: "当前播放队列为空",
+      [LOCALE_EN]: "Playback queue is empty"
+    },
+    "playback.current": {
+      [LOCALE_ZH]: "当前播放",
+      [LOCALE_EN]: "Now playing"
+    },
+    "toast.extensionReloadRequired": {
+      [LOCALE_ZH]: "扩展已更新，请刷新当前页面后再试",
+      [LOCALE_EN]: "The extension was updated. Reload this page and try again."
     },
     "error.unknown": { [LOCALE_ZH]: "未知错误", [LOCALE_EN]: "Unknown error" }
   };
@@ -261,11 +281,16 @@ import {
   let playbackOverlayProgressEl = null;
   let playbackPrevBtn = null;
   let playbackNextBtn = null;
-  let playbackOpenManagerBtn = null;
-  let playbackEndSessionBtn = null;
+  let playbackListToggleBtn = null;
+  let playbackCollapseBtn = null;
+  let playbackListEl = null;
   let playbackOverlayTimer = null;
   let playbackOverlayBusy = false;
   let lastPlaybackOverlayUrl = location.href;
+  let playbackListOpen = true;
+  let playbackCollapsed = false;
+  let extensionContextInvalidated = false;
+  let extensionReloadToastShown = false;
 
   let suppressButtonClick = false;
   let allFolders = [];
@@ -593,6 +618,9 @@ import {
   }
 
   function requestLocalApi(method, path, body) {
+    if (extensionContextInvalidated) {
+      return Promise.reject(new Error(t("toast.extensionReloadRequired")));
+    }
     return new Promise((resolve, reject) => {
       let settled = false;
       const finish = (handler) => {
@@ -619,8 +647,18 @@ import {
         (response) => {
           const runtimeError = chrome.runtime.lastError;
           if (runtimeError) {
+            const runtimeMessage = runtimeError.message || "Local API unavailable";
+            if (runtimeMessage.toLowerCase().includes("extension context invalidated")) {
+              extensionContextInvalidated = true;
+              if (!extensionReloadToastShown) {
+                extensionReloadToastShown = true;
+                showToast(t("toast.extensionReloadRequired"), "err");
+              }
+              finish(() => reject(new Error(t("toast.extensionReloadRequired"))));
+              return;
+            }
             finish(() =>
-              reject(new Error(runtimeError.message || "Local API unavailable"))
+              reject(new Error(runtimeMessage))
             );
             return;
           }
@@ -658,6 +696,12 @@ import {
 
   function currentVideoLocalFolderNames() {
     return currentVideoLocalFolders.map((folder) => folder.name).filter(Boolean);
+  }
+
+  function currentVideoLocalFolderIds() {
+    return currentVideoLocalFolders
+      .map((folder) => Number(folder?.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
   }
 
   function renderExistingFolderSummary(target) {
@@ -1049,7 +1093,10 @@ import {
     }
     await refreshCollectorData();
     const rememberedFolderIds = await readRememberedCollectorFolderIds();
-    selectedFolderIds = new Set(rememberedFolderIds);
+    const currentVideoFolderIds = currentVideoLocalFolders
+      .map((folder) => Number(folder?.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    selectedFolderIds = new Set([...currentVideoFolderIds, ...rememberedFolderIds]);
     renderFolders("");
     folderSearchInput?.focus();
   }
@@ -1087,17 +1134,107 @@ import {
     window.location.href = url;
   }
 
-  function openPlaybackManager() {
-    const managerUrl = `${chrome.runtime.getURL("manager/index.html")}#/manager`;
-    window.open(managerUrl, "_blank", "noopener,noreferrer");
+  function syncPlaybackOverlayState() {
+    if (!playbackOverlay) return;
+    playbackOverlay.dataset.collapsed = playbackCollapsed ? "true" : "false";
+    playbackOverlay.dataset.listOpen = playbackListOpen ? "true" : "false";
+    if (playbackListEl) {
+      playbackListEl.classList.toggle("bl-hidden", playbackCollapsed || !playbackListOpen);
+    }
+    if (playbackListToggleBtn) {
+      playbackListToggleBtn.textContent = playbackListOpen
+        ? t("button.hideList")
+        : t("button.showList");
+      playbackListToggleBtn.setAttribute(
+        "aria-pressed",
+        playbackListOpen ? "true" : "false"
+      );
+    }
+    if (playbackCollapseBtn) {
+      playbackCollapseBtn.textContent = playbackCollapsed
+        ? t("button.expand")
+        : t("button.collapse");
+      playbackCollapseBtn.setAttribute(
+        "aria-pressed",
+        playbackCollapsed ? "true" : "false"
+      );
+    }
   }
 
-  async function endPlaybackSession() {
-    try {
-      await requestLocalApi("DELETE", "/playback/session");
-    } catch {
+  function togglePlaybackOverlayCollapsed() {
+    playbackCollapsed = !playbackCollapsed;
+    syncPlaybackOverlayState();
+  }
+
+  function togglePlaybackQueueList() {
+    if (playbackCollapsed) {
+      playbackCollapsed = false;
     }
-    hidePlaybackOverlay();
+    playbackListOpen = !playbackListOpen;
+    syncPlaybackOverlayState();
+  }
+
+  function renderPlaybackQueueList(queue = [], currentIndex = -1) {
+    if (!playbackListEl) return;
+    playbackListEl.replaceChildren();
+
+    const normalizedQueue = Array.isArray(queue) ? queue : [];
+    if (!normalizedQueue.length) {
+      playbackListEl.appendChild(
+        createEl("div", {
+          className: "bl-playback-empty",
+          text: t("playback.queueEmpty")
+        })
+      );
+      return;
+    }
+
+    normalizedQueue.forEach((item, index) => {
+      const isActive = index === currentIndex;
+      const row = createEl(
+        "button",
+        {
+          className: `bl-playback-list-item${isActive ? " is-active" : ""}`,
+          attrs: {
+            type: "button",
+            "data-queue-index": String(index),
+            "aria-current": isActive ? "true" : "false"
+          }
+        },
+        [
+          createEl("img", {
+            className: "bl-playback-thumb",
+            attrs: {
+              src: ensureAbsoluteUrl(item?.coverUrl, DEFAULT_COVER),
+              alt: item?.title || t("status.coverAlt"),
+              loading: "lazy"
+            }
+          }),
+          createEl("div", { className: "bl-playback-list-copy" }, [
+            createEl("p", {
+              className: "bl-playback-list-title",
+              text: item?.title || t("status.untitled")
+            }),
+            createEl("p", {
+              className: "bl-playback-list-meta",
+              text: isActive
+                ? t("playback.current")
+                : normalizeBvidToken(item?.bvid || "") || ""
+            })
+          ]),
+          createEl("span", {
+            className: "bl-playback-list-index",
+            text: String(index + 1)
+          })
+        ]
+      );
+
+      row.disabled = isActive;
+      row.addEventListener("click", () => {
+        navigateToPlaybackItem(item);
+      });
+      playbackListEl.appendChild(row);
+    });
   }
 
   async function refreshPlaybackOverlay() {
@@ -1151,14 +1288,14 @@ import {
         playbackNextBtn.disabled = adjacent.next.disabled;
         playbackNextBtn.onclick = () => navigateToPlaybackItem(adjacent.next.item);
       }
-      if (playbackOpenManagerBtn) {
-        playbackOpenManagerBtn.onclick = openPlaybackManager;
+      if (playbackListToggleBtn) {
+        playbackListToggleBtn.onclick = togglePlaybackQueueList;
       }
-      if (playbackEndSessionBtn) {
-        playbackEndSessionBtn.onclick = () => {
-          void endPlaybackSession();
-        };
+      if (playbackCollapseBtn) {
+        playbackCollapseBtn.onclick = togglePlaybackOverlayCollapsed;
       }
+      renderPlaybackQueueList(activeQueue, currentIndex);
+      syncPlaybackOverlayState();
 
       playbackOverlay.classList.remove("bl-hidden");
     } catch (error) {
@@ -1395,12 +1532,16 @@ import {
       const result = await requestLocalApi("POST", "/videos", payload);
       const addedFolderNames = folderNamesFromSaveResult(result, "addedFolderIds");
       const existingFolderNames = folderNamesFromSaveResult(result, "existingFolderIds");
+      const removedFolderNames = folderNamesFromSaveResult(result, "removedFolderIds");
       const toastMessage =
-        addedFolderNames.length > 0 || existingFolderNames.length > 0
+        addedFolderNames.length > 0 ||
+        existingFolderNames.length > 0 ||
+        removedFolderNames.length > 0
           ? buildQuickFavoriteToastMessage(
               {
                 addedFolderNames,
-                existingFolderNames
+                existingFolderNames,
+                removedFolderNames
               },
               t
             )
@@ -1408,6 +1549,7 @@ import {
 
       setStatus(toastMessage, "ok");
       currentVideoLocalFolders = Array.isArray(result?.finalFolders) ? result.finalFolders : [];
+      selectedFolderIds = new Set(currentVideoLocalFolderIds());
       try {
         await chrome.storage.local.set(
           createRememberedCollectorFolderIdsRecord([...folderIds])
@@ -1415,6 +1557,7 @@ import {
       } catch {
       }
       renderExistingFolderSummary(existingFoldersSummaryEl);
+      renderFolders(folderSearchInput?.value || "");
       await loadFolders();
       return result;
     } catch (error) {
@@ -2026,17 +2169,17 @@ import {
       }
       .Vue-Toastification__toast {
         pointer-events: auto;
-        min-width: 220px;
+        min-width: 280px;
         max-width: 360px;
-        border-radius: 12px;
+        border-radius: 16px;
         border: 1px solid transparent;
-        padding: 10px 12px;
-        font-size: 12px;
+        padding: 14px 16px;
+        font-size: 13px;
         line-height: 1.4;
         display: flex;
         align-items: flex-start;
-        gap: 9px;
-        box-shadow: 0 14px 28px rgba(17, 24, 39, .22);
+        gap: 10px;
+        box-shadow: 0 18px 38px rgba(17, 24, 39, .26);
         animation: bl-toast-in .18s ease;
         backdrop-filter: none;
       }
@@ -2051,18 +2194,18 @@ import {
       }
       .Vue-Toastification__toast--success {
         color: #14673f;
-        background: rgba(27, 169, 88, .16);
-        border-color: rgba(27, 169, 88, .3);
+        background: linear-gradient(135deg, #effcf4 0%, #d7f7e4 100%);
+        border-color: #7bd9a6;
       }
       .Vue-Toastification__toast--error {
         color: #9f223a;
-        background: rgba(230, 38, 76, .15);
-        border-color: rgba(230, 38, 76, .3);
+        background: linear-gradient(135deg, #fff2f4 0%, #ffdfe5 100%);
+        border-color: #ff9fb0;
       }
       .Vue-Toastification__toast--info {
         color: #1f3d84;
-        background: rgba(59, 130, 246, .14);
-        border-color: rgba(59, 130, 246, .26);
+        background: linear-gradient(135deg, #eff6ff 0%, #dceaff 100%);
+        border-color: #96bbff;
       }
       .Vue-Toastification__toast.is-leaving {
         opacity: 0;
@@ -2076,18 +2219,18 @@ import {
 
       #bl-floating-panel[data-theme="dark"] ~ .bl-toast-root .Vue-Toastification__toast--success {
         color: #a7f3d0;
-        background: rgba(16, 185, 129, .18);
-        border-color: rgba(16, 185, 129, .34);
+        background: linear-gradient(135deg, #153326 0%, #1c5b3d 100%);
+        border-color: #39c78a;
       }
       #bl-floating-panel[data-theme="dark"] ~ .bl-toast-root .Vue-Toastification__toast--error {
         color: #fecaca;
-        background: rgba(248, 113, 113, .2);
-        border-color: rgba(248, 113, 113, .35);
+        background: linear-gradient(135deg, #461322 0%, #8e1e3d 100%);
+        border-color: #fb7185;
       }
       #bl-floating-panel[data-theme="dark"] ~ .bl-toast-root .Vue-Toastification__toast--info {
         color: #cfe3ff;
-        background: rgba(59, 130, 246, .2);
-        border-color: rgba(96, 165, 250, .35);
+        background: linear-gradient(135deg, #142544 0%, #234f98 100%);
+        border-color: #60a5fa;
       }
 
       #bl-create-folder-modal {
@@ -2135,31 +2278,42 @@ import {
         left: 16px;
         bottom: 16px;
         z-index: 1000000;
-        width: min(360px, calc(100vw - 32px));
-        border-radius: 16px;
+        width: min(420px, calc(100vw - 32px));
+        border-radius: 22px;
         border: 1px solid;
-        padding: 12px;
-        box-shadow: 0 20px 42px rgba(8, 14, 30, .22);
+        padding: 14px;
+        box-shadow: 0 24px 56px rgba(8, 14, 30, .24);
       }
       #bl-playback-overlay[data-theme="light"] {
         border-color: rgba(208, 221, 246, .96);
-        background: rgba(255, 255, 255, .98);
+        background: linear-gradient(180deg, rgba(255, 255, 255, .99) 0%, rgba(244, 248, 255, .98) 100%);
         color: #17213b;
       }
       #bl-playback-overlay[data-theme="dark"] {
         border-color: rgba(82, 103, 154, .95);
-        background: rgba(16, 26, 49, .97);
+        background: linear-gradient(180deg, rgba(17, 27, 49, .98) 0%, rgba(10, 18, 35, .98) 100%);
         color: #e2e8f0;
+      }
+      .bl-playback-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .bl-playback-header-copy {
+        min-width: 0;
+        flex: 1;
       }
       .bl-playback-caption {
         margin: 0;
         font-size: 12px;
         font-weight: 700;
         letter-spacing: .02em;
+        text-transform: uppercase;
       }
       .bl-playback-title {
         margin: 8px 0 0;
-        font-size: 14px;
+        font-size: 15px;
         line-height: 1.45;
         font-weight: 700;
       }
@@ -2175,12 +2329,132 @@ import {
       }
       .bl-playback-actions {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
         margin-top: 12px;
       }
       .bl-playback-actions .bl-btn {
         width: 100%;
+      }
+      .bl-playback-header-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .bl-playback-header-actions .bl-btn {
+        min-width: 82px;
+      }
+      .bl-playback-list {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 292px;
+        overflow: auto;
+        padding-right: 2px;
+      }
+      .bl-playback-empty {
+        padding: 14px 10px;
+        border-radius: 14px;
+        font-size: 12px;
+        text-align: center;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-empty {
+        background: rgba(230, 238, 255, .72);
+        color: #5d6f92;
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-empty {
+        background: rgba(28, 40, 68, .82);
+        color: #a7b5d1;
+      }
+      .bl-playback-list-item {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 60px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 8px;
+        border-radius: 16px;
+        border: 1px solid;
+        text-align: left;
+        cursor: pointer;
+        transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-item {
+        border-color: rgba(208, 220, 245, .95);
+        background: rgba(255, 255, 255, .82);
+        color: #17213b;
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-item {
+        border-color: rgba(66, 84, 126, .95);
+        background: rgba(18, 27, 49, .9);
+        color: #e2e8f0;
+      }
+      .bl-playback-list-item:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+      .bl-playback-list-item.is-active,
+      .bl-playback-list-item:disabled {
+        cursor: default;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-item.is-active,
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-item:disabled {
+        border-color: rgba(92, 124, 255, .65);
+        background: rgba(235, 241, 255, .92);
+        box-shadow: inset 0 0 0 1px rgba(92, 124, 255, .1);
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-item.is-active,
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-item:disabled {
+        border-color: rgba(128, 156, 255, .72);
+        background: rgba(34, 48, 84, .96);
+        box-shadow: inset 0 0 0 1px rgba(140, 166, 255, .18);
+      }
+      .bl-playback-thumb {
+        width: 60px;
+        height: 40px;
+        border-radius: 12px;
+        object-fit: cover;
+        display: block;
+      }
+      .bl-playback-list-copy {
+        min-width: 0;
+      }
+      .bl-playback-list-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.35;
+      }
+      .bl-playback-list-meta {
+        margin: 4px 0 0;
+        font-size: 11px;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-meta {
+        color: #64748b;
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-meta {
+        color: #9fb0d0;
+      }
+      .bl-playback-list-index {
+        min-width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 800;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-index {
+        background: rgba(224, 232, 250, .9);
+        color: #35508d;
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-index {
+        background: rgba(43, 60, 96, .95);
+        color: #d7e3ff;
+      }
+      #bl-playback-overlay[data-collapsed="true"] .bl-playback-actions,
+      #bl-playback-overlay[data-collapsed="true"] .bl-playback-list {
+        display: none;
       }
 
       @media (max-width: 680px) {
@@ -2491,19 +2765,33 @@ import {
       },
       [
         createEl("p", {
-          className: "bl-playback-caption",
-          text: t("playback.title")
-        }),
-        createEl("p", {
-          id: "bl-playback-current-title",
-          className: "bl-playback-title",
-          text: t("status.noVideoTitle")
-        }),
-        createEl("p", {
-          id: "bl-playback-progress",
-          className: "bl-playback-meta",
-          text: t("playback.progress", { current: 0, total: 0 })
-        }),
+          className: "bl-playback-header"
+        }, [
+          createEl("div", { className: "bl-playback-header-copy" }, [
+            createEl("p", {
+              className: "bl-playback-caption",
+              text: t("playback.title")
+            }),
+            createEl("p", {
+              id: "bl-playback-current-title",
+              className: "bl-playback-title",
+              text: t("status.noVideoTitle")
+            }),
+            createEl("p", {
+              id: "bl-playback-progress",
+              className: "bl-playback-meta",
+              text: t("playback.progress", { current: 0, total: 0 })
+            })
+          ]),
+          createEl("div", { className: "bl-playback-header-actions" }, [
+            createEl("button", {
+              id: "bl-playback-collapse",
+              className: "bl-btn bl-btn-outline",
+              attrs: { type: "button" },
+              text: t("button.collapse")
+            })
+          ])
+        ]),
         createEl("div", { className: "bl-playback-actions" }, [
           createEl("button", {
             id: "bl-playback-prev",
@@ -2518,18 +2806,16 @@ import {
             text: t("button.next")
           }),
           createEl("button", {
-            id: "bl-playback-open-manager",
+            id: "bl-playback-list-toggle",
             className: "bl-btn bl-btn-secondary",
             attrs: { type: "button" },
-            text: t("button.openManager")
-          }),
-          createEl("button", {
-            id: "bl-playback-end-session",
-            className: "bl-btn bl-btn-outline",
-            attrs: { type: "button" },
-            text: t("button.endPlayback")
+            text: t("button.hideList")
           })
-        ])
+        ]),
+        createEl("div", {
+          id: "bl-playback-list",
+          className: "bl-playback-list"
+        })
       ]
     );
 
@@ -2584,8 +2870,9 @@ import {
     playbackOverlayProgressEl = playbackOverlay.querySelector("#bl-playback-progress");
     playbackPrevBtn = playbackOverlay.querySelector("#bl-playback-prev");
     playbackNextBtn = playbackOverlay.querySelector("#bl-playback-next");
-    playbackOpenManagerBtn = playbackOverlay.querySelector("#bl-playback-open-manager");
-    playbackEndSessionBtn = playbackOverlay.querySelector("#bl-playback-end-session");
+    playbackListToggleBtn = playbackOverlay.querySelector("#bl-playback-list-toggle");
+    playbackCollapseBtn = playbackOverlay.querySelector("#bl-playback-collapse");
+    playbackListEl = playbackOverlay.querySelector("#bl-playback-list");
 
     applyInitialButtonPosition();
     void restoreStoredButtonPosition();
@@ -2598,6 +2885,8 @@ import {
     renderVideo(null);
     renderFolders("");
     renderExistingFolderSummary(existingFoldersSummaryEl);
+    renderPlaybackQueueList([], -1);
+    syncPlaybackOverlayState();
     syncCreateFolderCounter();
   }
 

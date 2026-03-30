@@ -58,7 +58,8 @@ test("collector modal restores remembered folders on open and saves them only af
   const source = await readContentSource();
 
   assert.match(source, /const rememberedFolderIds = await readRememberedCollectorFolderIds\(\);/);
-  assert.match(source, /selectedFolderIds = new Set\(rememberedFolderIds\);/);
+  assert.match(source, /const currentVideoFolderIds = currentVideoLocalFolders/);
+  assert.match(source, /selectedFolderIds = new Set\(\[\.\.\.currentVideoFolderIds, \.\.\.rememberedFolderIds\]\);/);
   assert.match(source, /createRememberedCollectorFolderIdsRecord\(\[\.\.\.folderIds\]\)/);
   assert.match(
     source,
@@ -75,4 +76,22 @@ test("collector enter handling respects IME and create-folder modal guards befor
     /if \(event\.key === "Enter"\) \{\s*if \(modal && !modal\.classList\.contains\("bl-hidden"\)\) return;\s*event\.preventDefault\(\);\s*void saveVideo\(\);\s*\}/s,
   );
   assert.doesNotMatch(source, /void saveQuickFavorite\(\)/);
+});
+
+test("content script normalizes invalidated extension errors and uses larger solid toasts", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /toast\.extensionReloadRequired/);
+  assert.match(source, /let extensionContextInvalidated = false;/);
+  assert.match(source, /extensionContextInvalidated = true;/);
+  assert.match(source, /runtimeError\.message/);
+  assert.match(source, /showToast\(t\("toast\.extensionReloadRequired"\), "err"\);/);
+  assert.match(
+    source,
+    /\.Vue-Toastification__toast\s*\{[\s\S]*min-width:\s*280px;[\s\S]*font-size:\s*13px;/,
+  );
+  assert.match(
+    source,
+    /\.Vue-Toastification__toast--error\s*\{[\s\S]*linear-gradient\(/,
+  );
 });

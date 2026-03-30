@@ -1311,7 +1311,7 @@ function parseCsvRows(content: string) {
   return rows;
 }
 
-function parseImportRows(format: "json" | "csv", content: string) {
+export function parseImportRows(format: "json" | "csv", content: string) {
   const nowTs = now();
   const rows: ImportVideoRow[] = [];
   let skipped = 0;
@@ -3624,7 +3624,7 @@ function buildExportPayload(state: LocalState) {
   };
 }
 
-function buildJsonExportResult(state: LocalState) {
+export function buildJsonExportResult(state: LocalState) {
   const summary = {
     folders: state.folders.length,
     videos: state.videos.length,
@@ -3648,10 +3648,10 @@ function buildJsonExportResult(state: LocalState) {
       customTagsByVideo,
       systemTagsByVideo
     });
+    const { partition: _partition, ...videoWithoutPartition } = video;
     return {
-      ...video,
+      ...videoWithoutPartition,
       uploaderSpaceUrl: normalizeBiliSpaceUrl(video.uploaderSpaceUrl),
-      partition: metadata.partition,
       folderCount: metadata.folderCount,
       publishAtText: formatTimestamp(video.publishAt),
       favoriteAt: metadata.favoriteAt,
@@ -3688,6 +3688,128 @@ function buildJsonExportResult(state: LocalState) {
     summary,
     stamp
   };
+}
+
+function listVideoFinalFolders(state: LocalState, videoId: number) {
+  return state.folderItems
+    .filter((item) => item.videoId === videoId)
+    .map((item) => state.folders.find((folder) => folder.id === item.folderId))
+    .filter((folder): folder is FolderRecord => !!folder && folder.deletedAt === null)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((folder) => ({ id: folder.id, name: folder.name }));
+}
+
+export function saveVideoSelectionToState(
+  state: LocalState,
+  body: Record<string, unknown>
+): ApiResult {
+  const bvid = normalizeText(body.bvid);
+  const title = normalizeText(body.title);
+  const bvidUrl = normalizeBiliVideoUrl(body.bvidUrl, bvid);
+  if (!bvid || !title || !bvidUrl) return fail(400, "Video payload is incomplete");
+
+  const folderIds = Array.isArray(body.folderIds) ? body.folderIds.map((id) => toInt(id)) : [];
+  const uniqueFolderIds = Array.from(new Set(folderIds.filter((id) => id > 0)));
+  const activeFolderIdSet = new Set(activeFolders(state).map((folder) => folder.id));
+  const validFolderIds = uniqueFolderIds.filter((id) => activeFolderIdSet.has(id));
+  const existed = state.videos.find((video) => normalizeKey(video.bvid) === normalizeKey(bvid));
+  if (validFolderIds.length === 0 && !existed) {
+    return fail(400, "At least one folder is required");
+  }
+
+  const timestamp = now();
+  const video: VideoRecord = existed || {
+    id: state.counters.video++,
+    bvid,
+    title,
+    coverUrl: normalizeText(body.coverUrl),
+    uploader: normalizeText(body.uploader),
+    uploaderSpaceUrl: normalizeBiliSpaceUrl(body.uploaderSpaceUrl),
+    description: normalizeText(body.description),
+    partition: normalizeVideoPartition(body.partition),
+    publishAt: toIntOrNull(body.publishAt),
+    bvidUrl,
+    isInvalid: false,
+    deletedAt: null,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  video.bvid = bvid;
+  video.title = title;
+  video.coverUrl = normalizeText(body.coverUrl);
+  video.uploader = normalizeText(body.uploader);
+  video.uploaderSpaceUrl = normalizeBiliSpaceUrl(body.uploaderSpaceUrl);
+  video.description = normalizeText(body.description);
+  video.partition = normalizeVideoPartition(body.partition);
+  video.publishAt = toIntOrNull(body.publishAt);
+  video.bvidUrl = bvidUrl;
+  video.isInvalid = Boolean(body.isInvalid);
+  video.deletedAt = null;
+  video.updatedAt = timestamp;
+
+  if (!existed) {
+    state.videos.push(video);
+  }
+
+  const addedFolderIds: number[] = [];
+  const existingFolderIds: number[] = [];
+  for (const folderId of validFolderIds) {
+    if (folderItemExists(state, folderId, video.id)) {
+      existingFolderIds.push(folderId);
+      continue;
+    }
+    state.folderItems.push({
+      id: state.counters.folderItem++,
+      folderId,
+      videoId: video.id,
+      addedAt: timestamp
+    });
+    addedFolderIds.push(folderId);
+  }
+
+  const validFolderIdSet = new Set(validFolderIds);
+  const removedFolderIds: number[] = [];
+  state.folderItems = state.folderItems.filter((item) => {
+    if (item.videoId !== video.id) return true;
+    if (validFolderIdSet.has(item.folderId)) return true;
+    if (!removedFolderIds.includes(item.folderId)) {
+      removedFolderIds.push(item.folderId);
+    }
+    return false;
+  });
+
+  const customTags = Array.isArray(body.customTags) ? body.customTags : [];
+  const systemTags = Array.isArray(body.systemTags) ? body.systemTags : [];
+  for (const tagName of customTags) {
+    const tag = ensureTag(state, tagName, "custom");
+    if (tag) ensureVideoTag(state, video.id, tag.id);
+  }
+  for (const tagName of systemTags) {
+    const tag = ensureTag(state, tagName, "system");
+    if (tag) ensureVideoTag(state, video.id, tag.id);
+  }
+
+  const finalFolders = listVideoFinalFolders(state, video.id);
+  const finalFolderIds = finalFolders.map((folder) => folder.id);
+  const deleted = finalFolderIds.length === 0;
+  if (deleted) {
+    removeVideoCompletely(state, video.id);
+  }
+
+  return ok(
+    {
+      video: mapVideo(state, video),
+      created: !existed,
+      deleted,
+      addedFolderIds,
+      existingFolderIds,
+      removedFolderIds,
+      finalFolderIds,
+      finalFolders,
+    },
+    existed ? 200 : 201
+  );
 }
 
 function applyImportRowsToState(
@@ -4621,27 +4743,22 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
             customTagsByVideo,
             systemTagsByVideo
           });
-          const favoriteAtMs = metadata.favoriteAt ?? "";
-          const publishAtMs = video.publishAt ?? "";
           const row = [
             video.bvid,
             video.title,
             video.uploader,
             normalizeBiliSpaceUrl(video.uploaderSpaceUrl) ?? "",
-            video.description,
-            video.coverUrl,
             video.bvidUrl,
-            metadata.partition,
-            formatTimestamp(video.publishAt),
-            publishAtMs,
-            formatTimestamp(typeof favoriteAtMs === "number" ? favoriteAtMs : null),
-            favoriteAtMs,
-            metadata.folderCount,
+            video.coverUrl,
             metadata.folders.join("|"),
-            metadata.customTags.join("|"),
+            metadata.folderCount,
             metadata.systemTags.join("|"),
+            metadata.customTags.join("|"),
+            formatTimestamp(video.publishAt),
+            formatTimestamp(metadata.favoriteAt),
             video.isInvalid ? "1" : "0",
-            video.deletedAt ?? ""
+            formatTimestamp(video.deletedAt),
+            video.description
           ].map(csvEscape);
           lines.push(row.join(","));
         }
@@ -4821,94 +4938,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       }
 
       if (method === "POST" && path === "/videos") {
-        const bvid = normalizeText(body.bvid);
-        const title = normalizeText(body.title);
-        const bvidUrl = normalizeBiliVideoUrl(body.bvidUrl, bvid);
-        if (!bvid || !title || !bvidUrl) return fail(400, "Video payload is incomplete");
-
-        const folderIds = Array.isArray(body.folderIds) ? body.folderIds.map((id) => toInt(id)) : [];
-        const activeFolderIdSet = new Set(activeFolders(state).map((folder) => folder.id));
-        const validFolderIds = folderIds.filter((id) => activeFolderIdSet.has(id));
-        if (validFolderIds.length === 0) return fail(400, "At least one folder is required");
-
-        const existed = state.videos.find((video) => normalizeKey(video.bvid) === normalizeKey(bvid));
-        const timestamp = now();
-        const video: VideoRecord = existed || {
-          id: state.counters.video++,
-          bvid,
-          title,
-          coverUrl: normalizeText(body.coverUrl),
-          uploader: normalizeText(body.uploader),
-          uploaderSpaceUrl: normalizeBiliSpaceUrl(body.uploaderSpaceUrl),
-          description: normalizeText(body.description),
-          partition: normalizeVideoPartition(body.partition),
-          publishAt: toIntOrNull(body.publishAt),
-          bvidUrl,
-          isInvalid: false,
-          deletedAt: null,
-          createdAt: timestamp,
-          updatedAt: timestamp
-        };
-
-        video.bvid = bvid;
-        video.title = title;
-        video.coverUrl = normalizeText(body.coverUrl);
-        video.uploader = normalizeText(body.uploader);
-        video.uploaderSpaceUrl = normalizeBiliSpaceUrl(body.uploaderSpaceUrl);
-        video.description = normalizeText(body.description);
-        video.partition = normalizeVideoPartition(body.partition);
-        video.publishAt = toIntOrNull(body.publishAt);
-        video.bvidUrl = bvidUrl;
-        video.isInvalid = Boolean(body.isInvalid);
-        video.deletedAt = null;
-        video.updatedAt = timestamp;
-
-        if (!existed) {
-          state.videos.push(video);
-        }
-
-        const addedFolderIds: number[] = [];
-        const existingFolderIds: number[] = [];
-        for (const folderId of validFolderIds) {
-          if (folderItemExists(state, folderId, video.id)) {
-            existingFolderIds.push(folderId);
-            continue;
-          }
-          state.folderItems.push({
-            id: state.counters.folderItem++,
-            folderId,
-            videoId: video.id,
-            addedAt: timestamp
-          });
-          addedFolderIds.push(folderId);
-        }
-
-        const customTags = Array.isArray(body.customTags) ? body.customTags : [];
-        const systemTags = Array.isArray(body.systemTags) ? body.systemTags : [];
-        for (const tagName of customTags) {
-          const tag = ensureTag(state, tagName, "custom");
-          if (tag) ensureVideoTag(state, video.id, tag.id);
-        }
-        for (const tagName of systemTags) {
-          const tag = ensureTag(state, tagName, "system");
-          if (tag) ensureVideoTag(state, video.id, tag.id);
-        }
-
-        const finalFolders = state.folderItems
-          .filter((item) => item.videoId === video.id)
-          .map((item) => state.folders.find((folder) => folder.id === item.folderId))
-          .filter((folder): folder is FolderRecord => !!folder && folder.deletedAt === null)
-          .sort((left, right) => left.sortOrder - right.sortOrder)
-          .map((folder) => ({ id: folder.id, name: folder.name }));
-
-        return ok({
-          video: mapVideo(state, video),
-          created: !existed,
-          addedFolderIds,
-          existingFolderIds,
-          finalFolderIds: finalFolders.map((folder) => folder.id),
-          finalFolders,
-        }, existed ? 200 : 201);
+        return saveVideoSelectionToState(state, body);
       }
 
       const videoByIdMatch = path.match(/^\/videos\/(\d+)$/);

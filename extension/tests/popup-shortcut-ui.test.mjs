@@ -29,6 +29,7 @@ test("popup includes a dedicated shortcut settings card and recording controls",
 
   assert.match(source, /id="shortcut-card"/);
   assert.match(source, /id="shortcut-current-label"/);
+  assert.match(source, /Ctrl\+Alt\+1/);
   assert.match(source, /id="shortcut-recording-hint"/);
   assert.match(source, /id="shortcut-start-recording"/);
   assert.match(source, /id="shortcut-restore-default"/);
@@ -88,4 +89,21 @@ test("popup uses one shared action button system for shortcut and footer rows", 
   assert.match(cssSource, /\.Vue-Toastification__toast--info\s*\{/);
   assert.doesNotMatch(cssSource, /background:\s*rgba\(25,\s*183,\s*95,\s*\.14\)/);
   assert.doesNotMatch(cssSource, /background:\s*rgba\(230,\s*38,\s*76,\s*\.14\)/);
+});
+
+test("popup exposes an AI placeholder action and strengthens popup chrome", async () => {
+  const htmlSource = await readPopupHtmlSource();
+  const scriptSource = await readPopupScriptSource();
+  const cssSource = await readPopupCssSource();
+
+  assert.match(htmlSource, /id="open-ai-placeholder"/);
+  assert.match(scriptSource, /toast\.comingSoon/);
+  assert.match(scriptSource, /openAiPlaceholderBtn/);
+  assert.match(scriptSource, /openAiPlaceholderBtn\?\.addEventListener\("click"/);
+  assert.match(scriptSource, /showToast\(t\("toast\.comingSoon"\), "info"\)/);
+  assert.match(cssSource, /body,\s*body\[data-theme="light"\]\s*\{[\s\S]*border-radius:\s*20px;/);
+  assert.match(cssSource, /body,\s*body\[data-theme="light"\]\s*\{[\s\S]*overflow:\s*hidden;/);
+  assert.match(cssSource, /\.popup-btn\s*\{[\s\S]*box-shadow:\s*inset/);
+  assert.match(cssSource, /\.Vue-Toastification__toast\s*\{[\s\S]*min-width:\s*260px;/);
+  assert.doesNotMatch(cssSource, /backdrop-filter:/);
 });

@@ -12,14 +12,15 @@ async function readBackgroundSource() {
   return source.replace(/\r\n/g, "\n");
 }
 
-test("post videos route returns enriched save result contract for duplicate-aware feedback", async () => {
+test("post videos route delegates to saveVideoSelectionToState and exposes removal-aware result fields", async () => {
   const source = await readBackgroundSource();
 
-  assert.match(source, /const addedFolderIds: number\[\] = \[\];/);
-  assert.match(source, /const existingFolderIds: number\[\] = \[\];/);
-  assert.match(source, /const finalFolders = state\.folderItems/);
+  assert.match(source, /export function saveVideoSelectionToState\(/);
+  assert.match(source, /const removedFolderIds: number\[\] = \[\];/);
+  assert.match(source, /const deleted = finalFolderIds\.length === 0;/);
+  assert.match(source, /return saveVideoSelectionToState\(state, body\);/);
   assert.match(
     source,
-    /return ok\(\{\s*video: mapVideo\(state, video\),\s*created: !existed,\s*addedFolderIds,\s*existingFolderIds,\s*finalFolderIds:\s*finalFolders\.map\(\(folder\) => folder\.id\),\s*finalFolders,\s*\}, existed \? 200 : 201\);/s,
+    /return ok\(\s*\{\s*video: mapVideo\(state, video\),\s*created: !existed,\s*deleted,\s*addedFolderIds,\s*existingFolderIds,\s*removedFolderIds,\s*finalFolderIds,\s*finalFolders,\s*\},\s*existed \? 200 : 201\s*\);/s,
   );
 });

@@ -27,6 +27,10 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "管理自定义标签",
     "en-US": "Manage Custom Tags",
   },
+  "header.aiPlaceholder": {
+    "zh-CN": "AI（预留）",
+    "en-US": "AI (Soon)",
+  },
   "header.aiSettings": {
     "zh-CN": "AI 设置",
     "en-US": "AI Settings",
@@ -658,6 +662,10 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "toast.loadFoldersFail": {
     "zh-CN": "Failed to load folders",
     "en-US": "Failed to load folders",
+  },
+  "toast.comingSoon": {
+    "zh-CN": "coming soon",
+    "en-US": "coming soon",
   },
   "toast.loadTagsFail": {
     "zh-CN": "Failed to load tags",

@@ -13,20 +13,17 @@ export const LIBRARY_EXPORT_VIDEO_CSV_HEADER = Object.freeze([
   "title",
   "uploader",
   "uploaderSpaceUrl",
-  "description",
-  "coverUrl",
   "bvidUrl",
-  "partition",
-  "publishAt",
-  "publishAtMs",
-  "favoriteAt",
-  "favoriteAtMs",
-  "folderCount",
+  "coverUrl",
   "folders",
-  "customTags",
+  "folderCount",
   "systemTags",
+  "customTags",
+  "publishAt",
+  "favoriteAt",
   "isInvalid",
   "deletedAt",
+  "description",
 ]);
 
 export function buildVideoExportMaps(state) {
@@ -84,7 +81,6 @@ export function buildVideoExportMaps(state) {
 export function buildExportVideoMetadata(video, maps) {
   const folders = maps.folderNamesByVideo.get(video.id) ?? [];
   return {
-    partition: normalizeVideoPartition(video.partition),
     folderCount: maps.folderCountByVideo.get(video.id) ?? folders.length,
     folders,
     favoriteAt: maps.latestAddedAtByVideo.get(video.id) ?? null,

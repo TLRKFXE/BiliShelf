@@ -8,6 +8,8 @@ body[data-theme="light"] {
   min-width: 320px;
   background: #f5f7ff;
   color: #111827;
+  border-radius: 20px;
+  overflow: hidden;
 }
 
 .popup {
@@ -184,6 +186,8 @@ body[data-theme="light"] .option-chip span {
   font-weight: 700;
   line-height: 1.2;
   cursor: pointer;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .58), 0 10px 20px rgba(80, 104, 164, .12);
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
 }
 
@@ -214,6 +218,10 @@ body[data-theme="light"] .option-chip span {
   background: #f7f9ff;
   color: #27406f;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .78);
+}
+
+.popup-btn--placeholder {
+  grid-column: 1 / -1;
 }
 
 body[data-theme="dark"] {
@@ -285,18 +293,17 @@ body[data-theme="dark"] .popup-btn--secondary {
 
 .Vue-Toastification__toast {
   pointer-events: auto;
-  min-width: 210px;
+  min-width: 260px;
   max-width: 320px;
-  border-radius: 12px;
+  border-radius: 16px;
   border: 1px solid transparent;
-  padding: 10px 12px;
-  font-size: 12px;
+  padding: 13px 14px;
+  font-size: 13px;
   line-height: 1.4;
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, .24);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, .22);
   animation: toast-in .18s ease;
 }
 
@@ -313,8 +320,8 @@ body[data-theme="dark"] .popup-btn--secondary {
 
 .Vue-Toastification__toast--success {
   color: #0f5132;
-  border-color: #86efac;
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-color: #7bd9a6;
+  background: linear-gradient(135deg, #f0fdf4 0%, #d7f7e4 100%);
 }
 
 .Vue-Toastification__toast--info {
@@ -325,8 +332,8 @@ body[data-theme="dark"] .popup-btn--secondary {
 
 .Vue-Toastification__toast--error {
   color: #9f1239;
-  border-color: #fda4af;
-  background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
+  border-color: #ff98aa;
+  background: linear-gradient(135deg, #fff1f4 0%, #ffdfe7 100%);
 }
 
 body[data-theme="dark"] .Vue-Toastification__toast--success {
