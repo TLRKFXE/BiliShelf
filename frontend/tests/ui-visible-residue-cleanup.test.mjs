@@ -24,3 +24,11 @@ test("video detail dialog no longer renders the ai summary block", async () => {
   assert.doesNotMatch(source, /<div v-if="detailAiAnalysis"/);
   assert.doesNotMatch(source, /detail\.aiTitle/);
 });
+
+test("app no longer builds ai-enriched detail dialog payloads", async () => {
+  const source = await readFrontendSource(["App.vue"]);
+
+  assert.doesNotMatch(source, /const detailVideoWithAi = computed\(/);
+  assert.doesNotMatch(source, /:detail-video="detailVideoWithAi"/);
+  assert.match(source, /:detail-video="detailVideo"/);
+});
