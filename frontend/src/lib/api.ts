@@ -325,6 +325,43 @@ export async function updateVideo(
   });
 }
 
+export type FolderPlaybackSession = {
+  folderId: number;
+  currentIndex: number;
+  createdAt: number;
+  updatedAt: number;
+  queue: Array<{
+    id: number | null;
+    videoId: number | null;
+    bvid: string | null;
+    title: string | null;
+    url: string | null;
+    coverUrl: string | null;
+    isInvalid: boolean;
+  }>;
+};
+
+export type StartFolderPlaybackResult = {
+  folderId: number;
+  session: FolderPlaybackSession | null;
+  firstItem: FolderPlaybackSession["queue"][number] | null;
+  playable: number;
+  skippedInvalid: number;
+  truncated: boolean;
+};
+
+export async function startFolderPlaybackSession(payload: {
+  folderId: number;
+  q?: string;
+  tags?: string[];
+  filters?: VideoFilter;
+}) {
+  return request<StartFolderPlaybackResult>("/playback/folder-session", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function fetchVideos(options: {
   page?: number;
   pageSize?: number;

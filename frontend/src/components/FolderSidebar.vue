@@ -9,6 +9,7 @@ import {
   LibraryBig,
   ListOrdered,
   Pencil,
+  Play,
   Search,
   Sparkles,
   Trash2,
@@ -35,6 +36,7 @@ const props = withDefaults(
     folders: Folder[];
     activeFolder: Folder | null;
     activeFolderId: number | null;
+    showPlaybackActions?: boolean;
     hasSelectedFolderAiRecord?: boolean;
     canOpenSelectedFolderAiBrowser?: boolean;
     aiRunningFolderId: number | null;
@@ -43,6 +45,7 @@ const props = withDefaults(
   }>(),
   {
     locale: "zh-CN",
+    showPlaybackActions: false,
     showAiActions: false,
     hasSelectedFolderAiRecord: false,
     canOpenSelectedFolderAiBrowser: false,
@@ -55,6 +58,7 @@ const emit = defineEmits<{
   update: [{ id: number; name?: string; description?: string | null }];
   remove: [number];
   reorder: [number[]];
+  startPlayback: [number];
   analyze: [number];
   clearAi: [number];
   openAiBrowser: [];
@@ -94,6 +98,10 @@ const SIDEBAR_TEXT: Record<
   | "namePlaceholder"
   | "descriptionPlaceholder"
   | "create"
+  | "playbackTitle"
+  | "playbackNoFolder"
+  | "playbackTarget"
+  | "playbackStart"
   | "aiTitle"
   | "aiNoFolder"
   | "aiTarget"
@@ -134,6 +142,16 @@ const SIDEBAR_TEXT: Record<
     "en-US": "Describe this folder",
   },
   create: { "zh-CN": "创建", "en-US": "Create" },
+  playbackTitle: { "zh-CN": "连续播放", "en-US": "Playback" },
+  playbackNoFolder: {
+    "zh-CN": "请先选择一个收藏夹再开始连续播放。",
+    "en-US": "Select a folder first to start playback.",
+  },
+  playbackTarget: {
+    "zh-CN": "当前收藏夹：{name}",
+    "en-US": "Current folder: {name}",
+  },
+  playbackStart: { "zh-CN": "开始播放", "en-US": "Start Playback" },
   aiTitle: { "zh-CN": "AI 分类", "en-US": "AI Category" },
   aiNoFolder: {
     "zh-CN": "请先选择一个收藏夹再运行 AI 分类。",
@@ -182,6 +200,9 @@ const canDragSort = computed(
 );
 const folderNameLength = computed(() => folderName.value.trim().length);
 const folderDescriptionLength = computed(() => folderDescription.value.length);
+const canStartActiveFolderPlayback = computed(
+  () => props.showPlaybackActions && hasActiveFolder.value
+);
 const hasAiTaskRunning = computed(() => props.aiRunningFolderId !== null);
 const hasActiveFolder = computed(() => props.activeFolderId !== null);
 const canAnalyzeActiveFolder = computed(
@@ -291,6 +312,11 @@ function handleDragEnd() {
   dragOverFolderId.value = null;
 }
 
+function triggerPlayback() {
+  if (props.activeFolderId === null) return;
+  emit("startPlayback", props.activeFolderId);
+}
+
 function triggerAnalyze() {
   if (props.activeFolderId === null) return;
   emit("analyze", props.activeFolderId);
@@ -359,6 +385,28 @@ function triggerClear() {
         {{ t("dragHint") }}
       </p>
     </div>
+
+    <section
+      v-if="props.showPlaybackActions"
+      class="mt-4 space-y-3 rounded-xl border border-border/80 bg-card/70 p-3"
+    >
+      <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <Play class="h-3.5 w-3.5" />
+        <span>{{ t("playbackTitle") }}</span>
+      </div>
+
+      <p v-if="hasActiveFolder" class="text-xs text-muted-foreground">
+        {{ t("playbackTarget", { name: activeFolderName }) }}
+      </p>
+      <p v-else class="text-xs text-muted-foreground">
+        {{ t("playbackNoFolder") }}
+      </p>
+
+      <Button size="sm" class="gap-1" :disabled="!canStartActiveFolderPlayback" @click="triggerPlayback">
+        <Play class="h-3.5 w-3.5" />
+        {{ t("playbackStart") }}
+      </Button>
+    </section>
 
     <section
       v-if="props.showAiActions"

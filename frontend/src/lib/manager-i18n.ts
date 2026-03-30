@@ -1035,6 +1035,34 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "清除文件夹 AI 结果失败",
     "en-US": "Failed to clear folder AI categories",
   },
+  "toast.playbackStarted": {
+    "zh-CN": "连续播放已开始",
+    "en-US": "Playback started",
+  },
+  "toast.playbackStartedDesc": {
+    "zh-CN": "已打开首个视频，并加入 {count} 个可播放视频。",
+    "en-US": "Opened the first video and queued {count} playable videos.",
+  },
+  "toast.playbackSkippedInvalid": {
+    "zh-CN": "已跳过失效视频",
+    "en-US": "Skipped invalid videos",
+  },
+  "toast.playbackSkippedInvalidDesc": {
+    "zh-CN": "当前范围内有 {count} 个失效视频未加入播放队列。",
+    "en-US": "{count} invalid videos were excluded from the playback queue.",
+  },
+  "toast.playbackTruncated": {
+    "zh-CN": "播放队列已截断",
+    "en-US": "Playback queue truncated",
+  },
+  "toast.playbackTruncatedDesc": {
+    "zh-CN": "当前最多只保留前 {count} 个可播放视频。",
+    "en-US": "Only the first {count} playable videos were kept in the queue.",
+  },
+  "toast.playbackStartFail": {
+    "zh-CN": "开始连续播放失败",
+    "en-US": "Failed to start playback",
+  },
   "toast.syncSettingsSaveFail": {
     "zh-CN": "保存监听设置失败",
     "en-US": "Failed to save sync settings",

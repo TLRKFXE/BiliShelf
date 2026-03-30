@@ -39,6 +39,12 @@ import {
   normalizeRecoveredInvalidVideoMetadata,
 } from "../shared/invalid-video-recovery.js";
 import { reconcileRemoteFolderSortOrder } from "../shared/remote-folder-order.js";
+import {
+  FOLDER_PLAYBACK_STORAGE_KEY,
+  buildFolderPlaybackSession,
+  findPlaybackQueueIndex,
+  normalizePlaybackSession,
+} from "../shared/folder-playback-session.js";
 import { categorizeFolderVideo } from "../shared/ai-category-runtime.js";
 import type { FavoritesSyncThrottleState } from "../shared/favorites-sync-throttle.js";
 import type {
@@ -182,6 +188,42 @@ type LocalApiRequest = {
   method: string;
   path: string;
   body?: unknown;
+};
+
+type FolderPlaybackQueueItem = {
+  id: number | null;
+  videoId: number | null;
+  bvid: string | null;
+  title: string | null;
+  url: string | null;
+  coverUrl: string | null;
+  isInvalid: boolean;
+};
+
+type FolderPlaybackSessionRecord = {
+  folderId: number;
+  queue: FolderPlaybackQueueItem[];
+  currentIndex: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type FolderPlaybackRequest = {
+  folderId?: unknown;
+  q?: unknown;
+  tags?: unknown;
+  filters?: unknown;
+};
+
+type FolderPlaybackCursor = {
+  videoId?: unknown;
+  bvid?: unknown;
+};
+
+type StorageAreaLike = {
+  get: (keys: string[] | string) => Promise<Record<string, unknown>>;
+  set: (items: Record<string, unknown>) => Promise<void>;
+  remove: (keys: string[] | string) => Promise<void>;
 };
 
 const DB_NAME = "bilishelf-local-db";
@@ -852,6 +894,155 @@ function filterVideoList(
     });
 
   return rows;
+}
+
+function getPlaybackStorageArea(storage?: StorageAreaLike) {
+  const resolved = storage ?? (chrome.storage?.local as StorageAreaLike | undefined);
+  if (!resolved) {
+    throw new Error("chrome.storage.local is unavailable");
+  }
+  return resolved;
+}
+
+function normalizeFolderPlaybackSessionRecord(
+  session: unknown
+): FolderPlaybackSessionRecord | null {
+  const normalized = normalizePlaybackSession(session) as
+    | Partial<FolderPlaybackSessionRecord>
+    | null;
+  if (!normalized) return null;
+
+  return {
+    folderId: Math.max(0, toInt(normalized.folderId, 0)),
+    queue: Array.isArray(normalized.queue)
+      ? (normalized.queue as FolderPlaybackQueueItem[])
+      : [],
+    currentIndex: Math.max(0, toInt(normalized.currentIndex, 0)),
+    createdAt: toInt(normalized.createdAt, now()),
+    updatedAt: toInt(normalized.updatedAt, now()),
+  };
+}
+
+export function buildFolderPlaybackSessionFromState(
+  state: LocalState,
+  request: FolderPlaybackRequest = {}
+) {
+  const folderId = toInt(request.folderId);
+  if (folderId <= 0) {
+    throw new Error("folderId is required");
+  }
+
+  const folder = state.folders.find(
+    (item) => item.id === folderId && item.deletedAt === null
+  );
+  if (!folder) {
+    throw new Error("Folder not found");
+  }
+
+  const rawFilters =
+    request.filters && typeof request.filters === "object"
+      ? (request.filters as Record<string, unknown>)
+      : {};
+  const videos = filterVideoList(state, {
+    includeDeleted: false,
+    folderId,
+    tags: Array.isArray(request.tags)
+      ? request.tags.map((item) => normalizeText(item)).filter(Boolean)
+      : [],
+    q: normalizeText(request.q),
+    title: normalizeText(rawFilters.title),
+    description: normalizeText(rawFilters.description),
+    uploader: normalizeText(rawFilters.uploader),
+    customTag: normalizeText(rawFilters.customTag),
+    systemTag: normalizeText(rawFilters.systemTag),
+    from: toIntOrNull(rawFilters.from),
+    to: toIntOrNull(rawFilters.to),
+  });
+
+  const built = buildFolderPlaybackSession(
+    videos.map((video) => ({
+      ...video,
+      videoId: video.id,
+      url: normalizeBiliVideoUrl(video.bvidUrl, video.bvid),
+    }))
+  );
+
+  const queuedAt = now();
+  const session = normalizeFolderPlaybackSessionRecord({
+    folderId,
+    queue: built.queue,
+    currentIndex: 0,
+    createdAt: queuedAt,
+    updatedAt: queuedAt,
+  });
+
+  return {
+    folderId,
+    session: session && session.queue.length > 0 ? session : null,
+    firstItem: session?.queue[0] ?? null,
+    playable: session?.queue.length ?? 0,
+    skippedInvalid: built.skippedInvalid,
+    truncated: built.truncated,
+  };
+}
+
+export async function getStoredFolderPlaybackSession(storage?: StorageAreaLike) {
+  const area = getPlaybackStorageArea(storage);
+  const result = await area.get([FOLDER_PLAYBACK_STORAGE_KEY]);
+  return normalizeFolderPlaybackSessionRecord(result[FOLDER_PLAYBACK_STORAGE_KEY]);
+}
+
+export async function setStoredFolderPlaybackSession(
+  session: unknown,
+  storage?: StorageAreaLike
+) {
+  const area = getPlaybackStorageArea(storage);
+  const normalized = normalizeFolderPlaybackSessionRecord(session);
+  if (!normalized) {
+    throw new Error("session is required");
+  }
+  await area.set({
+    [FOLDER_PLAYBACK_STORAGE_KEY]: normalized,
+  });
+  return normalized;
+}
+
+export async function updateStoredFolderPlaybackCurrent(
+  cursor: FolderPlaybackCursor = {},
+  storage?: StorageAreaLike
+) {
+  const area = getPlaybackStorageArea(storage);
+  const current = await getStoredFolderPlaybackSession(area);
+  if (!current) {
+    throw new Error("No active playback session");
+  }
+
+  const nextIndex = findPlaybackQueueIndex(current.queue, {
+    videoId: toIntOrNull(cursor.videoId) ?? undefined,
+    bvid: normalizeText(cursor.bvid) || undefined,
+  });
+  if (nextIndex < 0) {
+    throw new Error("Playback item not found in active session");
+  }
+
+  const updated = normalizeFolderPlaybackSessionRecord({
+    ...current,
+    currentIndex: nextIndex,
+    updatedAt: now(),
+  });
+  if (!updated) {
+    throw new Error("Failed to update playback session");
+  }
+
+  await area.set({
+    [FOLDER_PLAYBACK_STORAGE_KEY]: updated,
+  });
+  return updated;
+}
+
+export async function clearStoredFolderPlaybackSession(storage?: StorageAreaLike) {
+  const area = getPlaybackStorageArea(storage);
+  await area.remove([FOLDER_PLAYBACK_STORAGE_KEY]);
 }
 
 function removeVideoCompletely(state: LocalState, videoId: number) {
@@ -3802,6 +3993,46 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         started,
         status: getFavoritesSyncStatus()
       });
+    }
+
+    if (method === "POST" && path === "/playback/folder-session") {
+      try {
+        const state = await readState();
+        const payload = buildFolderPlaybackSessionFromState(
+          state,
+          body as FolderPlaybackRequest
+        );
+        if (payload.session) {
+          await setStoredFolderPlaybackSession(payload.session);
+        } else {
+          await clearStoredFolderPlaybackSession();
+        }
+        return ok(payload);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return fail(400, message);
+      }
+    }
+
+    if (method === "GET" && path === "/playback/session") {
+      return ok(await getStoredFolderPlaybackSession());
+    }
+
+    if (method === "PATCH" && path === "/playback/session/current") {
+      try {
+        const session = await updateStoredFolderPlaybackCurrent(
+          body as FolderPlaybackCursor
+        );
+        return ok(session);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return fail(400, message);
+      }
+    }
+
+    if (method === "DELETE" && path === "/playback/session") {
+      await clearStoredFolderPlaybackSession();
+      return ok(undefined, 204);
     }
 
     if (isWriteRequestBlockedByFavoritesSync(method, path)) {

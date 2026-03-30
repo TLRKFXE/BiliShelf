@@ -69,6 +69,7 @@ import {
   restoreWebDavBackup,
   runFolderAiCategories,
   runTagEnrichmentNow,
+  startFolderPlaybackSession,
   startHistoryModelSync,
   startInvalidVideoRecovery,
   fetchInvalidVideoRecoveryStatus,
@@ -93,6 +94,7 @@ import type {
   FolderAiCategories,
   Tag,
   Video,
+  VideoFilter,
 } from "./types";
 
 const uiStore = useAppUiStore();
@@ -1177,6 +1179,69 @@ async function refreshSelectedFolderAiCategories(folderId: number | null) {
     if (requestToken !== folderAiFetchToken) return;
     selectedFolderAiCategories.value = null;
     notifyError(t("toast.folderAiLoadFail"), error);
+  }
+}
+
+async function handleStartFolderPlayback(folderId: number) {
+  if (!EXTENSION_LOCAL_API_RUNTIME) {
+    notifyError(t("toast.playbackStartFail"), "Extension runtime is unavailable");
+    return;
+  }
+  if (trashMode.value || selectedFolderId.value !== folderId) {
+    notifyError(
+      t("toast.playbackStartFail"),
+      "Please start playback from the active folder."
+    );
+    return;
+  }
+
+  const { extracted, globalKeyword } = parseKeywordFromUtils(keyword.value);
+  const filters: VideoFilter = {};
+  if (fromDate.value.trim()) {
+    const from = new Date(fromDate.value).getTime();
+    if (!Number.isNaN(from)) filters.from = from;
+  }
+  if (toDate.value.trim()) {
+    const to = new Date(toDate.value).getTime();
+    if (!Number.isNaN(to)) filters.to = to;
+  }
+  if (extracted.title) filters.title = extracted.title;
+  if (extracted.uploader) filters.uploader = extracted.uploader;
+  if (extracted.description) filters.description = extracted.description;
+  if (extracted.systemTag) filters.systemTag = extracted.systemTag;
+  if (extracted.customTag) filters.customTag = extracted.customTag;
+
+  try {
+    const result = await startFolderPlaybackSession({
+      folderId,
+      q: globalKeyword || undefined,
+      filters,
+    });
+    if (!result.firstItem?.url) {
+      throw new Error("No playable videos in the current folder scope.");
+    }
+
+    window.open(result.firstItem.url, "_blank", "noopener,noreferrer");
+    notifySuccess(
+      t("toast.playbackStarted"),
+      t("toast.playbackStartedDesc", { count: result.playable })
+    );
+    if (result.skippedInvalid > 0) {
+      notifySuccess(
+        t("toast.playbackSkippedInvalid"),
+        t("toast.playbackSkippedInvalidDesc", {
+          count: result.skippedInvalid,
+        })
+      );
+    }
+    if (result.truncated) {
+      notifySuccess(
+        t("toast.playbackTruncated"),
+        t("toast.playbackTruncatedDesc", { count: result.playable })
+      );
+    }
+  } catch (error) {
+    notifyError(t("toast.playbackStartFail"), error);
   }
 }
 
@@ -2380,6 +2445,7 @@ onBeforeUnmount(() => {
       :folders="folders"
       :active-folder="activeFolder"
       :active-folder-id="selectedFolderId"
+      :show-playback-actions="EXTENSION_LOCAL_API_RUNTIME && !trashMode"
       :has-selected-folder-ai-record="selectedFolderHasAiRecord"
       :can-open-selected-folder-ai-browser="selectedFolderCanOpenAiBrowser"
       :ai-running-folder-id="aiRunningFolderId"
@@ -2390,6 +2456,7 @@ onBeforeUnmount(() => {
       @update="handleUpdateFolder"
       @remove="handleRemoveFolder"
       @reorder="handleReorderFolders"
+      @start-playback="handleStartFolderPlayback"
       @analyze="handleAnalyzeFolder"
       @clear-ai="handleClearFolderAi"
       @open-ai-browser="openAiCategoryBrowser"
