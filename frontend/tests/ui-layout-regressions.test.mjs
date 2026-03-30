@@ -17,11 +17,28 @@ test("manager header keeps both action rows in stable four-column grids", async 
 
   assert.match(
     source,
-    /<div class="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-4">/,
+    /<div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">/,
   );
   assert.match(
     source,
-    /<div class="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">/,
+    /<div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">/,
+  );
+});
+
+test("manager header keeps the sync import action as a peer outline entry button", async () => {
+  const source = await readComponentSource(["components", "layout", "ManagerHeader.vue"]);
+
+  assert.match(
+    source,
+    /const topActionButtonClass = "h-12 w-full justify-start rounded-2xl px-4";/,
+  );
+  assert.match(
+    source,
+    /const secondaryActionButtonClass = "h-12 w-full justify-start rounded-2xl px-4";/,
+  );
+  assert.match(
+    source,
+    /<Button\s+v-if="!props\.trashMode"\s+size="sm"\s+variant="outline"\s+:class="secondaryActionButtonClass"\s+:disabled="props\.syncing \|\| props\.exporting \|\| props\.importing"\s+@click="emit\('sync-import'\)"/s,
   );
 });
 

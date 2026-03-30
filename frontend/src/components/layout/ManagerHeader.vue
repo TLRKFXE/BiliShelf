@@ -56,8 +56,8 @@ const emit = defineEmits<{
 }>();
 
 const exportDialogOpen = ref(false);
-const topActionButtonClass = "h-12 justify-start rounded-2xl px-4";
-const secondaryActionButtonClass = "h-12 justify-start rounded-2xl px-4";
+const topActionButtonClass = "h-12 w-full justify-start rounded-2xl px-4";
+const secondaryActionButtonClass = "h-12 w-full justify-start rounded-2xl px-4";
 
 function openExportDialog() {
   exportDialogOpen.value = true;
@@ -133,7 +133,7 @@ function submitExport(format: "json" | "csv") {
       </div>
     </div>
 
-    <div class="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+    <div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       <Button
         v-if="!props.trashMode"
         size="sm"
@@ -179,10 +179,11 @@ function submitExport(format: "json" | "csv") {
       </Button>
     </div>
 
-    <div class="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+    <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       <Button
         v-if="!props.trashMode"
         size="sm"
+        variant="outline"
         :class="secondaryActionButtonClass"
         :disabled="props.syncing || props.exporting || props.importing"
         @click="emit('sync-import')"

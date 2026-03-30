@@ -5,6 +5,10 @@ import {
   isValidShortcutRecord,
   resolveStoredShortcut,
 } from "./utils/shortcut-config.js";
+import {
+  createPopupToastGate,
+  isModifierOnlyShortcutEvent,
+} from "./utils/popup-feedback.js";
 
 (function () {
   const THEME_KEY = "bili_like_ext_theme";
@@ -121,6 +125,7 @@ import {
   let activeLocale = LOCALE_EN;
   let activeShortcut = resolveStoredShortcut(DEFAULT_QUICK_FAVORITE_SHORTCUT);
   let isRecordingShortcut = false;
+  const toastGate = createPopupToastGate();
 
   function t(key, vars = {}) {
     const table = I18N[key];
@@ -178,6 +183,7 @@ import {
     if (!toastRoot || !message) return;
     const normalizedType =
       type === "error" ? "error" : type === "info" ? "info" : "success";
+    if (!toastGate.shouldDisplay(message, normalizedType)) return;
     const node = document.createElement("div");
     node.className = `Vue-Toastification__toast Vue-Toastification__toast--${normalizedType}`;
 
@@ -340,6 +346,10 @@ import {
       event.preventDefault();
       stopShortcutRecording();
       showToast(t("toast.shortcutRecordingCancelled"), "info");
+      return;
+    }
+
+    if (isModifierOnlyShortcutEvent(event)) {
       return;
     }
 

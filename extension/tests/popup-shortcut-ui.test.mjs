@@ -38,6 +38,7 @@ test("popup includes a dedicated shortcut settings card and recording controls",
 test("popup shortcut logic reads storage, writes custom and disabled states, restores defaults, and cancels recording with Esc", async () => {
   const source = await readPopupScriptSource();
 
+  assert.match(source, /from "\.\/utils\/popup-feedback\.js"/);
   assert.match(source, /QUICK_FAVORITE_SHORTCUT_STORAGE_KEY/);
   assert.match(source, /chrome\.storage\.local\.get\(\[[^\]]*QUICK_FAVORITE_SHORTCUT_STORAGE_KEY[^\]]*\]\)/);
   assert.match(source, /chrome\.storage\.local\.set\(\{\s*\[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY\]:/);
@@ -45,6 +46,8 @@ test("popup shortcut logic reads storage, writes custom and disabled states, res
   assert.match(source, /mode:\s*"disabled"/);
   assert.match(source, /chrome\.storage\.local\.remove\(QUICK_FAVORITE_SHORTCUT_STORAGE_KEY\)/);
   assert.match(source, /event\.key === "Escape"/);
+  assert.match(source, /if \(isModifierOnlyShortcutEvent\(event\)\) \{\s*return;\s*\}/s);
+  assert.match(source, /const toastGate = createPopupToastGate\(/);
 });
 
 test("popup uses one shared action button system for shortcut and footer rows", async () => {
@@ -82,4 +85,7 @@ test("popup uses one shared action button system for shortcut and footer rows", 
   assert.doesNotMatch(htmlSource, /primary-btn|secondary-btn|ghost-btn/);
   assert.match(cssSource, /\.popup-action-grid\s*\{/);
   assert.match(cssSource, /\.popup-btn\s*\{/);
+  assert.match(cssSource, /\.Vue-Toastification__toast--info\s*\{/);
+  assert.doesNotMatch(cssSource, /background:\s*rgba\(25,\s*183,\s*95,\s*\.14\)/);
+  assert.doesNotMatch(cssSource, /background:\s*rgba\(230,\s*38,\s*76,\s*\.14\)/);
 });
