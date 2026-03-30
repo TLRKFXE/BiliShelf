@@ -34,7 +34,9 @@ test("frontend dev config no longer defaults to the removed local backend proxy"
 test("current readmes no longer tell contributors to run backend commands", async () => {
   const readmeZh = await readRepoText("README.md");
   const readmeEn = await readRepoText("README.en.md");
-  const extensionReadme = await readRepoText("extension", "README.md");
+  const extensionReadme = (await repoPathExists("extension", "README.md"))
+    ? await readRepoText("extension", "README.md")
+    : "";
 
   assert.doesNotMatch(readmeZh, /pnpm --dir backend/);
   assert.doesNotMatch(readmeZh, /backend\/\s+#/);
