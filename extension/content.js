@@ -12,6 +12,10 @@ import {
   matchesQuickFavoriteShortcut,
 } from "./utils/quick-favorite.js";
 import {
+  findPlaybackQueueIndex,
+  getAdjacentPlaybackItems,
+} from "./shared/folder-playback-session.js";
+import {
   QUICK_FAVORITE_SHORTCUT_STORAGE_KEY,
   formatShortcutLabel,
   resolveStoredShortcut,
@@ -61,6 +65,10 @@ import {
     "button.cancel": { [LOCALE_ZH]: "取消", [LOCALE_EN]: "Cancel" },
     "button.create": { [LOCALE_ZH]: "创建", [LOCALE_EN]: "Create" },
     "button.quickSave": { [LOCALE_ZH]: "快捷收藏", [LOCALE_EN]: "Quick favorite" },
+    "button.previous": { [LOCALE_ZH]: "上一个", [LOCALE_EN]: "Previous" },
+    "button.next": { [LOCALE_ZH]: "下一个", [LOCALE_EN]: "Next" },
+    "button.openManager": { [LOCALE_ZH]: "回到管理页", [LOCALE_EN]: "Open manager" },
+    "button.endPlayback": { [LOCALE_ZH]: "结束播放", [LOCALE_EN]: "End playback" },
     "section.folders": { [LOCALE_ZH]: "收藏夹", [LOCALE_EN]: "Folders" },
     "section.customTags": { [LOCALE_ZH]: "自定义标签", [LOCALE_EN]: "Custom Tags" },
     "field.searchFolders": { [LOCALE_ZH]: "搜索收藏夹...", [LOCALE_EN]: "Search folders..." },
@@ -161,6 +169,18 @@ import {
       [LOCALE_ZH]: "快捷收藏",
       [LOCALE_EN]: "Quick favorite"
     },
+    "playback.title": {
+      [LOCALE_ZH]: "收藏夹连续播放",
+      [LOCALE_EN]: "Folder playback"
+    },
+    "playback.progress": {
+      [LOCALE_ZH]: "第 {current} / {total} 个",
+      [LOCALE_EN]: "{current} / {total}"
+    },
+    "playback.folder": {
+      [LOCALE_ZH]: "收藏夹 #{folderId}",
+      [LOCALE_EN]: "Folder #{folderId}"
+    },
     "error.unknown": { [LOCALE_ZH]: "未知错误", [LOCALE_EN]: "Unknown error" }
   };
   function resolveLocaleFromBrowser() {
@@ -239,6 +259,16 @@ import {
   let folderModalCloseBtn = null;
   let fullscreenObserver = null;
   let fullscreenPollTimer = null;
+  let playbackOverlay = null;
+  let playbackOverlayTitleEl = null;
+  let playbackOverlayProgressEl = null;
+  let playbackPrevBtn = null;
+  let playbackNextBtn = null;
+  let playbackOpenManagerBtn = null;
+  let playbackEndSessionBtn = null;
+  let playbackOverlayTimer = null;
+  let playbackOverlayBusy = false;
+  let lastPlaybackOverlayUrl = location.href;
 
   let suppressButtonClick = false;
   let allFolders = [];
@@ -1149,6 +1179,114 @@ import {
     quickFavoriteLayer.classList.add("bl-hidden");
   }
 
+  function hidePlaybackOverlay() {
+    if (!playbackOverlay) return;
+    playbackOverlay.classList.add("bl-hidden");
+  }
+
+  function resolvePlaybackCursor() {
+    const base = pickBasePayload();
+    return {
+      bvid: normalizeBvidToken(base.bvid || currentVideo?.bvid || "")
+    };
+  }
+
+  function resolvePlaybackItemUrl(item) {
+    const directUrl = ensureAbsoluteUrl(item?.url, "");
+    if (directUrl) return directUrl;
+
+    const bvid = normalizeBvidToken(item?.bvid || "");
+    return bvid ? `https://www.bilibili.com/video/${bvid}/` : "";
+  }
+
+  function navigateToPlaybackItem(item) {
+    const url = resolvePlaybackItemUrl(item);
+    if (!url) return;
+    window.location.href = url;
+  }
+
+  function openPlaybackManager() {
+    const managerUrl = `${chrome.runtime.getURL("manager/index.html")}#/manager`;
+    window.open(managerUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function endPlaybackSession() {
+    try {
+      await requestLocalApi("DELETE", "/playback/session");
+    } catch {
+    }
+    hidePlaybackOverlay();
+  }
+
+  async function refreshPlaybackOverlay() {
+    if (playbackOverlayBusy || !playbackOverlay) return;
+    playbackOverlayBusy = true;
+
+    try {
+      const session = await requestLocalApi("GET", "/playback/session");
+      if (!session) {
+        hidePlaybackOverlay();
+        return;
+      }
+
+      const cursor = resolvePlaybackCursor();
+      const currentIndex = findPlaybackQueueIndex(session.queue, cursor);
+      if (currentIndex < 0) {
+        hidePlaybackOverlay();
+        return;
+      }
+
+      let activeSession = session;
+      if (Number(session.currentIndex) !== currentIndex) {
+        activeSession = await requestLocalApi("PATCH", "/playback/session/current", cursor);
+      }
+
+      const activeQueue = Array.isArray(activeSession?.queue) ? activeSession.queue : session.queue;
+      const currentItem = activeQueue[currentIndex] || null;
+      const adjacent = getAdjacentPlaybackItems(activeQueue, currentIndex);
+
+      if (playbackOverlayTitleEl) {
+        playbackOverlayTitleEl.textContent =
+          currentItem?.title || currentVideo?.title || t("status.untitled");
+      }
+      if (playbackOverlayProgressEl) {
+        playbackOverlayProgressEl.textContent = [
+          t("playback.progress", {
+            current: currentIndex + 1,
+            total: activeQueue.length
+          }),
+          t("playback.folder", {
+            folderId: Number(activeSession?.folderId) || Number(session.folderId) || 0
+          })
+        ].join(" · ");
+      }
+
+      if (playbackPrevBtn) {
+        playbackPrevBtn.disabled = adjacent.previous.disabled;
+        playbackPrevBtn.onclick = () => navigateToPlaybackItem(adjacent.previous.item);
+      }
+      if (playbackNextBtn) {
+        playbackNextBtn.disabled = adjacent.next.disabled;
+        playbackNextBtn.onclick = () => navigateToPlaybackItem(adjacent.next.item);
+      }
+      if (playbackOpenManagerBtn) {
+        playbackOpenManagerBtn.onclick = openPlaybackManager;
+      }
+      if (playbackEndSessionBtn) {
+        playbackEndSessionBtn.onclick = () => {
+          void endPlaybackSession();
+        };
+      }
+
+      playbackOverlay.classList.remove("bl-hidden");
+    } catch (error) {
+      console.warn("[BiliShelf extension] playback overlay refresh failed", error);
+      hidePlaybackOverlay();
+    } finally {
+      playbackOverlayBusy = false;
+    }
+  }
+
   async function refreshCollectorData() {
     await Promise.all([loadVideo(), loadFolders()]);
   }
@@ -1787,6 +1925,33 @@ import {
     }, 1500);
   }
 
+  function startPlaybackOverlayWatch() {
+    if (playbackOverlayTimer !== null) {
+      window.clearInterval(playbackOverlayTimer);
+      playbackOverlayTimer = null;
+    }
+
+    lastPlaybackOverlayUrl = location.href;
+    void refreshPlaybackOverlay();
+
+    playbackOverlayTimer = window.setInterval(() => {
+      if (lastPlaybackOverlayUrl !== location.href) {
+        lastPlaybackOverlayUrl = location.href;
+      }
+      void refreshPlaybackOverlay();
+    }, 1500);
+
+    window.addEventListener("focus", () => {
+      lastPlaybackOverlayUrl = location.href;
+      void refreshPlaybackOverlay();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      lastPlaybackOverlayUrl = location.href;
+      void refreshPlaybackOverlay();
+    });
+  }
+
   async function getThemePreference() {
     try {
       const result = await chrome.storage.local.get([THEME_STORAGE_KEY]);
@@ -1810,6 +1975,7 @@ import {
     if (quickFavoriteLayer) quickFavoriteLayer.dataset.theme = mode;
     if (floatingBtn) floatingBtn.dataset.theme = mode;
     if (modal) modal.dataset.theme = mode;
+    if (playbackOverlay) playbackOverlay.dataset.theme = mode;
   }
 
   function injectStyles() {
@@ -2241,6 +2407,69 @@ import {
       .bl-quick-favorite-footer .bl-btn {
         min-width: 120px;
       }
+
+      #bl-playback-overlay {
+        pointer-events: auto;
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        z-index: 1000000;
+        width: min(360px, calc(100vw - 32px));
+        border-radius: 16px;
+        border: 1px solid;
+        padding: 12px;
+        box-shadow: 0 20px 42px rgba(8, 14, 30, .22);
+      }
+      #bl-playback-overlay[data-theme="light"] {
+        border-color: rgba(208, 221, 246, .96);
+        background: rgba(255, 255, 255, .98);
+        color: #17213b;
+      }
+      #bl-playback-overlay[data-theme="dark"] {
+        border-color: rgba(82, 103, 154, .95);
+        background: rgba(16, 26, 49, .97);
+        color: #e2e8f0;
+      }
+      .bl-playback-caption {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .02em;
+      }
+      .bl-playback-title {
+        margin: 8px 0 0;
+        font-size: 14px;
+        line-height: 1.45;
+        font-weight: 700;
+      }
+      .bl-playback-meta {
+        margin: 6px 0 0;
+        font-size: 12px;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-meta {
+        color: #60708e;
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-meta {
+        color: #94a3c0;
+      }
+      .bl-playback-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .bl-playback-actions .bl-btn {
+        width: 100%;
+      }
+
+      @media (max-width: 680px) {
+        #bl-playback-overlay {
+          left: 12px;
+          right: 12px;
+          bottom: 12px;
+          width: auto;
+        }
+      }
     `;
     document.head.appendChild(style);
   }
@@ -2608,6 +2837,57 @@ import {
       ]
     );
 
+    playbackOverlay = createEl(
+      "section",
+      {
+        id: "bl-playback-overlay",
+        className: "bl-hidden",
+        attrs: { "data-theme": "light", "aria-live": "polite" }
+      },
+      [
+        createEl("p", {
+          className: "bl-playback-caption",
+          text: t("playback.title")
+        }),
+        createEl("p", {
+          id: "bl-playback-current-title",
+          className: "bl-playback-title",
+          text: t("status.noVideoTitle")
+        }),
+        createEl("p", {
+          id: "bl-playback-progress",
+          className: "bl-playback-meta",
+          text: t("playback.progress", { current: 0, total: 0 })
+        }),
+        createEl("div", { className: "bl-playback-actions" }, [
+          createEl("button", {
+            id: "bl-playback-prev",
+            className: "bl-btn bl-btn-outline",
+            attrs: { type: "button" },
+            text: t("button.previous")
+          }),
+          createEl("button", {
+            id: "bl-playback-next",
+            className: "bl-btn bl-btn-primary",
+            attrs: { type: "button" },
+            text: t("button.next")
+          }),
+          createEl("button", {
+            id: "bl-playback-open-manager",
+            className: "bl-btn bl-btn-secondary",
+            attrs: { type: "button" },
+            text: t("button.openManager")
+          }),
+          createEl("button", {
+            id: "bl-playback-end-session",
+            className: "bl-btn bl-btn-outline",
+            attrs: { type: "button" },
+            text: t("button.endPlayback")
+          })
+        ])
+      ]
+    );
+
     floatingBtn = createEl(
       "button",
       {
@@ -2629,6 +2909,7 @@ import {
     root.appendChild(panel);
     root.appendChild(quickFavoriteLayer);
     root.appendChild(modal);
+    root.appendChild(playbackOverlay);
     root.appendChild(floatingBtn);
     root.appendChild(toastRoot);
     document.body.appendChild(root);
@@ -2662,6 +2943,12 @@ import {
     folderModalSaveBtn = modal.querySelector("#bl-modal-folder-save");
     folderModalCancelBtn = modal.querySelector("#bl-modal-folder-cancel");
     folderModalCloseBtn = modal.querySelector("#bl-modal-folder-close");
+    playbackOverlayTitleEl = playbackOverlay.querySelector("#bl-playback-current-title");
+    playbackOverlayProgressEl = playbackOverlay.querySelector("#bl-playback-progress");
+    playbackPrevBtn = playbackOverlay.querySelector("#bl-playback-prev");
+    playbackNextBtn = playbackOverlay.querySelector("#bl-playback-next");
+    playbackOpenManagerBtn = playbackOverlay.querySelector("#bl-playback-open-manager");
+    playbackEndSessionBtn = playbackOverlay.querySelector("#bl-playback-end-session");
     const subtitleEl = panel.querySelector(".bl-subtitle");
     if (subtitleEl) subtitleEl.textContent = t("subtitle.collector");
 
@@ -2671,6 +2958,7 @@ import {
     bindFloatingButtonDrag();
     bindEvents();
     startFullscreenWatch();
+    startPlaybackOverlayWatch();
     renderVideo(null);
     renderFolders("");
     renderQuickFavoriteFolders("");
