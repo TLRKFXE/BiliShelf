@@ -31,3 +31,17 @@ export function resolveRememberedCollectorFolderIds(rawIds, folders) {
     .map((folder) => toPositiveInteger(folder?.id))
     .filter((id) => id && rememberedIdSet.has(id));
 }
+
+export function createRememberedCollectorFolderIdsRecord(rawIds) {
+  const values = Array.isArray(rawIds)
+    ? rawIds
+    : rawIds &&
+        typeof rawIds !== "string" &&
+        typeof rawIds[Symbol.iterator] === "function"
+      ? [...rawIds]
+      : [];
+
+  return {
+    [COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY]: normalizeRememberedCollectorFolderIds(values),
+  };
+}

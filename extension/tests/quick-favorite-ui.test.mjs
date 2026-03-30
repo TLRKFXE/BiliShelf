@@ -54,9 +54,25 @@ test("collector source removes the redundant subtitle and empty saved-folder pla
   assert.doesNotMatch(source, /status\.savedFoldersNone/);
 });
 
-test("collector enter handling submits through the unified collector flow instead of a dedicated quick-save panel", async () => {
+test("collector modal restores remembered folders on open and saves them only after a successful save", async () => {
   const source = await readContentSource();
 
-  assert.match(source, /if \(event\.key === "Enter"\) \{\s*event\.preventDefault\(\);\s*void saveVideo\(\);\s*\}/s);
+  assert.match(source, /const rememberedFolderIds = await readRememberedCollectorFolderIds\(\);/);
+  assert.match(source, /selectedFolderIds = new Set\(rememberedFolderIds\);/);
+  assert.match(source, /createRememberedCollectorFolderIdsRecord\(\[\.\.\.folderIds\]\)/);
+  assert.match(
+    source,
+    /const result = await requestLocalApi\("POST", "\/videos", payload\);[\s\S]*createRememberedCollectorFolderIdsRecord\(\[\.\.\.folderIds\]\)/,
+  );
+});
+
+test("collector enter handling respects IME and create-folder modal guards before saving", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /if \(event\.isComposing\) return;/);
+  assert.match(
+    source,
+    /if \(event\.key === "Enter"\) \{\s*if \(modal && !modal\.classList\.contains\("bl-hidden"\)\) return;\s*event\.preventDefault\(\);\s*void saveVideo\(\);\s*\}/s,
+  );
   assert.doesNotMatch(source, /void saveQuickFavorite\(\)/);
 });

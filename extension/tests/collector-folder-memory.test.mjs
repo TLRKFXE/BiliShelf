@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY,
+  createRememberedCollectorFolderIdsRecord,
   normalizeRememberedCollectorFolderIds,
   resolveRememberedCollectorFolderIds,
 } from "../utils/collector-folder-memory.js";
@@ -43,5 +44,14 @@ test("collector folder memory exposes a stable storage key", () => {
   assert.equal(
     COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY,
     "bili_like_collector_last_folder_ids_v1",
+  );
+});
+
+test("createRememberedCollectorFolderIdsRecord normalizes iterables into a storage payload", () => {
+  assert.deepEqual(
+    createRememberedCollectorFolderIdsRecord(new Set([12, "3", 12, -1, "x"])),
+    {
+      [COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY]: [12, 3],
+    },
   );
 });

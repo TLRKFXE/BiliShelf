@@ -22,6 +22,7 @@ import {
 } from "./utils/shortcut-config.js";
 import {
   COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY,
+  createRememberedCollectorFolderIdsRecord,
   resolveRememberedCollectorFolderIds,
 } from "./utils/collector-folder-memory.js";
 
@@ -1186,16 +1187,23 @@ import {
 
     if (event.key === "Escape") {
       event.preventDefault();
+      if (modal && !modal.classList.contains("bl-hidden")) {
+        closeCreateFolderModal();
+        return;
+      }
       closeCollectorModal();
       return;
     }
 
-    if (isEditableTarget(event.target)) return;
+    if (event.isComposing) return;
 
     if (event.key === "Enter") {
+      if (modal && !modal.classList.contains("bl-hidden")) return;
       event.preventDefault();
       void saveVideo();
     }
+
+    if (isEditableTarget(event.target)) return;
   }
 
   function openCreateFolderModal() {
@@ -1400,6 +1408,12 @@ import {
 
       setStatus(toastMessage, "ok");
       currentVideoLocalFolders = Array.isArray(result?.finalFolders) ? result.finalFolders : [];
+      try {
+        await chrome.storage.local.set(
+          createRememberedCollectorFolderIdsRecord([...folderIds])
+        );
+      } catch {
+      }
       renderExistingFolderSummary(existingFoldersSummaryEl);
       await loadFolders();
       return result;
