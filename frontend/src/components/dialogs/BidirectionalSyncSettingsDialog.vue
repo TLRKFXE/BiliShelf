@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { BellRing, RefreshCcw, ShieldCheck, Waypoints } from "lucide-vue-next";
+import { BellRing, RefreshCcw, Waypoints } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -77,14 +77,6 @@ function handleSubmit() {
             </p>
           </div>
         </label>
-        <div
-          class="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground"
-        >
-          <p class="flex items-start gap-1.5">
-            <ShieldCheck class="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-            <span>{{ t("sync.settings.desc") }}</span>
-          </p>
-        </div>
       </section>
 
       <DialogFooter class="flex flex-wrap justify-end gap-2">

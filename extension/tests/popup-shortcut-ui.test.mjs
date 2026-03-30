@@ -18,6 +18,12 @@ async function readPopupScriptSource() {
   return source.replace(/\r\n/g, "\n");
 }
 
+async function readPopupCssSource() {
+  const fullPath = path.resolve(__dirname, "..", "popup.css");
+  const source = await readFile(fullPath, "utf8");
+  return source.replace(/\r\n/g, "\n");
+}
+
 test("popup includes a dedicated shortcut settings card and recording controls", async () => {
   const source = await readPopupHtmlSource();
 
@@ -32,6 +38,7 @@ test("popup includes a dedicated shortcut settings card and recording controls",
 test("popup shortcut logic reads storage, writes custom and disabled states, restores defaults, and cancels recording with Esc", async () => {
   const source = await readPopupScriptSource();
 
+  assert.match(source, /from "\.\/utils\/popup-feedback\.js"/);
   assert.match(source, /QUICK_FAVORITE_SHORTCUT_STORAGE_KEY/);
   assert.match(source, /chrome\.storage\.local\.get\(\[[^\]]*QUICK_FAVORITE_SHORTCUT_STORAGE_KEY[^\]]*\]\)/);
   assert.match(source, /chrome\.storage\.local\.set\(\{\s*\[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY\]:/);
@@ -39,4 +46,46 @@ test("popup shortcut logic reads storage, writes custom and disabled states, res
   assert.match(source, /mode:\s*"disabled"/);
   assert.match(source, /chrome\.storage\.local\.remove\(QUICK_FAVORITE_SHORTCUT_STORAGE_KEY\)/);
   assert.match(source, /event\.key === "Escape"/);
+  assert.match(source, /if \(isModifierOnlyShortcutEvent\(event\)\) \{\s*return;\s*\}/s);
+  assert.match(source, /const toastGate = createPopupToastGate\(/);
+});
+
+test("popup uses one shared action button system for shortcut and footer rows", async () => {
+  const htmlSource = await readPopupHtmlSource();
+  const cssSource = await readPopupCssSource();
+
+  assert.match(
+    htmlSource,
+    /<div class="popup-action-grid popup-action-grid--triple shortcut-actions">/,
+  );
+  assert.match(
+    htmlSource,
+    /id="shortcut-start-recording" class="popup-btn popup-btn--primary"/,
+  );
+  assert.match(
+    htmlSource,
+    /id="shortcut-restore-default" class="popup-btn popup-btn--secondary"/,
+  );
+  assert.match(
+    htmlSource,
+    /id="shortcut-clear" class="popup-btn popup-btn--secondary"/,
+  );
+  assert.match(
+    htmlSource,
+    /<section class="card actions popup-action-grid popup-action-grid--double">/,
+  );
+  assert.match(
+    htmlSource,
+    /id="open-manager" class="popup-btn popup-btn--primary"/,
+  );
+  assert.match(
+    htmlSource,
+    /id="open-video" class="popup-btn popup-btn--secondary"/,
+  );
+  assert.doesNotMatch(htmlSource, /primary-btn|secondary-btn|ghost-btn/);
+  assert.match(cssSource, /\.popup-action-grid\s*\{/);
+  assert.match(cssSource, /\.popup-btn\s*\{/);
+  assert.match(cssSource, /\.Vue-Toastification__toast--info\s*\{/);
+  assert.doesNotMatch(cssSource, /background:\s*rgba\(25,\s*183,\s*95,\s*\.14\)/);
+  assert.doesNotMatch(cssSource, /background:\s*rgba\(230,\s*38,\s*76,\s*\.14\)/);
 });

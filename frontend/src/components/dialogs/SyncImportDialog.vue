@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import {
-  CirclePause,
   FolderSync,
-  Play,
   RefreshCcw,
   ShieldCheck,
-  WandSparkles,
 } from "lucide-vue-next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,24 +26,11 @@ const props = defineProps<{
   folders: SyncRemoteFolder[];
   selectedFolderIds: number[];
   resumePage: number;
-  tagEnrichmentStatus?: {
-    paused: boolean;
-    running: boolean;
-    totalMissing: number;
-    lastBatchProcessed: number;
-    lastBatchBound: number;
-    lastError: string | null;
-  } | null;
-  tagEnrichmentLoading: boolean;
 }>();
 
 const emit = defineEmits<{
   "update:open": [value: boolean];
   "toggle-folder": [remoteId: number, checked: boolean];
-  "refresh-tag-enrichment": [];
-  "pause-tag-enrichment": [];
-  "resume-tag-enrichment": [];
-  "run-tag-enrichment": [];
   "select-all": [];
   "clear-selection": [];
   reload: [];
@@ -133,7 +117,6 @@ const allFoldersSelected = computed(
             </Button>
           </div>
           <p class="text-xs text-muted-foreground">{{ t("sync.queueHint") }}</p>
-          <p class="text-xs text-muted-foreground">{{ t("sync.tagEnrichDisabledHint") }}</p>
         </div>
 
         <div
@@ -182,64 +165,6 @@ const allFoldersSelected = computed(
             />
           </label>
         </div>
-
-        <section class="rounded-lg border bg-muted/20 p-3">
-          <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <p class="text-sm font-medium">{{ t("sync.tagEnrichTitle") }}</p>
-            <Button
-              size="sm"
-              variant="outline"
-              :disabled="tagEnrichmentLoading"
-              @click="emit('refresh-tag-enrichment')"
-            >
-              <RefreshCcw class="h-3.5 w-3.5" />
-              {{ t("sync.reloadTagEnrich") }}
-            </Button>
-          </div>
-          <p class="text-xs text-muted-foreground">
-            {{
-              t("sync.tagEnrichStatus", {
-                missing: tagEnrichmentStatus?.totalMissing ?? 0,
-                processed: tagEnrichmentStatus?.lastBatchProcessed ?? 0,
-                bound: tagEnrichmentStatus?.lastBatchBound ?? 0,
-              })
-            }}
-          </p>
-          <p
-            v-if="tagEnrichmentStatus?.lastError"
-            class="mt-1 text-xs text-amber-600 dark:text-amber-400"
-          >
-            {{ tagEnrichmentStatus.lastError }}
-          </p>
-          <div class="mt-3 flex flex-wrap items-center justify-end gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              :disabled="tagEnrichmentLoading || (tagEnrichmentStatus?.paused ?? true)"
-              @click="emit('pause-tag-enrichment')"
-            >
-              <CirclePause class="h-3.5 w-3.5" />
-              {{ t("sync.pauseTagEnrich") }}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              :disabled="tagEnrichmentLoading || !(tagEnrichmentStatus?.paused ?? false)"
-              @click="emit('resume-tag-enrichment')"
-            >
-              <Play class="h-3.5 w-3.5" />
-              {{ t("sync.resumeTagEnrich") }}
-            </Button>
-            <Button
-              size="sm"
-              :disabled="tagEnrichmentLoading || (tagEnrichmentStatus?.paused ?? false)"
-              @click="emit('run-tag-enrichment')"
-            >
-              <WandSparkles class="h-3.5 w-3.5" />
-              {{ t("sync.runTagEnrichNow") }}
-            </Button>
-          </div>
-        </section>
 
         <div class="flex flex-wrap items-center justify-end gap-2">
           <Button
