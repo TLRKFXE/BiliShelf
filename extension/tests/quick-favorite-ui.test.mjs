@@ -15,24 +15,27 @@ async function readContentSource() {
 test("content script mounts a dedicated quick favorite layer with existing-folder summary", async () => {
   const source = await readContentSource();
 
-  assert.match(source, /id: "bl-quick-favorite-layer"/);
-  assert.match(source, /id: "bl-quick-favorite-search"/);
-  assert.match(source, /id: "bl-quick-favorite-list"/);
-  assert.match(source, /id: "bl-quick-favorite-save"/);
-  assert.match(source, /id: "bl-existing-folders-summary"/);
+  assert.doesNotMatch(source, /id: "bl-quick-favorite-layer"/);
+  assert.doesNotMatch(source, /id: "bl-quick-favorite-search"/);
+  assert.doesNotMatch(source, /id: "bl-quick-favorite-list"/);
+  assert.doesNotMatch(source, /id: "bl-quick-favorite-save"/);
+  assert.match(source, /id: "bl-panel-existing-folders-summary"/);
 });
 
-test("quick favorite layer resolves its shortcut from storage-backed config and resets transient selection", async () => {
+test("collector shortcut opens the unified collector modal and wires remembered folder storage", async () => {
   const source = await readContentSource();
 
   assert.match(source, /QUICK_FAVORITE_SHORTCUT_STORAGE_KEY/);
+  assert.match(source, /from "\.\/utils\/collector-folder-memory\.js"/);
+  assert.match(source, /COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY/);
   assert.match(source, /let activeQuickFavoriteShortcut = resolveStoredShortcut\(null\);/);
   assert.match(source, /matchesQuickFavoriteShortcut\(event,\s*activeQuickFavoriteShortcut\)/);
   assert.match(source, /formatShortcutLabel\(activeQuickFavoriteShortcut\)/);
   assert.match(source, /changes\[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY\]/);
-  assert.match(source, /quickSelectedFolderIds = new Set\(\);/);
   assert.match(source, /window\.addEventListener\("keydown", handleQuickFavoriteShortcut/);
-  assert.match(source, /quickSelectedFolderIds = new Set\(\);\s*quickActiveFolderId = 0;\s*openQuickFavoriteLayer\(\);/s);
+  assert.match(source, /void openCollectorModal\(\);/);
+  assert.doesNotMatch(source, /quickSelectedFolderIds = new Set\(\);/);
+  assert.doesNotMatch(source, /openQuickFavoriteLayer\(\)/);
 });
 
 test("duplicate save feedback references existing folders instead of only generic saved toast", async () => {
@@ -42,4 +45,18 @@ test("duplicate save feedback references existing folders instead of only generi
   assert.match(source, /toast\.savedAddedFolders/);
   assert.match(source, /toast\.savedMixedFolders/);
   assert.match(source, /buildQuickFavoriteToastMessage\(/);
+});
+
+test("collector source removes the redundant subtitle and empty saved-folder placeholder copy", async () => {
+  const source = await readContentSource();
+
+  assert.doesNotMatch(source, /subtitle\.collector/);
+  assert.doesNotMatch(source, /status\.savedFoldersNone/);
+});
+
+test("collector enter handling submits through the unified collector flow instead of a dedicated quick-save panel", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /if \(event\.key === "Enter"\) \{\s*event\.preventDefault\(\);\s*void saveVideo\(\);\s*\}/s);
+  assert.doesNotMatch(source, /void saveQuickFavorite\(\)/);
 });
