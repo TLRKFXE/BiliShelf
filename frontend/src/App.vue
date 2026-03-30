@@ -2793,8 +2793,6 @@ onBeforeUnmount(() => {
       :folders="syncFolders"
       :selected-folder-ids="syncSelectedFolderIds"
       :resume-page="syncResumePage"
-      :tag-enrichment-status="tagEnrichmentStatus"
-      :tag-enrichment-loading="tagEnrichmentLoading"
       @update:open="syncDialogOpen = $event"
       @reload="loadSyncFolderOptions(true)"
       @select-all="selectAllSyncFolders"
@@ -2802,10 +2800,6 @@ onBeforeUnmount(() => {
       @toggle-folder="
         (remoteId, checked) => toggleSyncFolder(remoteId, checked)
       "
-      @refresh-tag-enrichment="refreshTagEnrichmentState"
-      @pause-tag-enrichment="pauseTagEnrichmentFromUi"
-      @resume-tag-enrichment="resumeTagEnrichmentFromUi"
-      @run-tag-enrichment="runTagEnrichmentNowFromUi"
       @submit="submitSyncImport"
     />
 

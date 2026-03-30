@@ -71,6 +71,55 @@ test("manual sync dialog no longer renders the misleading chunk-size controls", 
   assert.doesNotMatch(source, /sync\.autoChunkHint/);
 });
 
+test("webdav dialog keeps one description source and drops the duplicated helper row", async () => {
+  const source = await readComponentSource(["components", "dialogs", "WebDavBackupDialog.vue"]);
+
+  assert.equal((source.match(/t\("webdav\.desc"\)/g) ?? []).length, 1);
+  assert.doesNotMatch(source, /ShieldCheck/);
+});
+
+test("sync settings dialog keeps one description source and drops the duplicated helper card", async () => {
+  const source = await readComponentSource([
+    "components",
+    "dialogs",
+    "BidirectionalSyncSettingsDialog.vue",
+  ]);
+
+  assert.equal((source.match(/t\("sync\.settings\.desc"\)/g) ?? []).length, 1);
+  assert.doesNotMatch(source, /ShieldCheck/);
+});
+
+test("sync import dialog no longer embeds the stage 2 tag enrichment control panel", async () => {
+  const source = await readComponentSource(["components", "dialogs", "SyncImportDialog.vue"]);
+
+  assert.doesNotMatch(source, /sync\.tagEnrichTitle/);
+  assert.doesNotMatch(source, /sync\.reloadTagEnrich/);
+  assert.doesNotMatch(source, /sync\.tagEnrichStatus/);
+  assert.doesNotMatch(source, /sync\.pauseTagEnrich/);
+  assert.doesNotMatch(source, /sync\.resumeTagEnrich/);
+  assert.doesNotMatch(source, /sync\.runTagEnrichNow/);
+  assert.doesNotMatch(source, /sync\.tagEnrichDisabledHint/);
+  assert.doesNotMatch(source, /CirclePause/);
+  assert.doesNotMatch(source, /WandSparkles/);
+  assert.doesNotMatch(source, /tagEnrichmentStatus/);
+  assert.doesNotMatch(source, /tagEnrichmentLoading/);
+  assert.doesNotMatch(source, /refresh-tag-enrichment/);
+  assert.doesNotMatch(source, /pause-tag-enrichment/);
+  assert.doesNotMatch(source, /resume-tag-enrichment/);
+  assert.doesNotMatch(source, /run-tag-enrichment/);
+});
+
+test("app no longer passes embedded stage 2 tag enrichment wiring into the sync import dialog", async () => {
+  const source = await readComponentSource(["App.vue"]);
+
+  assert.doesNotMatch(source, /:tag-enrichment-status=/);
+  assert.doesNotMatch(source, /:tag-enrichment-loading=/);
+  assert.doesNotMatch(source, /@refresh-tag-enrichment=/);
+  assert.doesNotMatch(source, /@pause-tag-enrichment=/);
+  assert.doesNotMatch(source, /@resume-tag-enrichment=/);
+  assert.doesNotMatch(source, /@run-tag-enrichment=/);
+});
+
 test("app temporarily disables ai category entry points and background fetches", async () => {
   const source = await readComponentSource(["App.vue"]);
 
