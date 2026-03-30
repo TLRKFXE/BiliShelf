@@ -51,16 +51,16 @@
           <span id="shortcut-current-label" class="shortcut-pill">Alt+Shift+S</span>
         </div>
         <p id="shortcut-recording-hint" class="muted">Press Start Recording, then use Alt or Ctrl with one letter or number. Press Esc to cancel.</p>
-        <div class="shortcut-actions">
-          <button id="shortcut-start-recording" class="primary-btn" type="button">Start Recording</button>
-          <button id="shortcut-restore-default" class="secondary-btn" type="button">Restore Default</button>
-          <button id="shortcut-clear" class="ghost-btn" type="button">Clear</button>
+        <div class="popup-action-grid popup-action-grid--triple shortcut-actions">
+          <button id="shortcut-start-recording" class="popup-btn popup-btn--primary" type="button">Start Recording</button>
+          <button id="shortcut-restore-default" class="popup-btn popup-btn--secondary" type="button">Restore Default</button>
+          <button id="shortcut-clear" class="popup-btn popup-btn--secondary" type="button">Clear</button>
         </div>
       </section>
 
-      <section class="card actions">
-        <button id="open-manager" class="primary-btn" type="button">Open Manager</button>
-        <button id="open-video" class="secondary-btn" type="button">Open Bilibili Video</button>
+      <section class="card actions popup-action-grid popup-action-grid--double">
+        <button id="open-manager" class="popup-btn popup-btn--primary" type="button">Open Manager</button>
+        <button id="open-video" class="popup-btn popup-btn--secondary" type="button">Open Bilibili Video</button>
       </section>
     </main>
     <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>

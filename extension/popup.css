@@ -113,9 +113,20 @@ body[data-theme="light"] .shortcut-pill {
 }
 
 .shortcut-actions {
+  margin-top: 2px;
+}
+
+.popup-action-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.popup-action-grid--triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.popup-action-grid--double {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .option-chip {
@@ -160,39 +171,49 @@ body[data-theme="light"] .option-chip span {
 }
 
 .actions {
-  display: flex;
-  gap: 8px;
+  align-items: stretch;
 }
 
-.actions button {
-  flex: 1;
-  border: 0;
-  border-radius: 10px;
+.popup-btn {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #d5deef;
+  border-radius: 12px;
+  padding: 10px 12px;
   font-size: 12px;
-  font-weight: 600;
-  padding: 8px 10px;
+  font-weight: 700;
+  line-height: 1.2;
   cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
 }
 
-.primary-btn {
+.popup-btn:hover {
+  transform: translateY(-1px);
+}
+
+.popup-btn:disabled {
+  opacity: .6;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
+.popup-btn:focus-visible {
+  outline: 2px solid #5a78ff;
+  outline-offset: 2px;
+}
+
+.popup-btn--primary {
+  border-color: #5d7cff;
   background: linear-gradient(135deg, #5d7cff, #3f5cff);
   color: #fff;
+  box-shadow: 0 10px 20px rgba(63, 92, 255, .24);
 }
 
-.secondary-btn {
-  background: #e8eefc;
+.popup-btn--secondary {
+  background: #f7f9ff;
   color: #27406f;
-}
-
-.ghost-btn {
-  border: 1px solid #d5deef;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #475569;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 8px 10px;
-  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .78);
 }
 
 body[data-theme="dark"] {
@@ -230,21 +251,25 @@ body[data-theme="dark"] .option-chip[data-mode="dark"] input:checked + span {
   box-shadow: 0 0 0 2px rgba(194, 210, 255, .35), 0 12px 24px rgba(112, 145, 255, .52);
 }
 
-body[data-theme="dark"] .secondary-btn {
-  background: #233355;
-  color: #d8e7ff;
-}
-
 body[data-theme="dark"] .shortcut-pill {
   background: #192743;
   border-color: #28406d;
   color: #dce8ff;
 }
 
-body[data-theme="dark"] .ghost-btn {
+body[data-theme="dark"] .popup-btn {
   border-color: #334463;
-  background: #121b31;
-  color: #d5def2;
+}
+
+body[data-theme="dark"] .popup-btn--primary {
+  border-color: #7698ff;
+  box-shadow: 0 10px 22px rgba(93, 124, 255, .32);
+}
+
+body[data-theme="dark"] .popup-btn--secondary {
+  background: #233355;
+  color: #d8e7ff;
+  box-shadow: inset 0 1px 0 rgba(219, 231, 255, .06);
 }
 
 .toast-root {
