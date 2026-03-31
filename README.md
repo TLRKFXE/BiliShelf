@@ -15,13 +15,6 @@
 
 <img width="1111" height="744" alt="a2bd6a4d-5b3b-4768-aaf0-13a1e18d64fa" src="https://github.com/user-attachments/assets/4c5d155a-9e13-4645-ba23-4dfe993f8939" />
 
-## AI Folder Categorization
-
-- Open the extension manager and use the header action `AI 设置` to configure the provider, base URL, model, and API key.
-- Select a folder in the left sidebar, then use `AI 分类` to group videos for the current folder and open the category browser view.
-- AI settings and AI category results stay in the extension runtime only.
-- Supported provider families: OpenAI, OpenAI-compatible, Claude, Gemini, Grok, DeepSeek, and Kimi.
-
 ## 功能说明
 
 - 支持深色/浅色主题，i18n（CN/EN）
