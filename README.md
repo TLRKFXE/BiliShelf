@@ -1,4 +1,4 @@
-﻿<p align="right"><a href="./README.en.md">English</a></p>
+<p align="right"><a href="./README.en.md">English</a></p>
 
 # <p align="center">BiliShelf</p>
 
