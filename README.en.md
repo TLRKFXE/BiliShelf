@@ -9,9 +9,9 @@ Have you ever felt frustrated by Bilibili's favorites limits or the weak search 
 
 ---
 
-> A local-first browser extension for managing Bilibili favorites.
-> It stores video metadata, folder relations, and tags locally, solves the limits of native Bilibili favorites and their weak search experience, and provides more flexible organization, search, sync, and backup workflows than the default Bilibili experience.
-> Please read all notes carefully.
+- A local-first browser extension for managing Bilibili favorites.
+- It stores video metadata, folder relations, and tags locally, solves the limits of native Bilibili favorites and their weak search experience, and provides more flexible organization, search, sync, and backup workflows than the default Bilibili experience.
+- Please read all notes carefully.
 
 <img width="1111" height="744" alt="a2bd6a4d-5b3b-4768-aaf0-13a1e18d64fa" src="https://github.com/user-attachments/assets/4c5d155a-9e13-4645-ba23-4dfe993f8939" />
 
@@ -61,13 +61,16 @@ BiliShelf is mainly built to solve these common problems:
    Store versions usually lag behind GitHub Releases.
 
    Extension stores:
-   - Edge: `https://microsoftedge.microsoft.com/addons/detail/oimbmlmankjoinhkofhjainenmofcena`
+
+   - Edge: `https://microsoftedge.microsoft.com/addons/detail/bilishelf-manager/`
    - Firefox: `https://addons.mozilla.org/en-GB/firefox/addon/bilishelf/`
 
    GitHub Releases:
+
    - `https://github.com/TLRKFXE/BiliShelf/releases`
 
    After downloading the package, unzip it and install it from your browser's extension manager:
+
    - Chromium-based browsers (Chrome / Edge / Brave / Arc, etc.): enable Developer Mode, then choose `Load unpacked` and point it to the extension directory
    - Firefox: install it through `about:debugging` or `Install Add-on From File`
 

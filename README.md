@@ -9,9 +9,9 @@
 
 ---
 
-> 一个面向 B 站收藏管理的本地优先浏览器扩展。
-> 把视频信息、收藏关系与标签保存在本地，解决站内收藏夹数量限制和检索体验问题，提供比 B 站原生收藏更灵活的整理、检索、同步与备份能力。
-> 请一定完整阅读所有说明。
+- 一个面向 B 站收藏管理的本地优先浏览器扩展。
+- 把视频信息、收藏关系与标签保存在本地，解决站内收藏夹数量限制和检索体验问题，提供比 B 站原生收藏更灵活的整理、检索、同步与备份能力。
+- 请一定完整阅读所有说明。
 
 <img width="1111" height="744" alt="a2bd6a4d-5b3b-4768-aaf0-13a1e18d64fa" src="https://github.com/user-attachments/assets/4c5d155a-9e13-4645-ba23-4dfe993f8939" />
 
@@ -58,11 +58,12 @@ BiliShelf 主要解决这些常见问题：
 ### 方式一：普通用户
 
 1. 下载：
-   (1).前往浏览器扩展商店下载（商店版本一般落后于 Release）：
 
+- (1).前往浏览器扩展商店下载（商店版本一般落后于 Release）：
 - Edge：https://microsoftedge.microsoft.com/addons/detail/bilishelf-manager/
 - Firefox：https://addons.mozilla.org/zh-CN/firefox/addon/bilishelf/
-  (2).前往仓库 `Releases` 页面，下载对应浏览器的插件压缩包：
+
+- (2).前往仓库 `Releases` 页面，下载对应浏览器的插件压缩包：
 - `https://github.com/TLRKFXE/BiliShelf/releases`
 - 解压下载的插件包，打开浏览器扩展管理页面并安装：
 - Chromium 内核浏览器（Chrome / Edge / Brave / Arc 等）：开启开发者模式后，选择“加载已解压的扩展程序”，指向插件目录。
