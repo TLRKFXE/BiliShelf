@@ -123,6 +123,103 @@ test("json export omits partition from exported videos", () => {
   assert.equal(parsed.videos[0].folderCount, 1);
 });
 
+test("json export excludes tags and tag links that only belong to deleted videos", () => {
+  const payload = runBackgroundExports({
+    steps: [
+      {
+        exportName: "buildJsonExportResult",
+        args: [
+          {
+            counters: {
+              folder: 5,
+              video: 5,
+              folderItem: 5,
+              tag: 5,
+              videoTag: 5,
+            },
+            folders: [
+              {
+                id: 1,
+                name: "Favorites",
+                description: "",
+                remoteMediaId: null,
+                sortOrder: 1,
+                deletedAt: null,
+                createdAt: 1,
+                updatedAt: 1,
+              },
+            ],
+            videos: [
+              {
+                id: 11,
+                bvid: "BVKEEP001",
+                title: "Keep me",
+                coverUrl: "https://i0.hdslb.com/keep.jpg",
+                uploader: "Uploader A",
+                uploaderSpaceUrl: "https://space.bilibili.com/11",
+                description: "Active video",
+                partition: "",
+                publishAt: 1700000000000,
+                bvidUrl: "https://www.bilibili.com/video/BVKEEP001",
+                isInvalid: false,
+                deletedAt: null,
+                createdAt: 1700000001000,
+                updatedAt: 1700000002000,
+              },
+              {
+                id: 12,
+                bvid: "BVDELETED1",
+                title: "Deleted video",
+                coverUrl: "https://i0.hdslb.com/deleted.jpg",
+                uploader: "Uploader B",
+                uploaderSpaceUrl: "https://space.bilibili.com/12",
+                description: "Should not export",
+                partition: "",
+                publishAt: 1700000100000,
+                bvidUrl: "https://www.bilibili.com/video/BVDELETED1",
+                isInvalid: false,
+                deletedAt: 1700000200000,
+                createdAt: 1700000101000,
+                updatedAt: 1700000201000,
+              },
+            ],
+            folderItems: [
+              { id: 1, folderId: 1, videoId: 11, addedAt: 1700000003000 },
+            ],
+            tags: [
+              { id: 1, name: "keep-system", type: "system", createdAt: 1, archivedAt: null },
+              { id: 2, name: "keep-custom", type: "custom", createdAt: 2, archivedAt: null },
+              { id: 3, name: "orphan-system", type: "system", createdAt: 3, archivedAt: null },
+              { id: 4, name: "orphan-custom", type: "custom", createdAt: 4, archivedAt: null },
+            ],
+            videoTags: [
+              { id: 1, videoId: 11, tagId: 1 },
+              { id: 2, videoId: 11, tagId: 2 },
+              { id: 3, videoId: 12, tagId: 3 },
+              { id: 4, videoId: 12, tagId: 4 },
+            ],
+            syncMeta: {},
+            ai: {},
+          },
+        ],
+      },
+    ],
+  });
+
+  const result = payload.results[0].value;
+  const parsed = JSON.parse(result.content);
+
+  assert.deepEqual(parsed.videos.map((video) => video.id), [11]);
+  assert.deepEqual(parsed.tags.map((tag) => tag.name), ["keep-system", "keep-custom"]);
+  assert.deepEqual(
+    parsed.videoTags.map((edge) => [edge.videoId, edge.tagId]),
+    [
+      [11, 1],
+      [11, 2],
+    ],
+  );
+});
+
 test("legacy csv import path still accepts old timestamp columns and partition", async () => {
   const source = await readFile(backgroundPath, "utf8");
 

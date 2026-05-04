@@ -91,19 +91,23 @@ test("popup uses one shared action button system for shortcut and footer rows", 
   assert.doesNotMatch(cssSource, /background:\s*rgba\(230,\s*38,\s*76,\s*\.14\)/);
 });
 
-test("popup exposes an AI placeholder action and strengthens popup chrome", async () => {
+test("popup removes the AI placeholder action while keeping strengthened popup chrome", async () => {
   const htmlSource = await readPopupHtmlSource();
   const scriptSource = await readPopupScriptSource();
   const cssSource = await readPopupCssSource();
 
-  assert.match(htmlSource, /id="open-ai-placeholder"/);
-  assert.match(scriptSource, /toast\.comingSoon/);
-  assert.match(scriptSource, /openAiPlaceholderBtn/);
-  assert.match(scriptSource, /openAiPlaceholderBtn\?\.addEventListener\("click"/);
-  assert.match(scriptSource, /showToast\(t\("toast\.comingSoon"\), "info"\)/);
+  assert.doesNotMatch(htmlSource, /id="open-ai-placeholder"/);
+  assert.doesNotMatch(scriptSource, /toast\.comingSoon/);
+  assert.doesNotMatch(scriptSource, /openAiPlaceholderBtn/);
+  assert.doesNotMatch(scriptSource, /openAiPlaceholderBtn\?\.addEventListener\("click"/);
+  assert.match(
+    htmlSource,
+    /<section class="card actions popup-action-grid popup-action-grid--double">\s*<button id="open-manager"[\s\S]*<button id="open-video"/,
+  );
   assert.match(cssSource, /body,\s*body\[data-theme="light"\]\s*\{[\s\S]*border-radius:\s*20px;/);
   assert.match(cssSource, /body,\s*body\[data-theme="light"\]\s*\{[\s\S]*overflow:\s*hidden;/);
   assert.match(cssSource, /\.popup-btn\s*\{[\s\S]*box-shadow:\s*inset/);
   assert.match(cssSource, /\.Vue-Toastification__toast\s*\{[\s\S]*min-width:\s*260px;/);
+  assert.doesNotMatch(cssSource, /\.popup-btn--placeholder\s*\{/);
   assert.doesNotMatch(cssSource, /backdrop-filter:/);
 });

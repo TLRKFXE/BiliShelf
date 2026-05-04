@@ -117,3 +117,19 @@ test("background startup clears stale tag enrichment alarms", async () => {
 
   assert.match(startupBlock, /chrome\.alarms\.clear\(TAG_ENRICH_ALARM\)/);
 });
+
+test("background tag enrichment status bypasses the serialized withState queue", async () => {
+  const source = await readFile(
+    path.join(repoRoot, "extension", "entrypoints", "background.ts"),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /Fast-path status endpoints must bypass withState queue[\s\S]*if \(method === "GET" && path === "\/sync\/bilibili\/tag-enrichment\/status"\) \{[\s\S]*return ok\(getTagEnrichmentStatus\(snapshot\)\);[\s\S]*\}/
+  );
+  assert.doesNotMatch(
+    source,
+    /return await withState\(async \(state\) => \{[\s\S]*if \(method === "GET" && path === "\/sync\/bilibili\/tag-enrichment\/status"\) \{/
+  );
+});

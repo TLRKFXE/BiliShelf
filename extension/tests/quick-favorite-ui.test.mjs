@@ -67,6 +67,18 @@ test("collector modal restores remembered folders on open and saves them only af
   );
 });
 
+test("collector custom tags keep comma-separated input while layering suggestion chips on top", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /from "\.\/utils\/custom-tag-suggestions\.js"/);
+  assert.match(source, /id: "bl-custom-tag-suggestions"/);
+  assert.match(source, /async function fetchAllCustomTags\(\)/);
+  assert.match(source, /renderCustomTagSuggestions\(\);/);
+  assert.match(source, /customTagsInput\?\.addEventListener\("input", \(\) => \{/);
+  assert.match(source, /appendSuggestedCustomTag\(/);
+  assert.match(source, /findMatchingCustomTagSuggestions\(/);
+});
+
 test("collector enter handling respects IME and create-folder modal guards before saving", async () => {
   const source = await readContentSource();
 

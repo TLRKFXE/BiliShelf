@@ -231,8 +231,11 @@ export const useLibraryStore = defineStore("library", () => {
     }
   }
 
-  async function prefetchForRoute(view: "manager" | "trash") {
+  async function prefetchForRoute(view: "manager" | "trash" | "following-ups") {
     await ensureBootstrapped();
+    if (view === "following-ups") {
+      return;
+    }
     if (view === "trash") {
       if (trashFolders.value.length === 0 && trashVideos.value.length === 0) {
         await refreshTrash();

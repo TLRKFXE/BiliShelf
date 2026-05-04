@@ -11,6 +11,7 @@ import {
   Tags,
   Trash2,
   Upload,
+  UserRoundCheck,
   Waypoints,
 } from "lucide-vue-next";
 import BiliShelfMark from "@/components/icons/BiliShelfMark.vue";
@@ -29,6 +30,7 @@ import { Progress } from "@/components/ui/progress";
 const props = defineProps<{
   t: (key: string, vars?: Record<string, string | number>) => string;
   trashMode: boolean;
+  followingUpsMode: boolean;
   showAiSettings: boolean;
   showSyncSettings: boolean;
   currentViewLabel: string;
@@ -43,8 +45,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "open-tags": [];
-  "open-ai-placeholder": [];
   "open-ai-settings": [];
+  "open-following-ups": [];
   "open-sync-settings": [];
   "open-webdav-settings": [];
   "toggle-trash": [];
@@ -59,6 +61,10 @@ const emit = defineEmits<{
 const exportDialogOpen = ref(false);
 const topActionButtonClass = "h-12 w-full justify-start rounded-2xl border border-border/80 bg-card/80 px-4 shadow-sm shadow-black/5";
 const secondaryActionButtonClass = "h-12 w-full justify-start rounded-2xl border border-border/80 bg-card/80 px-4 shadow-sm shadow-black/5";
+const activeViewButtonClass = "border-primary/35 bg-primary/12 text-primary shadow-[0_12px_30px_-18px_hsl(var(--primary)/0.6)] hover:bg-primary/16 hover:text-primary dark:border-primary/30 dark:bg-primary/16";
+const trashActionIconClass = "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border transition-colors";
+const trashActionIconIdleClass = "border-border/80 bg-muted/70 text-foreground dark:border-white/10 dark:bg-white/10 dark:text-white";
+const trashActionIconActiveClass = "border-primary/30 bg-primary/15 text-primary dark:border-primary/30 dark:bg-primary/18 dark:text-primary";
 
 function openExportDialog() {
   exportDialogOpen.value = true;
@@ -83,7 +89,9 @@ function submitExport(format: "json" | "csv") {
             <BiliShelfMark class="h-10 w-10" />
           </div>
           <div class="min-w-0">
-            <h1 class="line-clamp-1 text-xl font-extrabold tracking-tight md:text-2xl">
+            <h1
+              class="line-clamp-1 text-xl font-extrabold tracking-tight md:text-2xl"
+            >
               {{ props.t("header.title") }}
             </h1>
             <p class="line-clamp-1 text-sm text-muted-foreground">
@@ -108,7 +116,9 @@ function submitExport(format: "json" | "csv") {
         </div>
       </div>
 
-      <div class="flex flex-wrap items-start justify-start gap-2 xl:justify-end">
+      <div
+        class="flex flex-wrap items-start justify-start gap-2 xl:justify-end"
+      >
         <Button size="sm" variant="outline" @click="emit('toggle-locale')">
           <Languages class="h-3.5 w-3.5" />
           {{ props.localeToggleText }}
@@ -134,9 +144,8 @@ function submitExport(format: "json" | "csv") {
       </div>
     </div>
 
-    <div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div v-if="!props.trashMode && !props.followingUpsMode" class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       <Button
-        v-if="!props.trashMode"
         size="sm"
         variant="outline"
         :class="topActionButtonClass"
@@ -146,17 +155,7 @@ function submitExport(format: "json" | "csv") {
         {{ props.t("header.manageTags") }}
       </Button>
       <Button
-        v-if="!props.trashMode"
-        size="sm"
-        variant="outline"
-        :class="topActionButtonClass"
-        @click="emit('open-ai-placeholder')"
-      >
-        <Bot class="h-3.5 w-3.5" />
-        {{ props.t("header.aiPlaceholder") }}
-      </Button>
-      <Button
-        v-if="!props.trashMode && props.showAiSettings"
+        v-if="props.showAiSettings"
         size="sm"
         variant="outline"
         :class="topActionButtonClass"
@@ -166,7 +165,7 @@ function submitExport(format: "json" | "csv") {
         {{ props.t("header.aiSettings") }}
       </Button>
       <Button
-        v-if="!props.trashMode && props.showSyncSettings"
+        v-if="props.showSyncSettings"
         size="sm"
         variant="outline"
         :class="topActionButtonClass"
@@ -177,11 +176,60 @@ function submitExport(format: "json" | "csv") {
       </Button>
       <Button
         size="sm"
-        :variant="props.trashMode ? 'default' : 'outline'"
+        variant="outline"
         :class="topActionButtonClass"
+        @click="emit('open-following-ups')"
+      >
+        <UserRoundCheck class="h-3.5 w-3.5" />
+        {{ props.t("header.followingUps") }}
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        :class="[topActionButtonClass, props.trashMode ? activeViewButtonClass : '']"
         @click="emit('toggle-trash')"
       >
-        <Trash2 class="h-3.5 w-3.5" />
+        <span
+          :class="[trashActionIconClass, props.trashMode ? trashActionIconActiveClass : trashActionIconIdleClass]"
+        >
+          <Trash2 class="h-3.5 w-3.5" />
+        </span>
+        {{
+          props.trashMode
+            ? props.t("header.backManager")
+            : props.t("header.openTrash")
+        }}
+      </Button>
+    </div>
+
+    <div v-else-if="props.followingUpsMode" class="mt-5 flex justify-start md:justify-end">
+      <Button
+        size="sm"
+        variant="outline"
+        :class="[topActionButtonClass, props.followingUpsMode ? activeViewButtonClass : '']"
+        @click="emit('open-following-ups')"
+      >
+        <span
+          :class="[trashActionIconClass, props.followingUpsMode ? trashActionIconActiveClass : trashActionIconIdleClass]"
+        >
+          <UserRoundCheck class="h-3.5 w-3.5" />
+        </span>
+        {{ props.t("header.backManager") }}
+      </Button>
+    </div>
+
+    <div v-else class="mt-5 flex justify-start md:justify-end">
+      <Button
+        size="sm"
+        variant="outline"
+        :class="[topActionButtonClass, props.trashMode ? activeViewButtonClass : '']"
+        @click="emit('toggle-trash')"
+      >
+        <span
+          :class="[trashActionIconClass, props.trashMode ? trashActionIconActiveClass : trashActionIconIdleClass]"
+        >
+          <Trash2 class="h-3.5 w-3.5" />
+        </span>
         {{
           props.trashMode
             ? props.t("header.backManager")

@@ -25,6 +25,10 @@ import {
   createRememberedCollectorFolderIdsRecord,
   resolveRememberedCollectorFolderIds,
 } from "./utils/collector-folder-memory.js";
+import {
+  appendSuggestedCustomTag,
+  findMatchingCustomTagSuggestions,
+} from "./utils/custom-tag-suggestions.js";
 
 (function () {
   const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
@@ -258,6 +262,7 @@ import {
   let existingFoldersSummaryEl = null;
   let folderSearchInput = null;
   let customTagsInput = null;
+  let customTagSuggestionsEl = null;
   let saveBtn = null;
   let closeBtn = null;
   let openCreateFolderBtn = null;
@@ -294,6 +299,7 @@ import {
 
   let suppressButtonClick = false;
   let allFolders = [];
+  let allCustomTags = [];
   let selectedFolderIds = new Set();
   let currentVideo = null;
   let currentVideoLocalFolders = [];
@@ -686,6 +692,34 @@ import {
     return data?.items || [];
   }
 
+  async function fetchAllCustomTags() {
+    const pageSize = 200;
+    let page = 1;
+    const tags = [];
+
+    while (page <= 20) {
+      const data = await requestLocalApi(
+        "GET",
+        `/tags?type=custom&page=${page}&pageSize=${pageSize}`,
+      );
+      const items = Array.isArray(data?.items) ? data.items : [];
+      for (const item of items) {
+        const name = String(item?.name || "").trim();
+        if (name) tags.push(name);
+      }
+      const pagination = data?.pagination || {};
+      const total = Number(pagination.total || items.length);
+      const currentPage = Number(pagination.page || page);
+      const currentPageSize = Number(pagination.pageSize || pageSize);
+      if (items.length === 0 || currentPage * currentPageSize >= total) {
+        break;
+      }
+      page += 1;
+    }
+
+    return [...new Set(tags)];
+  }
+
   function folderNamesFromIds(folderIds = []) {
     const idSet = new Set(folderIds.map((id) => Number(id)));
     return allFolders
@@ -1022,6 +1056,43 @@ import {
     });
   }
 
+  function renderCustomTagSuggestions() {
+    if (!customTagSuggestionsEl) return;
+    customTagSuggestionsEl.replaceChildren();
+
+    const suggestions = findMatchingCustomTagSuggestions(
+      allCustomTags,
+      customTagsInput?.value || "",
+      8,
+    );
+
+    customTagSuggestionsEl.classList.toggle("bl-hidden", suggestions.length === 0);
+    if (suggestions.length === 0) {
+      return;
+    }
+
+    for (const suggestion of suggestions) {
+      const chip = createEl("button", {
+        className: "bl-tag-suggestion",
+        attrs: {
+          type: "button",
+          "data-tag-suggestion": suggestion,
+        },
+        text: suggestion,
+      });
+      chip.addEventListener("click", () => {
+        if (!customTagsInput) return;
+        customTagsInput.value = appendSuggestedCustomTag(
+          customTagsInput.value || "",
+          suggestion,
+        );
+        renderCustomTagSuggestions();
+        customTagsInput.focus();
+      });
+      customTagSuggestionsEl.appendChild(chip);
+    }
+  }
+
   function renderFolders(keyword = "") {
     if (!folderListEl) return;
     const lower = keyword.trim().toLowerCase();
@@ -1091,6 +1162,9 @@ import {
     if (folderSearchInput) {
       folderSearchInput.value = "";
     }
+    if (customTagsInput) {
+      customTagsInput.value = "";
+    }
     await refreshCollectorData();
     const rememberedFolderIds = await readRememberedCollectorFolderIds();
     const currentVideoFolderIds = currentVideoLocalFolders
@@ -1098,6 +1172,7 @@ import {
       .filter((id) => Number.isInteger(id) && id > 0);
     selectedFolderIds = new Set([...currentVideoFolderIds, ...rememberedFolderIds]);
     renderFolders("");
+    renderCustomTagSuggestions();
     folderSearchInput?.focus();
   }
 
@@ -1307,7 +1382,7 @@ import {
   }
 
   async function refreshCollectorData() {
-    await Promise.all([loadVideo(), loadFolders()]);
+    await Promise.all([loadVideo(), loadFolders(), loadCustomTags()]);
   }
 
   function handleQuickFavoriteShortcut(event) {
@@ -1448,6 +1523,16 @@ import {
         error instanceof Error ? error.message : t("toast.folderLoadFail"),
         "err"
       );
+    }
+  }
+
+  async function loadCustomTags() {
+    try {
+      allCustomTags = await fetchAllCustomTags();
+      renderCustomTagSuggestions();
+    } catch {
+      allCustomTags = [];
+      renderCustomTagSuggestions();
     }
   }
 
@@ -2150,6 +2235,39 @@ import {
       .bl-empty { font-size: 12px; text-align: center; padding: 16px 8px; }
       #bl-floating-panel[data-theme="light"] .bl-empty { color: #7c8aa6; }
       #bl-floating-panel[data-theme="dark"] .bl-empty { color: #94a3be; }
+      .bl-tag-suggestions {
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .bl-tag-suggestion {
+        appearance: none;
+        border-radius: 999px;
+        border: 1px solid rgba(108, 130, 186, .28);
+        background: rgba(232, 239, 255, .92);
+        color: #27406f;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+        transition: transform .14s ease, border-color .14s ease, background .14s ease;
+      }
+      .bl-tag-suggestion:hover {
+        transform: translateY(-1px);
+        border-color: rgba(76, 102, 255, .42);
+        background: rgba(221, 232, 255, .98);
+      }
+      #bl-floating-panel[data-theme="dark"] .bl-tag-suggestion {
+        border-color: rgba(119, 145, 215, .32);
+        background: rgba(32, 45, 80, .96);
+        color: #dbe8ff;
+      }
+      #bl-floating-panel[data-theme="dark"] .bl-tag-suggestion:hover {
+        border-color: rgba(142, 171, 255, .55);
+        background: rgba(40, 57, 98, .98);
+      }
 
       .bl-footer { margin-top: 12px; display: flex; gap: 8px; }
       .bl-footer .bl-btn { flex: 1; }
@@ -2489,6 +2607,10 @@ import {
       renderFolders(event.target.value || "");
     });
 
+    customTagsInput?.addEventListener("input", () => {
+      renderCustomTagSuggestions();
+    });
+
     openCreateFolderBtn?.addEventListener("click", () => {
       openCreateFolderModal();
     });
@@ -2657,6 +2779,10 @@ import {
             id: "bl-custom-tags",
             className: "bl-input",
             attrs: { placeholder: t("field.customTags") }
+          }),
+          createEl("div", {
+            id: "bl-custom-tag-suggestions",
+            className: "bl-tag-suggestions bl-hidden"
           })
         ]),
         createEl("div", { className: "bl-footer" }, [
@@ -2849,6 +2975,7 @@ import {
     existingFoldersSummaryEl = panel.querySelector("#bl-panel-existing-folders-summary");
     folderSearchInput = panel.querySelector("#bl-folder-search");
     customTagsInput = panel.querySelector("#bl-custom-tags");
+    customTagSuggestionsEl = panel.querySelector("#bl-custom-tag-suggestions");
     saveBtn = panel.querySelector("#bl-save-btn");
     closeBtn = panel.querySelector("#bl-close-btn");
     openCreateFolderBtn = panel.querySelector("#bl-folder-create-open");
@@ -2884,6 +3011,7 @@ import {
     startPlaybackOverlayWatch();
     renderVideo(null);
     renderFolders("");
+    renderCustomTagSuggestions();
     renderExistingFolderSummary(existingFoldersSummaryEl);
     renderPlaybackQueueList([], -1);
     syncPlaybackOverlayState();

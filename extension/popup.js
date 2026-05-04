@@ -73,10 +73,6 @@ import {
       [LOCALE_ZH]: "当前已禁用快捷键；可恢复默认或重新录制。",
       [LOCALE_EN]: "Shortcut is disabled. Restore default or record a new one.",
     },
-    "button.aiPlaceholder": {
-      [LOCALE_ZH]: "AI（预留）",
-      [LOCALE_EN]: "AI (Soon)",
-    },
     "button.openManager": { [LOCALE_ZH]: "打开管理中心", [LOCALE_EN]: "Open Manager" },
     "button.openVideo": { [LOCALE_ZH]: "打开 Bilibili 视频", [LOCALE_EN]: "Open Bilibili Video" },
     "toast.themeUpdated": {
@@ -105,7 +101,6 @@ import {
       [LOCALE_ZH]: "已取消录制",
       [LOCALE_EN]: "Recording cancelled",
     },
-    "toast.comingSoon": { [LOCALE_ZH]: "coming soon", [LOCALE_EN]: "coming soon" },
     "toast.initFail": { [LOCALE_ZH]: "初始化失败", [LOCALE_EN]: "Initialization failed" },
   };
 
@@ -141,7 +136,6 @@ import {
   }
 
   const toastRoot = document.getElementById("toast-root");
-  const openAiPlaceholderBtn = document.getElementById("open-ai-placeholder");
   const openManagerBtn = document.getElementById("open-manager");
   const openVideoBtn = document.getElementById("open-video");
   const themeInputs = Array.from(document.querySelectorAll('input[name="theme"]'));
@@ -180,7 +174,6 @@ import {
       shortcutRestoreDefaultBtn.textContent = t("shortcut.button.restoreDefault");
     }
     if (shortcutClearBtn) shortcutClearBtn.textContent = t("shortcut.button.clear");
-    if (openAiPlaceholderBtn) openAiPlaceholderBtn.textContent = t("button.aiPlaceholder");
     if (openManagerBtn) openManagerBtn.textContent = t("button.openManager");
     if (openVideoBtn) openVideoBtn.textContent = t("button.openVideo");
     renderShortcutState();
@@ -435,10 +428,6 @@ import {
     openManagerBtn?.addEventListener("click", async () => {
       await chrome.tabs.create({ url: MANAGER_URL });
       showToast(t("toast.managerOpened"));
-    });
-
-    openAiPlaceholderBtn?.addEventListener("click", () => {
-      showToast(t("toast.comingSoon"), "info");
     });
 
     openVideoBtn?.addEventListener("click", async () => {

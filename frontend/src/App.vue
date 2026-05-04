@@ -14,10 +14,12 @@ import BidirectionalSyncSettingsDialog from "./components/dialogs/BidirectionalS
 import WebDavBackupDialog from "./components/dialogs/WebDavBackupDialog.vue";
 import VideoDetailDialog from "./components/dialogs/VideoDetailDialog.vue";
 import InvalidVideoRecoveryDialog from "./components/dialogs/InvalidVideoRecoveryDialog.vue";
+import FollowingUpImportDialog from "./components/dialogs/FollowingUpImportDialog.vue";
 import FolderSidebar from "./components/FolderSidebar.vue";
 import AiCategoryBrowser from "./components/AiCategoryBrowser.vue";
 import ManagerHeader from "./components/layout/ManagerHeader.vue";
 import ManagerPanel from "./components/panels/ManagerPanel.vue";
+import FollowingUpPanel from "./components/panels/FollowingUpPanel.vue";
 import TrashPanel from "./components/panels/TrashPanel.vue";
 import {
   PAGE_SIZE_OPTIONS,
@@ -53,6 +55,8 @@ import { useVideoDetail } from "./composables/use-video-detail";
 import {
   clearFolderAiCategories,
   exportLibrary,
+  fetchFollowingUpImportStatus,
+  fetchFollowingUps,
   fetchAiSettings,
   fetchVideos,
   fetchFolderAiCategories,
@@ -69,6 +73,7 @@ import {
   restoreWebDavBackup,
   runFolderAiCategories,
   runTagEnrichmentNow,
+  startFollowingUpImport,
   startFolderPlaybackSession,
   startHistoryModelSync,
   startInvalidVideoRecovery,
@@ -90,6 +95,8 @@ import {
 import type {
   AiCategoryKey,
   AiSettings,
+  FollowingUpImportStatus,
+  FollowedUp,
   Folder,
   FolderAiCategories,
   Tag,
@@ -183,6 +190,7 @@ const {
 
 const toolsOpen = ref(false);
 const trashMode = computed(() => route.name === "trash");
+const followingUpsMode = computed(() => route.name === "following-ups");
 const syncingImport = ref(false);
 const invalidVideoRecoveryDialogOpen = ref(false);
 const invalidVideoRecoveryCandidateIds = ref<number[]>([]);
@@ -192,6 +200,12 @@ let invalidVideoRecoveryPollTimer: number | null = null;
 const exportingLibrary = ref(false);
 const importingLibrary = ref(false);
 const syncDialogOpen = ref(false);
+const followingUps = ref<FollowedUp[]>([]);
+const followingUpKeyword = ref("");
+const followingUpLoading = ref(false);
+const followingUpImportStatus = ref<FollowingUpImportStatus | null>(null);
+const followingUpImportDialogOpen = ref(false);
+let followingUpImportPollTimer: number | null = null;
 const autoInitDialogOpen = ref(false);
 const syncFetchingFolders = ref(false);
 const syncFolders = ref<SyncRemoteFolder[]>([]);
@@ -378,6 +392,7 @@ const {
   locale,
   isDark,
   trashMode,
+  followingUpsMode,
   selectedFolderId,
   folders,
 });
@@ -441,6 +456,63 @@ async function refreshVideos() {
     console.error(error);
     notifyError(t("toast.loadVideosFail"), error);
   }
+}
+
+async function loadFollowingUps() {
+  followingUpLoading.value = true;
+  try {
+    followingUps.value = await fetchFollowingUps();
+  } catch (error) {
+    notifyError(t("toast.followingUpsLoadFail"), error);
+  } finally {
+    followingUpLoading.value = false;
+  }
+}
+
+async function refreshFollowingUpImportStatus() {
+  try {
+    followingUpImportStatus.value = await fetchFollowingUpImportStatus();
+    if (followingUpImportStatus.value.running) {
+      stopFollowingUpImportPolling();
+      followingUpImportPollTimer = window.setTimeout(refreshFollowingUpImportStatus, 2000);
+      return;
+    }
+    stopFollowingUpImportPolling();
+    await loadFollowingUps();
+    if (followingUpImportStatus.value.current > 0) {
+      notifySuccess(t("toast.followingUpsImportDone"));
+    }
+  } catch (error) {
+    stopFollowingUpImportPolling();
+    notifyError(t("toast.followingUpsImportFail"), error);
+  }
+}
+
+async function handleStartFollowingUpImport() {
+  try {
+    const response = await startFollowingUpImport();
+    followingUpImportStatus.value = response.status;
+    if (response.status.running || response.started) {
+      stopFollowingUpImportPolling();
+      followingUpImportPollTimer = window.setTimeout(refreshFollowingUpImportStatus, 1200);
+    } else {
+      await loadFollowingUps();
+      notifySuccess(t("toast.followingUpsImportDone"));
+    }
+  } catch (error) {
+    notifyError(t("toast.followingUpsImportFail"), error);
+  }
+}
+
+function stopFollowingUpImportPolling() {
+  if (followingUpImportPollTimer !== null) {
+    window.clearTimeout(followingUpImportPollTimer);
+    followingUpImportPollTimer = null;
+  }
+}
+
+function openFollowingUpSpace(record: FollowedUp) {
+  window.open(record.spaceUrl, "_blank", "noopener,noreferrer");
 }
 
 async function refreshTrash() {
@@ -1221,10 +1293,6 @@ async function handleStartFolderPlayback(folderId: number) {
   } catch (error) {
     notifyError(t("toast.playbackStartFail"), error);
   }
-}
-
-function handleOpenAiPlaceholder() {
-  notifySuccess(t("toast.comingSoon"));
 }
 
 async function performFolderAiCategories(folderId: number) {
@@ -2283,6 +2351,16 @@ async function toggleTrashMode(next: boolean) {
   await router.push({ name: targetName, query: buildManagerQuery() });
 }
 
+async function toggleFollowingUpsMode(next: boolean) {
+  const targetName = next ? "following-ups" : "manager";
+  if (route.name === targetName) return;
+  if (next) {
+    await router.push({ name: targetName });
+    return;
+  }
+  await router.push({ name: targetName, query: buildManagerQuery() });
+}
+
 watch(
   () => route.name,
   async (nextName, previousName) => {
@@ -2293,6 +2371,10 @@ watch(
       if (nextName === "manager") {
         startTagEnrichmentPolling();
         maybePromptAutoInitSetupDialog();
+      } else if (nextName === "following-ups") {
+        stopTagEnrichmentPolling();
+        await loadFollowingUps();
+        await refreshFollowingUpImportStatus();
       } else {
         stopTagEnrichmentPolling();
       }
@@ -2382,6 +2464,9 @@ onMounted(async () => {
     }
     if (route.name === "trash") {
       await refreshTrash();
+    } else if (route.name === "following-ups") {
+      await loadFollowingUps();
+      await refreshFollowingUpImportStatus();
     } else {
       await refreshVideos();
       maybeNotifyExportReminder();
@@ -2413,6 +2498,7 @@ onBeforeUnmount(() => {
     autoInitRetryTimer = null;
   }
   stopInvalidVideoRecoveryPolling();
+  stopFollowingUpImportPolling();
   stopTagEnrichmentPolling();
   stopAutoInitLockHeartbeat();
   releaseAutoInitLock();
@@ -2421,9 +2507,11 @@ onBeforeUnmount(() => {
 
 <template>
   <main
-    class="mx-auto grid min-h-screen w-full max-w-[1840px] grid-cols-1 gap-5 px-4 py-5 lg:grid-cols-[320px_1fr] lg:px-6 lg:py-7"
+    class="mx-auto grid min-h-screen w-full max-w-[1840px] grid-cols-1 gap-5 px-4 py-5 lg:px-6 lg:py-7"
+    :class="followingUpsMode ? '' : 'lg:grid-cols-[320px_1fr]'"
   >
     <FolderSidebar
+      v-if="!followingUpsMode"
       :folders="folders"
       :active-folder="activeFolder"
       :active-folder-id="selectedFolderId"
@@ -2448,6 +2536,7 @@ onBeforeUnmount(() => {
       <ManagerHeader
         :t="t"
         :trash-mode="trashMode"
+        :following-ups-mode="followingUpsMode"
         :show-ai-settings="AI_CATEGORIES_ENABLED && EXTENSION_LOCAL_API_RUNTIME"
         :show-sync-settings="BILIBILI_LISTENER_SETTINGS_ENABLED"
         :current-view-label="headerCurrentViewLabel"
@@ -2459,7 +2548,6 @@ onBeforeUnmount(() => {
         :exporting="exportingLibrary"
         :importing="importingLibrary"
         @open-tags="toolsOpen = true"
-        @open-ai-placeholder="handleOpenAiPlaceholder"
         @open-ai-settings="openAiSettingsDialog"
         @open-sync-settings="openBidirectionalSyncSettingsDialog"
         @open-webdav-settings="openWebDavDialog"
@@ -2468,6 +2556,7 @@ onBeforeUnmount(() => {
         @export-json="handleExport('json')"
         @export-csv="handleExport('csv')"
         @toggle-trash="toggleTrashMode(!trashMode)"
+        @open-following-ups="toggleFollowingUpsMode(!followingUpsMode)"
         @toggle-locale="toggleLocale"
         @toggle-theme="toggleTheme"
       />
@@ -2622,6 +2711,19 @@ onBeforeUnmount(() => {
         :initial-category="aiCategoryBrowserCategory"
         @back="closeAiCategoryBrowser"
         @open-category="openAiCategory"
+      />
+
+      <FollowingUpPanel
+        v-else-if="followingUpsMode"
+        :t="t"
+        :records="followingUps"
+        :keyword="followingUpKeyword"
+        :loading="followingUpLoading"
+        :status="followingUpImportStatus"
+        @update:keyword="followingUpKeyword = $event"
+        @import="followingUpImportDialogOpen = true"
+        @refresh="loadFollowingUps"
+        @open-space="openFollowingUpSpace"
       />
 
       <ManagerPanel
@@ -2846,6 +2948,14 @@ onBeforeUnmount(() => {
       :t="t"
       @update:open="handleCloseInvalidVideoRecoveryDialog"
       @start="handleStartInvalidVideoRecovery"
+    />
+    <FollowingUpImportDialog
+      :open="followingUpImportDialogOpen"
+      :t="t"
+      :loading="followingUpLoading"
+      :status="followingUpImportStatus"
+      @update:open="followingUpImportDialogOpen = $event"
+      @confirm="handleStartFollowingUpImport"
     />
     <input
       ref="importFileInput"
