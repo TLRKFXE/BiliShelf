@@ -15,10 +15,10 @@ export const DEFAULT_QUICK_FAVORITE_SHORTCUT = Object.freeze({
   mode: "default",
   disabled: false,
   altKey: true,
-  ctrlKey: false,
-  shiftKey: true,
-  code: "KeyS",
-  key: "s",
+  ctrlKey: true,
+  shiftKey: false,
+  code: "Digit1",
+  key: "1",
 });
 
 function normalizeCode(code) {

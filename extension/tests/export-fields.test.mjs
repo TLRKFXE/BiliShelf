@@ -7,11 +7,13 @@ import {
   normalizeBiliSpaceUrl,
 } from "../shared/library-export.js";
 
-test("csv export header drops duplicate addedAt columns", () => {
+test("csv export header drops duplicate and millisecond-only time columns", () => {
   assert.ok(LIBRARY_EXPORT_VIDEO_CSV_HEADER.includes("favoriteAt"));
-  assert.ok(LIBRARY_EXPORT_VIDEO_CSV_HEADER.includes("favoriteAtMs"));
+  assert.equal(LIBRARY_EXPORT_VIDEO_CSV_HEADER.includes("partition"), false);
   assert.equal(LIBRARY_EXPORT_VIDEO_CSV_HEADER.includes("addedAt"), false);
   assert.equal(LIBRARY_EXPORT_VIDEO_CSV_HEADER.includes("addedAtMs"), false);
+  assert.equal(LIBRARY_EXPORT_VIDEO_CSV_HEADER.includes("publishAtMs"), false);
+  assert.equal(LIBRARY_EXPORT_VIDEO_CSV_HEADER.includes("favoriteAtMs"), false);
 });
 
 test("normalizeBiliSpaceUrl returns canonical uploader space webpages", () => {

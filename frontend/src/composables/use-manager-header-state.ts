@@ -8,12 +8,13 @@ type UseManagerHeaderStateParams = {
   locale: Ref<Locale>;
   isDark: Ref<boolean>;
   trashMode: Ref<boolean>;
+  followingUpsMode?: Ref<boolean>;
   selectedFolderId: Ref<number | null>;
   folders: Ref<Array<{ id: number; name: string }>>;
 };
 
 export function useManagerHeaderState(params: UseManagerHeaderStateParams) {
-  const { t, locale, trashMode, selectedFolderId, folders } = params;
+  const { t, locale, trashMode, followingUpsMode, selectedFolderId, folders } = params;
 
   const currentFolderName = computed(() => {
     if (selectedFolderId.value === null) return t("folder.allVideos");
@@ -23,15 +24,17 @@ export function useManagerHeaderState(params: UseManagerHeaderStateParams) {
     );
   });
 
-  const currentViewLabel = computed(() =>
-    trashMode.value ? t("view.trash") : t("view.manager")
-  );
+  const currentViewLabel = computed(() => {
+    if (followingUpsMode?.value) return t("view.followingUps");
+    return trashMode.value ? t("view.trash") : t("view.manager");
+  });
 
-  const currentScopeLabel = computed(() =>
-    trashMode.value
+  const currentScopeLabel = computed(() => {
+    if (followingUpsMode?.value) return t("scope.followingUps");
+    return trashMode.value
       ? t("scope.trash")
-      : t("scope.folder", { name: currentFolderName.value })
-  );
+      : t("scope.folder", { name: currentFolderName.value });
+  });
 
   const localeToggleText = computed(() =>
     locale.value === "zh-CN" ? "EN" : "\u4E2D\u6587"

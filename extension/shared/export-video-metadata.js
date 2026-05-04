@@ -13,23 +13,22 @@ export const LIBRARY_EXPORT_VIDEO_CSV_HEADER = Object.freeze([
   "title",
   "uploader",
   "uploaderSpaceUrl",
-  "description",
-  "coverUrl",
   "bvidUrl",
-  "partition",
-  "publishAt",
-  "publishAtMs",
-  "favoriteAt",
-  "favoriteAtMs",
-  "folderCount",
+  "coverUrl",
   "folders",
-  "customTags",
+  "folderCount",
   "systemTags",
+  "customTags",
+  "publishAt",
+  "favoriteAt",
   "isInvalid",
   "deletedAt",
+  "description",
 ]);
 
-export function buildVideoExportMaps(state) {
+export function buildVideoExportMaps(state, exportedVideoIds) {
+  const hasExportedVideoFilter =
+    exportedVideoIds instanceof Set || typeof exportedVideoIds?.has === "function";
   const folderById = new Map(
     (Array.isArray(state?.folders) ? state.folders : []).map((folder) => [folder.id, folder.name]),
   );
@@ -43,6 +42,7 @@ export function buildVideoExportMaps(state) {
   const folderIdsByVideo = new Map();
 
   for (const relation of Array.isArray(state?.folderItems) ? state.folderItems : []) {
+    if (hasExportedVideoFilter && !exportedVideoIds.has(relation.videoId)) continue;
     const folderName = folderById.get(relation.folderId);
     if (folderName) {
       const names = folderNamesByVideo.get(relation.videoId) ?? [];
@@ -64,6 +64,7 @@ export function buildVideoExportMaps(state) {
   const customTagsByVideo = new Map();
   const systemTagsByVideo = new Map();
   for (const relation of Array.isArray(state?.videoTags) ? state.videoTags : []) {
+    if (hasExportedVideoFilter && !exportedVideoIds.has(relation.videoId)) continue;
     const tag = tagById.get(relation.tagId);
     if (!tag) continue;
     const target = tag.type === "custom" ? customTagsByVideo : systemTagsByVideo;
@@ -84,7 +85,6 @@ export function buildVideoExportMaps(state) {
 export function buildExportVideoMetadata(video, maps) {
   const folders = maps.folderNamesByVideo.get(video.id) ?? [];
   return {
-    partition: normalizeVideoPartition(video.partition),
     folderCount: maps.folderCountByVideo.get(video.id) ?? folders.length,
     folders,
     favoriteAt: maps.latestAddedAtByVideo.get(video.id) ?? null,

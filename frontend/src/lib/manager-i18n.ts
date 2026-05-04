@@ -40,6 +40,7 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "WebDAV Backup",
   },
   "header.syncImport": { "zh-CN": "同步导入", "en-US": "Sync Import" },
+  "header.followingUps": { "zh-CN": "关注 UP", "en-US": "Following UPs" },
   "header.syncing": { "zh-CN": "同步中...", "en-US": "Syncing..." },
   "header.importData": { "zh-CN": "导入备份", "en-US": "Import Backup" },
   "header.exportBackup": { "zh-CN": "导出备份", "en-US": "Export Backup" },
@@ -57,7 +58,12 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "header.backManager": { "zh-CN": "返回管理页", "en-US": "Back To Manager" },
   "view.manager": { "zh-CN": "视图：管理页", "en-US": "View: Manager" },
   "view.trash": { "zh-CN": "视图：回收站", "en-US": "View: Trash Bin" },
+  "view.followingUps": { "zh-CN": "视图：关注 UP", "en-US": "View: Following UPs" },
   "scope.trash": { "zh-CN": "范围：回收站", "en-US": "Scope: Recycle Bin" },
+  "scope.followingUps": {
+    "zh-CN": "范围：关注 UP 快捷导航",
+    "en-US": "Scope: Following UP navigation",
+  },
   "scope.folder": {
     "zh-CN": "当前收藏夹：{name}",
     "en-US": "Current Folder: {name}",
@@ -182,6 +188,88 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "en-US": "{count} videos on Bilibili",
   },
   "sync.startImport": { "zh-CN": "开始同步", "en-US": "Start sync" },
+  "followingUps.title": {
+    "zh-CN": "关注 UP",
+    "en-US": "Following UPs",
+  },
+  "followingUps.description": {
+    "zh-CN": "导入当前 B 站账号关注列表后，可在这里快速搜索并打开 UP 主空间。",
+    "en-US":
+      "Import your current Bilibili following list, then search and open creator spaces quickly.",
+  },
+  "followingUps.total": {
+    "zh-CN": "{count} 个 UP",
+    "en-US": "{count} UPs",
+  },
+  "followingUps.import": {
+    "zh-CN": "导入关注",
+    "en-US": "Import Following",
+  },
+  "followingUps.refresh": {
+    "zh-CN": "刷新",
+    "en-US": "Refresh",
+  },
+  "followingUps.searchPlaceholder": {
+    "zh-CN": "搜索 UP 名称或 UID",
+    "en-US": "Search name or UID",
+  },
+  "followingUps.empty": {
+    "zh-CN": "还没有导入关注 UP",
+    "en-US": "No following UPs imported yet",
+  },
+  "followingUps.emptyHint": {
+    "zh-CN": "点击导入后，仅保存头像、昵称、UID 和空间链接。",
+    "en-US": "Import saves only avatar, name, UID, and space link.",
+  },
+  "followingUps.searchEmpty": {
+    "zh-CN": "未找到匹配的 UP",
+    "en-US": "No matching UP found",
+  },
+  "followingUps.openSpace": {
+    "zh-CN": "进入空间",
+    "en-US": "Open Space",
+  },
+  "followingUps.statusSummary": {
+    "zh-CN": "已处理 {current}/{total}",
+    "en-US": "Processed {current}/{total}",
+  },
+  "followingUps.dialogTitle": {
+    "zh-CN": "导入关注 UP",
+    "en-US": "Import Following UPs",
+  },
+  "followingUps.dialogDesc": {
+    "zh-CN": "系统会顺序读取当前登录账号的关注列表，完成后生成本地快捷导航。",
+    "en-US":
+      "The extension reads the current account's following list sequentially and builds a local navigation directory.",
+  },
+  "followingUps.dialogReadHint": {
+    "zh-CN": "读取当前浏览器已登录的 B 站关注列表。",
+    "en-US": "Reads the following list of the Bilibili account logged in to this browser.",
+  },
+  "followingUps.dialogSaveHint": {
+    "zh-CN": "仅保存头像、名称、UID 与空间链接。",
+    "en-US": "Saves only avatar, name, UID, and space link.",
+  },
+  "followingUps.dialogSafeHint": {
+    "zh-CN": "不会关注、取关或修改任何 B 站数据。",
+    "en-US": "Does not follow, unfollow, or modify any Bilibili data.",
+  },
+  "followingUps.progress": {
+    "zh-CN": "导入进度",
+    "en-US": "Import progress",
+  },
+  "followingUps.importResult": {
+    "zh-CN": "新增 {created}，更新 {updated}，失败 {failed}",
+    "en-US": "Created {created}, updated {updated}, failed {failed}",
+  },
+  "followingUps.startImport": {
+    "zh-CN": "开始导入",
+    "en-US": "Start Import",
+  },
+  "followingUps.importing": {
+    "zh-CN": "导入中",
+    "en-US": "Importing",
+  },
   "autoInit.dialogTitle": {
     "zh-CN": "首次初始化同步",
     "en-US": "Initial setup sync",
@@ -1127,6 +1215,18 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "toast.autoInitPickFolder": {
     "zh-CN": "请至少选择一个收藏夹再开始初始化",
     "en-US": "Select at least one folder to start initialization",
+  },
+  "toast.followingUpsLoadFail": {
+    "zh-CN": "加载关注 UP 失败",
+    "en-US": "Failed to load following UPs",
+  },
+  "toast.followingUpsImportFail": {
+    "zh-CN": "导入关注 UP 失败",
+    "en-US": "Failed to import following UPs",
+  },
+  "toast.followingUpsImportDone": {
+    "zh-CN": "关注 UP 导入完成",
+    "en-US": "Following UP import completed",
   },
   "toast.autoInitCooling": {
     "zh-CN": "初始化进入冷却",

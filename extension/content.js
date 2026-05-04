@@ -20,6 +20,15 @@ import {
   formatShortcutLabel,
   resolveStoredShortcut,
 } from "./utils/shortcut-config.js";
+import {
+  COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY,
+  createRememberedCollectorFolderIdsRecord,
+  resolveRememberedCollectorFolderIds,
+} from "./utils/collector-folder-memory.js";
+import {
+  appendSuggestedCustomTag,
+  findMatchingCustomTagSuggestions,
+} from "./utils/custom-tag-suggestions.js";
 
 (function () {
   const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
@@ -49,10 +58,6 @@ import {
       [LOCALE_ZH]: "BiliShelf 收藏助手",
       [LOCALE_EN]: "BiliShelf Collector"
     },
-    "subtitle.collector": {
-      [LOCALE_ZH]: "一键采集到收藏夹，回到管理中心检索与批量管理",
-      [LOCALE_EN]: "Capture to folders in one click, then search and batch-manage in the manager"
-    },
     "footer.credit": {
       [LOCALE_ZH]: "By TLRK · © 2026 TLRK · MIT License",
       [LOCALE_EN]: "By TLRK · © 2026 TLRK · MIT License"
@@ -67,6 +72,10 @@ import {
     "button.quickSave": { [LOCALE_ZH]: "快捷收藏", [LOCALE_EN]: "Quick favorite" },
     "button.previous": { [LOCALE_ZH]: "上一个", [LOCALE_EN]: "Previous" },
     "button.next": { [LOCALE_ZH]: "下一个", [LOCALE_EN]: "Next" },
+    "button.showList": { [LOCALE_ZH]: "查看列表", [LOCALE_EN]: "Show queue" },
+    "button.hideList": { [LOCALE_ZH]: "收起列表", [LOCALE_EN]: "Hide queue" },
+    "button.collapse": { [LOCALE_ZH]: "收起", [LOCALE_EN]: "Collapse" },
+    "button.expand": { [LOCALE_ZH]: "展开", [LOCALE_EN]: "Expand" },
     "button.openManager": { [LOCALE_ZH]: "回到管理页", [LOCALE_EN]: "Open manager" },
     "button.endPlayback": { [LOCALE_ZH]: "结束播放", [LOCALE_EN]: "End playback" },
     "section.folders": { [LOCALE_ZH]: "收藏夹", [LOCALE_EN]: "Folders" },
@@ -91,10 +100,6 @@ import {
     "status.selectedCount": { [LOCALE_ZH]: "已选 {count}", [LOCALE_EN]: "{count} selected" },
     "status.videosCount": { [LOCALE_ZH]: "{count} 个视频", [LOCALE_EN]: "{count} videos" },
     "status.noFolders": { [LOCALE_ZH]: "没有匹配的收藏夹", [LOCALE_EN]: "No folders found" },
-    "status.savedFoldersNone": {
-      [LOCALE_ZH]: "当前视频尚未收藏到本地收藏夹",
-      [LOCALE_EN]: "This video is not yet stored in local folders"
-    },
     "status.savedFoldersCurrent": {
       [LOCALE_ZH]: "当前已在本地收藏夹：{folders}",
       [LOCALE_EN]: "Already saved in local folders: {folders}"
@@ -151,6 +156,10 @@ import {
       [LOCALE_ZH]: "已加入 {addedFolders}；原本已在 {existingFolders} 中",
       [LOCALE_EN]: "Added to {addedFolders}; already existed in {existingFolders}"
     },
+    "toast.savedRemovedFolders": {
+      [LOCALE_ZH]: "已从本地收藏夹移除 {folders}",
+      [LOCALE_EN]: "Removed from local folders: {folders}"
+    },
     "toast.savedWithBiliSync": {
       [LOCALE_ZH]: "已同步写回 B站收藏夹 {count} 个",
       [LOCALE_EN]: "Also synced to {count} Bilibili favorite folders"
@@ -180,6 +189,18 @@ import {
     "playback.folder": {
       [LOCALE_ZH]: "收藏夹 #{folderId}",
       [LOCALE_EN]: "Folder #{folderId}"
+    },
+    "playback.queueEmpty": {
+      [LOCALE_ZH]: "当前播放队列为空",
+      [LOCALE_EN]: "Playback queue is empty"
+    },
+    "playback.current": {
+      [LOCALE_ZH]: "当前播放",
+      [LOCALE_EN]: "Now playing"
+    },
+    "toast.extensionReloadRequired": {
+      [LOCALE_ZH]: "扩展已更新，请刷新当前页面后再试",
+      [LOCALE_EN]: "The extension was updated. Reload this page and try again."
     },
     "error.unknown": { [LOCALE_ZH]: "未知错误", [LOCALE_EN]: "Unknown error" }
   };
@@ -223,9 +244,17 @@ import {
     return template.replace(/\{(\w+)\}/g, (_, token) => String(vars[token] ?? ""));
   }
 
+  function syncFloatingButtonLabel() {
+    if (!floatingBtn) return;
+    const shortcutLabel = formatShortcutLabel(activeQuickFavoriteShortcut);
+    const label = `${t("title.collector")} (${shortcutLabel})`;
+    floatingBtn.title = label;
+    floatingBtn.setAttribute("aria-label", label);
+  }
+
   let root = null;
+  let panelBackdrop = null;
   let panel = null;
-  let quickFavoriteLayer = null;
   let floatingBtn = null;
   let modal = null;
   let toastRoot = null;
@@ -233,16 +262,9 @@ import {
   let existingFoldersSummaryEl = null;
   let folderSearchInput = null;
   let customTagsInput = null;
+  let customTagSuggestionsEl = null;
   let saveBtn = null;
   let closeBtn = null;
-  let quickFavoriteTitleEl = null;
-  let quickFavoriteShortcutHintEl = null;
-  let quickFavoriteSearchInput = null;
-  let quickFavoriteListEl = null;
-  let quickFavoriteSaveBtn = null;
-  let quickFavoriteCloseBtn = null;
-  let quickFavoriteSelectedCountEl = null;
-  let quickFavoriteExistingSummaryEl = null;
   let openCreateFolderBtn = null;
   let selectAllFoldersBtn = null;
   let clearFolderSelectionBtn = null;
@@ -264,17 +286,21 @@ import {
   let playbackOverlayProgressEl = null;
   let playbackPrevBtn = null;
   let playbackNextBtn = null;
-  let playbackOpenManagerBtn = null;
-  let playbackEndSessionBtn = null;
+  let playbackListToggleBtn = null;
+  let playbackCollapseBtn = null;
+  let playbackListEl = null;
   let playbackOverlayTimer = null;
   let playbackOverlayBusy = false;
   let lastPlaybackOverlayUrl = location.href;
+  let playbackListOpen = true;
+  let playbackCollapsed = false;
+  let extensionContextInvalidated = false;
+  let extensionReloadToastShown = false;
 
   let suppressButtonClick = false;
   let allFolders = [];
+  let allCustomTags = [];
   let selectedFolderIds = new Set();
-  let quickSelectedFolderIds = new Set();
-  let quickActiveFolderId = 0;
   let currentVideo = null;
   let currentVideoLocalFolders = [];
   let activeThemePreference = THEME_AUTO;
@@ -598,6 +624,9 @@ import {
   }
 
   function requestLocalApi(method, path, body) {
+    if (extensionContextInvalidated) {
+      return Promise.reject(new Error(t("toast.extensionReloadRequired")));
+    }
     return new Promise((resolve, reject) => {
       let settled = false;
       const finish = (handler) => {
@@ -624,8 +653,18 @@ import {
         (response) => {
           const runtimeError = chrome.runtime.lastError;
           if (runtimeError) {
+            const runtimeMessage = runtimeError.message || "Local API unavailable";
+            if (runtimeMessage.toLowerCase().includes("extension context invalidated")) {
+              extensionContextInvalidated = true;
+              if (!extensionReloadToastShown) {
+                extensionReloadToastShown = true;
+                showToast(t("toast.extensionReloadRequired"), "err");
+              }
+              finish(() => reject(new Error(t("toast.extensionReloadRequired"))));
+              return;
+            }
             finish(() =>
-              reject(new Error(runtimeError.message || "Local API unavailable"))
+              reject(new Error(runtimeMessage))
             );
             return;
           }
@@ -653,6 +692,34 @@ import {
     return data?.items || [];
   }
 
+  async function fetchAllCustomTags() {
+    const pageSize = 200;
+    let page = 1;
+    const tags = [];
+
+    while (page <= 20) {
+      const data = await requestLocalApi(
+        "GET",
+        `/tags?type=custom&page=${page}&pageSize=${pageSize}`,
+      );
+      const items = Array.isArray(data?.items) ? data.items : [];
+      for (const item of items) {
+        const name = String(item?.name || "").trim();
+        if (name) tags.push(name);
+      }
+      const pagination = data?.pagination || {};
+      const total = Number(pagination.total || items.length);
+      const currentPage = Number(pagination.page || page);
+      const currentPageSize = Number(pagination.pageSize || pageSize);
+      if (items.length === 0 || currentPage * currentPageSize >= total) {
+        break;
+      }
+      page += 1;
+    }
+
+    return [...new Set(tags)];
+  }
+
   function folderNamesFromIds(folderIds = []) {
     const idSet = new Set(folderIds.map((id) => Number(id)));
     return allFolders
@@ -665,13 +732,22 @@ import {
     return currentVideoLocalFolders.map((folder) => folder.name).filter(Boolean);
   }
 
+  function currentVideoLocalFolderIds() {
+    return currentVideoLocalFolders
+      .map((folder) => Number(folder?.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  }
+
   function renderExistingFolderSummary(target) {
     if (!target) return;
     const folders = currentVideoLocalFolderNames();
-    target.textContent =
-      folders.length > 0
-        ? t("status.savedFoldersCurrent", { folders: folders.join("、") })
-        : t("status.savedFoldersNone");
+    if (folders.length === 0) {
+      target.textContent = "";
+      target.classList.add("bl-hidden");
+      return;
+    }
+    target.classList.remove("bl-hidden");
+    target.textContent = t("status.savedFoldersCurrent", { folders: folders.join("、") });
   }
 
   async function fetchCurrentVideoLocalFoldersByBvid(bvid) {
@@ -697,7 +773,6 @@ import {
     if (!bvid) {
       currentVideoLocalFolders = [];
       renderExistingFolderSummary(existingFoldersSummaryEl);
-      renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
       return;
     }
     try {
@@ -706,7 +781,6 @@ import {
       currentVideoLocalFolders = [];
     }
     renderExistingFolderSummary(existingFoldersSummaryEl);
-    renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
   }
 
   async function createFolder(payload) {
@@ -967,18 +1041,12 @@ import {
       videoTitleEl.textContent = t("status.noVideoTitle");
       videoMetaEl.textContent = t("status.noVideoDesc");
       videoCoverEl.src = DEFAULT_COVER;
-      if (quickFavoriteTitleEl) {
-        quickFavoriteTitleEl.textContent = t("status.noVideoTitle");
-      }
       return;
     }
 
     videoTitleEl.textContent = video.title || t("status.untitled");
     videoMetaEl.textContent = `${video.uploader || t("status.unknownUploader")} - ${video.bvid || "-"}`;
     videoCoverEl.src = ensureAbsoluteUrl(video.coverUrl, DEFAULT_COVER);
-    if (quickFavoriteTitleEl) {
-      quickFavoriteTitleEl.textContent = video.title || t("status.untitled");
-    }
   }
 
   function renderSelectedCount() {
@@ -986,6 +1054,43 @@ import {
     selectedCountEl.textContent = t("status.selectedCount", {
       count: selectedFolderIds.size
     });
+  }
+
+  function renderCustomTagSuggestions() {
+    if (!customTagSuggestionsEl) return;
+    customTagSuggestionsEl.replaceChildren();
+
+    const suggestions = findMatchingCustomTagSuggestions(
+      allCustomTags,
+      customTagsInput?.value || "",
+      8,
+    );
+
+    customTagSuggestionsEl.classList.toggle("bl-hidden", suggestions.length === 0);
+    if (suggestions.length === 0) {
+      return;
+    }
+
+    for (const suggestion of suggestions) {
+      const chip = createEl("button", {
+        className: "bl-tag-suggestion",
+        attrs: {
+          type: "button",
+          "data-tag-suggestion": suggestion,
+        },
+        text: suggestion,
+      });
+      chip.addEventListener("click", () => {
+        if (!customTagsInput) return;
+        customTagsInput.value = appendSuggestedCustomTag(
+          customTagsInput.value || "",
+          suggestion,
+        );
+        renderCustomTagSuggestions();
+        customTagsInput.focus();
+      });
+      customTagSuggestionsEl.appendChild(chip);
+    }
   }
 
   function renderFolders(keyword = "") {
@@ -1038,145 +1143,44 @@ import {
     renderSelectedCount();
   }
 
-  function renderQuickFavoriteSelectedCount() {
-    if (!quickFavoriteSelectedCountEl) return;
-    quickFavoriteSelectedCountEl.textContent = t("status.selectedCount", {
-      count: quickSelectedFolderIds.size
-    });
-  }
-
-  function renderQuickFavoriteShortcutHint() {
-    if (!quickFavoriteShortcutHintEl) return;
-    quickFavoriteShortcutHintEl.textContent = t("status.quickFavoriteHint", {
-      shortcut: formatShortcutLabel(activeQuickFavoriteShortcut)
-    });
-  }
-
-  function visibleQuickFavoriteFolders(keyword = "") {
-    const lower = keyword.trim().toLowerCase();
-    const existingFolderIdSet = new Set(currentVideoLocalFolders.map((folder) => folder.id));
-    const filtered = allFolders.filter((folder) =>
-      folder.name.toLowerCase().includes(lower)
-    );
-    return filtered.sort((left, right) => {
-      const leftExisting = existingFolderIdSet.has(left.id) ? 1 : 0;
-      const rightExisting = existingFolderIdSet.has(right.id) ? 1 : 0;
-      if (leftExisting !== rightExisting) return rightExisting - leftExisting;
-      return 0;
-    });
-  }
-
-  function moveQuickFavoriteActive(delta) {
-    const visible = visibleQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
-    if (visible.length === 0) {
-      quickActiveFolderId = 0;
-      renderQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
-      return;
-    }
-    const currentIndex = Math.max(
-      0,
-      visible.findIndex((folder) => folder.id === quickActiveFolderId)
-    );
-    const nextIndex = (currentIndex + delta + visible.length) % visible.length;
-    quickActiveFolderId = visible[nextIndex]?.id || 0;
-    renderQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
-  }
-
-  function toggleQuickFavoriteFolder(folderId) {
-    if (!Number.isInteger(folderId) || folderId <= 0) return;
-    if (quickSelectedFolderIds.has(folderId)) quickSelectedFolderIds.delete(folderId);
-    else quickSelectedFolderIds.add(folderId);
-    renderQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
-  }
-
-  function renderQuickFavoriteFolders(keyword = "") {
-    if (!quickFavoriteListEl) return;
-    const visible = visibleQuickFavoriteFolders(keyword);
-    const existingFolderIdSet = new Set(currentVideoLocalFolders.map((folder) => folder.id));
-
-    if (visible.length > 0 && !visible.some((folder) => folder.id === quickActiveFolderId)) {
-      quickActiveFolderId = visible[0]?.id || 0;
-    }
-
-    quickFavoriteListEl.replaceChildren();
-    if (visible.length === 0) {
-      quickFavoriteListEl.appendChild(
-        createEl("div", { className: "bl-empty", text: t("status.noFolders") })
+  async function readRememberedCollectorFolderIds() {
+    try {
+      const result = await chrome.storage.local.get([COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY]);
+      return resolveRememberedCollectorFolderIds(
+        result?.[COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY] ?? [],
+        allFolders,
       );
-      renderQuickFavoriteSelectedCount();
-      return;
+    } catch {
+      return [];
     }
-
-    for (const folder of visible) {
-      const isExisting = existingFolderIdSet.has(folder.id);
-      const node = createEl("label", {
-        className: `bl-folder-item${folder.id === quickActiveFolderId ? " is-active" : ""}`
-      });
-      const checkbox = createEl("input", {
-        attrs: {
-          type: "checkbox",
-          "data-folder-id": String(folder.id)
-        }
-      });
-      checkbox.checked = quickSelectedFolderIds.has(folder.id);
-      const contentChildren = [
-        createEl("p", { className: "bl-folder-name", text: folder.name }),
-        createEl("p", {
-          className: "bl-folder-meta",
-          text: isExisting
-            ? `${t("status.videosCount", { count: folder.itemCount ?? 0 })} · ${t("status.savedBadge")}`
-            : t("status.videosCount", { count: folder.itemCount ?? 0 })
-        })
-      ];
-      const content = createEl("div", { className: "bl-folder-content" }, contentChildren);
-      node.appendChild(checkbox);
-      node.appendChild(content);
-
-      checkbox.addEventListener("change", (event) => {
-        const target = event.target;
-        const id = Number(target?.dataset?.folderId);
-        if (!Number.isInteger(id)) return;
-        quickActiveFolderId = id;
-        if (target.checked) quickSelectedFolderIds.add(id);
-        else quickSelectedFolderIds.delete(id);
-        renderQuickFavoriteSelectedCount();
-      });
-      node.addEventListener("mouseenter", () => {
-        quickActiveFolderId = folder.id;
-      });
-      quickFavoriteListEl.appendChild(node);
-    }
-
-    renderQuickFavoriteSelectedCount();
   }
 
-  function openPanel() {
-    if (!panel) return;
+  async function openCollectorModal() {
+    if (!panel || !panelBackdrop) return;
+    panelBackdrop.classList.remove("bl-hidden");
     panel.classList.remove("bl-hidden");
-    positionPanelNearButton();
-  }
-
-  function closePanel() {
-    if (!panel) return;
-    panel.classList.add("bl-hidden");
-    closeCreateFolderModal();
-  }
-
-  function openQuickFavoriteLayer() {
-    if (!quickFavoriteLayer) return;
-    quickFavoriteLayer.classList.remove("bl-hidden");
-    renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
-    renderQuickFavoriteFolders("");
-    renderQuickFavoriteSelectedCount();
-    if (quickFavoriteSearchInput) {
-      quickFavoriteSearchInput.value = "";
-      quickFavoriteSearchInput.focus();
+    if (folderSearchInput) {
+      folderSearchInput.value = "";
     }
+    if (customTagsInput) {
+      customTagsInput.value = "";
+    }
+    await refreshCollectorData();
+    const rememberedFolderIds = await readRememberedCollectorFolderIds();
+    const currentVideoFolderIds = currentVideoLocalFolders
+      .map((folder) => Number(folder?.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    selectedFolderIds = new Set([...currentVideoFolderIds, ...rememberedFolderIds]);
+    renderFolders("");
+    renderCustomTagSuggestions();
+    folderSearchInput?.focus();
   }
 
-  function closeQuickFavoriteLayer() {
-    if (!quickFavoriteLayer) return;
-    quickFavoriteLayer.classList.add("bl-hidden");
+  function closeCollectorModal() {
+    if (!panel || !panelBackdrop) return;
+    panel.classList.add("bl-hidden");
+    panelBackdrop.classList.add("bl-hidden");
+    closeCreateFolderModal();
   }
 
   function hidePlaybackOverlay() {
@@ -1205,17 +1209,107 @@ import {
     window.location.href = url;
   }
 
-  function openPlaybackManager() {
-    const managerUrl = `${chrome.runtime.getURL("manager/index.html")}#/manager`;
-    window.open(managerUrl, "_blank", "noopener,noreferrer");
+  function syncPlaybackOverlayState() {
+    if (!playbackOverlay) return;
+    playbackOverlay.dataset.collapsed = playbackCollapsed ? "true" : "false";
+    playbackOverlay.dataset.listOpen = playbackListOpen ? "true" : "false";
+    if (playbackListEl) {
+      playbackListEl.classList.toggle("bl-hidden", playbackCollapsed || !playbackListOpen);
+    }
+    if (playbackListToggleBtn) {
+      playbackListToggleBtn.textContent = playbackListOpen
+        ? t("button.hideList")
+        : t("button.showList");
+      playbackListToggleBtn.setAttribute(
+        "aria-pressed",
+        playbackListOpen ? "true" : "false"
+      );
+    }
+    if (playbackCollapseBtn) {
+      playbackCollapseBtn.textContent = playbackCollapsed
+        ? t("button.expand")
+        : t("button.collapse");
+      playbackCollapseBtn.setAttribute(
+        "aria-pressed",
+        playbackCollapsed ? "true" : "false"
+      );
+    }
   }
 
-  async function endPlaybackSession() {
-    try {
-      await requestLocalApi("DELETE", "/playback/session");
-    } catch {
+  function togglePlaybackOverlayCollapsed() {
+    playbackCollapsed = !playbackCollapsed;
+    syncPlaybackOverlayState();
+  }
+
+  function togglePlaybackQueueList() {
+    if (playbackCollapsed) {
+      playbackCollapsed = false;
     }
-    hidePlaybackOverlay();
+    playbackListOpen = !playbackListOpen;
+    syncPlaybackOverlayState();
+  }
+
+  function renderPlaybackQueueList(queue = [], currentIndex = -1) {
+    if (!playbackListEl) return;
+    playbackListEl.replaceChildren();
+
+    const normalizedQueue = Array.isArray(queue) ? queue : [];
+    if (!normalizedQueue.length) {
+      playbackListEl.appendChild(
+        createEl("div", {
+          className: "bl-playback-empty",
+          text: t("playback.queueEmpty")
+        })
+      );
+      return;
+    }
+
+    normalizedQueue.forEach((item, index) => {
+      const isActive = index === currentIndex;
+      const row = createEl(
+        "button",
+        {
+          className: `bl-playback-list-item${isActive ? " is-active" : ""}`,
+          attrs: {
+            type: "button",
+            "data-queue-index": String(index),
+            "aria-current": isActive ? "true" : "false"
+          }
+        },
+        [
+          createEl("img", {
+            className: "bl-playback-thumb",
+            attrs: {
+              src: ensureAbsoluteUrl(item?.coverUrl, DEFAULT_COVER),
+              alt: item?.title || t("status.coverAlt"),
+              loading: "lazy"
+            }
+          }),
+          createEl("div", { className: "bl-playback-list-copy" }, [
+            createEl("p", {
+              className: "bl-playback-list-title",
+              text: item?.title || t("status.untitled")
+            }),
+            createEl("p", {
+              className: "bl-playback-list-meta",
+              text: isActive
+                ? t("playback.current")
+                : normalizeBvidToken(item?.bvid || "") || ""
+            })
+          ]),
+          createEl("span", {
+            className: "bl-playback-list-index",
+            text: String(index + 1)
+          })
+        ]
+      );
+
+      row.disabled = isActive;
+      row.addEventListener("click", () => {
+        navigateToPlaybackItem(item);
+      });
+      playbackListEl.appendChild(row);
+    });
   }
 
   async function refreshPlaybackOverlay() {
@@ -1269,14 +1363,14 @@ import {
         playbackNextBtn.disabled = adjacent.next.disabled;
         playbackNextBtn.onclick = () => navigateToPlaybackItem(adjacent.next.item);
       }
-      if (playbackOpenManagerBtn) {
-        playbackOpenManagerBtn.onclick = openPlaybackManager;
+      if (playbackListToggleBtn) {
+        playbackListToggleBtn.onclick = togglePlaybackQueueList;
       }
-      if (playbackEndSessionBtn) {
-        playbackEndSessionBtn.onclick = () => {
-          void endPlaybackSession();
-        };
+      if (playbackCollapseBtn) {
+        playbackCollapseBtn.onclick = togglePlaybackOverlayCollapsed;
       }
+      renderPlaybackQueueList(activeQueue, currentIndex);
+      syncPlaybackOverlayState();
 
       playbackOverlay.classList.remove("bl-hidden");
     } catch (error) {
@@ -1288,14 +1382,7 @@ import {
   }
 
   async function refreshCollectorData() {
-    await Promise.all([loadVideo(), loadFolders()]);
-  }
-
-  async function openQuickFavoriteFromShortcut() {
-    quickSelectedFolderIds = new Set();
-    quickActiveFolderId = 0;
-    openQuickFavoriteLayer();
-    await refreshCollectorData();
+    await Promise.all([loadVideo(), loadFolders(), loadCustomTags()]);
   }
 
   function handleQuickFavoriteShortcut(event) {
@@ -1304,44 +1391,31 @@ import {
       if (!isCollectorUiUrl(location.href)) return;
       event.preventDefault();
       event.stopPropagation();
-      void openQuickFavoriteFromShortcut();
+      void openCollectorModal();
       return;
     }
 
-    if (quickFavoriteLayer?.classList.contains("bl-hidden")) return;
+    if (panel?.classList.contains("bl-hidden")) return;
 
     if (event.key === "Escape") {
       event.preventDefault();
-      closeQuickFavoriteLayer();
+      if (modal && !modal.classList.contains("bl-hidden")) {
+        closeCreateFolderModal();
+        return;
+      }
+      closeCollectorModal();
       return;
+    }
+
+    if (event.isComposing) return;
+
+    if (event.key === "Enter") {
+      if (modal && !modal.classList.contains("bl-hidden")) return;
+      event.preventDefault();
+      void saveVideo();
     }
 
     if (isEditableTarget(event.target)) return;
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      moveQuickFavoriteActive(1);
-      return;
-    }
-
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      moveQuickFavoriteActive(-1);
-      return;
-    }
-
-    if (event.key === " " || event.key === "Spacebar") {
-      event.preventDefault();
-      if (quickActiveFolderId > 0) {
-        toggleQuickFavoriteFolder(quickActiveFolderId);
-      }
-      return;
-    }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      void saveQuickFavorite();
-    }
   }
 
   function openCreateFolderModal() {
@@ -1376,7 +1450,6 @@ import {
       currentVideoLocalFolders = [];
       renderVideo(null);
       renderExistingFolderSummary(existingFoldersSummaryEl);
-      renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
       setStatus(t("toast.detectBvidFail"), "err");
       return;
     }
@@ -1429,7 +1502,6 @@ import {
       currentVideoLocalFolders = [];
       renderVideo(null);
       renderExistingFolderSummary(existingFoldersSummaryEl);
-      renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
       setStatus(t("toast.videoLoadFail"), "err");
       return;
     }
@@ -1445,16 +1517,22 @@ import {
       selectedFolderIds = new Set(
         [...selectedFolderIds].filter((id) => idSet.has(id))
       );
-      quickSelectedFolderIds = new Set(
-        [...quickSelectedFolderIds].filter((id) => idSet.has(id))
-      );
       renderFolders(folderSearchInput?.value || "");
-      renderQuickFavoriteFolders(quickFavoriteSearchInput?.value || "");
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : t("toast.folderLoadFail"),
         "err"
       );
+    }
+  }
+
+  async function loadCustomTags() {
+    try {
+      allCustomTags = await fetchAllCustomTags();
+      renderCustomTagSuggestions();
+    } catch {
+      allCustomTags = [];
+      renderCustomTagSuggestions();
     }
   }
 
@@ -1539,12 +1617,16 @@ import {
       const result = await requestLocalApi("POST", "/videos", payload);
       const addedFolderNames = folderNamesFromSaveResult(result, "addedFolderIds");
       const existingFolderNames = folderNamesFromSaveResult(result, "existingFolderIds");
+      const removedFolderNames = folderNamesFromSaveResult(result, "removedFolderIds");
       const toastMessage =
-        addedFolderNames.length > 0 || existingFolderNames.length > 0
+        addedFolderNames.length > 0 ||
+        existingFolderNames.length > 0 ||
+        removedFolderNames.length > 0
           ? buildQuickFavoriteToastMessage(
               {
                 addedFolderNames,
-                existingFolderNames
+                existingFolderNames,
+                removedFolderNames
               },
               t
             )
@@ -1552,12 +1634,16 @@ import {
 
       setStatus(toastMessage, "ok");
       currentVideoLocalFolders = Array.isArray(result?.finalFolders) ? result.finalFolders : [];
-      renderExistingFolderSummary(existingFoldersSummaryEl);
-      renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
-      await loadFolders();
-      if (options.closeQuickLayer) {
-        closeQuickFavoriteLayer();
+      selectedFolderIds = new Set(currentVideoLocalFolderIds());
+      try {
+        await chrome.storage.local.set(
+          createRememberedCollectorFolderIdsRecord([...folderIds])
+        );
+      } catch {
       }
+      renderExistingFolderSummary(existingFoldersSummaryEl);
+      renderFolders(folderSearchInput?.value || "");
+      await loadFolders();
       return result;
     } catch (error) {
       setStatus(
@@ -1572,14 +1658,6 @@ import {
   async function saveVideo() {
     if (!saveBtn) return;
     return saveVideoWithFolderIds(selectedFolderIds, { button: saveBtn });
-  }
-
-  async function saveQuickFavorite() {
-    if (!quickFavoriteSaveBtn) return;
-    return saveVideoWithFolderIds(quickSelectedFolderIds, {
-      button: quickFavoriteSaveBtn,
-      closeQuickLayer: true
-    });
   }
 
   function readButtonPositionFromLocalStorage(key) {
@@ -1716,9 +1794,6 @@ import {
     floatingBtn.style.right = "auto";
     floatingBtn.style.bottom = "auto";
     if (persist) saveButtonPosition(position.x, position.y);
-    if (panel && !panel.classList.contains("bl-hidden")) {
-      positionPanelNearButton();
-    }
   }
 
   function setButtonSide(side, persist = true) {
@@ -1840,32 +1915,6 @@ import {
     floatingBtn.addEventListener("pointercancel", finishDrag);
   }
 
-  function positionPanelNearButton() {
-    if (!panel || !floatingBtn) return;
-
-    const panelWidth = panel.offsetWidth || 440;
-    const panelHeight = panel.offsetHeight || 640;
-    const buttonRect = floatingBtn.getBoundingClientRect();
-    const gap = 10;
-
-    let left = buttonRect.left + buttonRect.width - panelWidth;
-    let top = buttonRect.top - panelHeight - gap;
-
-    if (top < 10) top = buttonRect.bottom + gap;
-    if (left < 10) left = 10;
-    if (left + panelWidth > window.innerWidth - 10) {
-      left = window.innerWidth - panelWidth - 10;
-    }
-    if (top + panelHeight > window.innerHeight - 10) {
-      top = window.innerHeight - panelHeight - 10;
-    }
-
-    panel.style.left = `${Math.max(10, left)}px`;
-    panel.style.top = `${Math.max(10, top)}px`;
-    panel.style.right = "auto";
-    panel.style.bottom = "auto";
-  }
-
   function isLikelyFullscreenPlayback() {
     if (document.fullscreenElement || document.webkitFullscreenElement) {
       return true;
@@ -1890,8 +1939,7 @@ import {
     const shouldHide = isLikelyFullscreenPlayback();
     root.classList.toggle("bl-fullscreen-hidden", shouldHide);
     if (shouldHide) {
-      closePanel();
-      closeQuickFavoriteLayer();
+      closeCollectorModal();
       closeCreateFolderModal();
     }
   }
@@ -1972,7 +2020,6 @@ import {
   function applyTheme() {
     const mode = resolveThemeMode(activeThemePreference);
     if (panel) panel.dataset.theme = mode;
-    if (quickFavoriteLayer) quickFavoriteLayer.dataset.theme = mode;
     if (floatingBtn) floatingBtn.dataset.theme = mode;
     if (modal) modal.dataset.theme = mode;
     if (playbackOverlay) playbackOverlay.dataset.theme = mode;
@@ -2025,15 +2072,27 @@ import {
       #bl-floating-btn:active { cursor: grabbing; transform: scale(.98); }
       #bl-floating-btn svg { width: 18px; height: 18px; }
 
+      #bl-collector-backdrop {
+        pointer-events: auto;
+        position: fixed;
+        inset: 0;
+        z-index: 999999;
+        background: rgba(8, 14, 30, .42);
+      }
+
       #bl-floating-panel {
         pointer-events: auto;
         position: fixed;
-        width: min(420px, calc(100vw - 20px));
+        left: 50%;
+        top: 50%;
+        z-index: 1000000;
+        width: min(468px, calc(100vw - 24px));
         max-height: min(86vh, 760px);
         overflow: auto;
+        transform: translate(-50%, -50%);
         border-radius: 16px;
         border: 1px solid;
-        padding: 14px;
+        padding: 16px 16px 14px;
         box-sizing: border-box;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
@@ -2066,11 +2125,8 @@ import {
       .bl-brand-mark svg { width: 13px; height: 13px; }
       .bl-title-wrap { display: flex; flex-direction: column; gap: 2px; }
       .bl-title { margin: 0; font-size: 18px; font-weight: 700; }
-      .bl-subtitle { font-size: 12px; }
       #bl-floating-panel[data-theme="light"] .bl-title { color: #111c37; }
       #bl-floating-panel[data-theme="dark"] .bl-title { color: #f1f5ff; }
-      #bl-floating-panel[data-theme="light"] .bl-subtitle { color: #60708e; }
-      #bl-floating-panel[data-theme="dark"] .bl-subtitle { color: #94a3c0; }
 
       .bl-btn {
         border: 1px solid transparent;
@@ -2179,6 +2235,39 @@ import {
       .bl-empty { font-size: 12px; text-align: center; padding: 16px 8px; }
       #bl-floating-panel[data-theme="light"] .bl-empty { color: #7c8aa6; }
       #bl-floating-panel[data-theme="dark"] .bl-empty { color: #94a3be; }
+      .bl-tag-suggestions {
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .bl-tag-suggestion {
+        appearance: none;
+        border-radius: 999px;
+        border: 1px solid rgba(108, 130, 186, .28);
+        background: rgba(232, 239, 255, .92);
+        color: #27406f;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+        transition: transform .14s ease, border-color .14s ease, background .14s ease;
+      }
+      .bl-tag-suggestion:hover {
+        transform: translateY(-1px);
+        border-color: rgba(76, 102, 255, .42);
+        background: rgba(221, 232, 255, .98);
+      }
+      #bl-floating-panel[data-theme="dark"] .bl-tag-suggestion {
+        border-color: rgba(119, 145, 215, .32);
+        background: rgba(32, 45, 80, .96);
+        color: #dbe8ff;
+      }
+      #bl-floating-panel[data-theme="dark"] .bl-tag-suggestion:hover {
+        border-color: rgba(142, 171, 255, .55);
+        background: rgba(40, 57, 98, .98);
+      }
 
       .bl-footer { margin-top: 12px; display: flex; gap: 8px; }
       .bl-footer .bl-btn { flex: 1; }
@@ -2198,17 +2287,17 @@ import {
       }
       .Vue-Toastification__toast {
         pointer-events: auto;
-        min-width: 220px;
+        min-width: 280px;
         max-width: 360px;
-        border-radius: 12px;
+        border-radius: 16px;
         border: 1px solid transparent;
-        padding: 10px 12px;
-        font-size: 12px;
+        padding: 14px 16px;
+        font-size: 13px;
         line-height: 1.4;
         display: flex;
         align-items: flex-start;
-        gap: 9px;
-        box-shadow: 0 14px 28px rgba(17, 24, 39, .22);
+        gap: 10px;
+        box-shadow: 0 18px 38px rgba(17, 24, 39, .26);
         animation: bl-toast-in .18s ease;
         backdrop-filter: none;
       }
@@ -2223,18 +2312,18 @@ import {
       }
       .Vue-Toastification__toast--success {
         color: #14673f;
-        background: rgba(27, 169, 88, .16);
-        border-color: rgba(27, 169, 88, .3);
+        background: linear-gradient(135deg, #effcf4 0%, #d7f7e4 100%);
+        border-color: #7bd9a6;
       }
       .Vue-Toastification__toast--error {
         color: #9f223a;
-        background: rgba(230, 38, 76, .15);
-        border-color: rgba(230, 38, 76, .3);
+        background: linear-gradient(135deg, #fff2f4 0%, #ffdfe5 100%);
+        border-color: #ff9fb0;
       }
       .Vue-Toastification__toast--info {
         color: #1f3d84;
-        background: rgba(59, 130, 246, .14);
-        border-color: rgba(59, 130, 246, .26);
+        background: linear-gradient(135deg, #eff6ff 0%, #dceaff 100%);
+        border-color: #96bbff;
       }
       .Vue-Toastification__toast.is-leaving {
         opacity: 0;
@@ -2248,18 +2337,18 @@ import {
 
       #bl-floating-panel[data-theme="dark"] ~ .bl-toast-root .Vue-Toastification__toast--success {
         color: #a7f3d0;
-        background: rgba(16, 185, 129, .18);
-        border-color: rgba(16, 185, 129, .34);
+        background: linear-gradient(135deg, #153326 0%, #1c5b3d 100%);
+        border-color: #39c78a;
       }
       #bl-floating-panel[data-theme="dark"] ~ .bl-toast-root .Vue-Toastification__toast--error {
         color: #fecaca;
-        background: rgba(248, 113, 113, .2);
-        border-color: rgba(248, 113, 113, .35);
+        background: linear-gradient(135deg, #461322 0%, #8e1e3d 100%);
+        border-color: #fb7185;
       }
       #bl-floating-panel[data-theme="dark"] ~ .bl-toast-root .Vue-Toastification__toast--info {
         color: #cfe3ff;
-        background: rgba(59, 130, 246, .2);
-        border-color: rgba(96, 165, 250, .35);
+        background: linear-gradient(135deg, #142544 0%, #234f98 100%);
+        border-color: #60a5fa;
       }
 
       #bl-create-folder-modal {
@@ -2301,144 +2390,48 @@ import {
       #bl-create-folder-modal[data-theme="dark"] .bl-textarea { border-color: #405075; background: #101b34; color: #edf2ff; }
       .bl-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
-      #bl-quick-favorite-layer {
-        pointer-events: auto;
-        position: fixed;
-        inset: 0;
-        z-index: 1000000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(8, 14, 30, .42);
-        padding: 14px;
-        box-sizing: border-box;
-      }
-      .bl-quick-favorite-panel {
-        width: min(460px, calc(100vw - 28px));
-        max-height: min(80vh, 720px);
-        overflow: auto;
-        border-radius: 18px;
-        border: 1px solid;
-        padding: 14px;
-        box-shadow: 0 28px 52px rgba(8, 14, 30, .28);
-      }
-      #bl-quick-favorite-layer[data-theme="light"] .bl-quick-favorite-panel {
-        border-color: #d5dff3;
-        background: #ffffff;
-        color: #17213b;
-      }
-      #bl-quick-favorite-layer[data-theme="dark"] .bl-quick-favorite-panel {
-        border-color: #455984;
-        background: #101b34;
-        color: #e2e8f0;
-      }
-      .bl-quick-favorite-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 10px;
-      }
-      .bl-quick-favorite-title {
-        margin: 0;
-        font-size: 18px;
-        font-weight: 700;
-      }
-      .bl-quick-favorite-subtitle {
-        margin-top: 4px;
-        font-size: 12px;
-      }
-      #bl-quick-favorite-layer[data-theme="light"] .bl-quick-favorite-subtitle {
-        color: #60708e;
-      }
-      #bl-quick-favorite-layer[data-theme="dark"] .bl-quick-favorite-subtitle {
-        color: #94a3c0;
-      }
-      .bl-quick-favorite-video-title {
-        margin: 0 0 10px;
-        font-size: 13px;
-        line-height: 1.45;
-        font-weight: 650;
-      }
-      #bl-quick-favorite-layer .bl-existing-folders-summary {
-        margin-bottom: 10px;
-      }
-      #bl-quick-favorite-layer[data-theme="light"] .bl-existing-folders-summary {
-        color: #47597d;
-        border-color: #cdd8ef;
-        background: rgba(243, 247, 255, .92);
-      }
-      #bl-quick-favorite-layer[data-theme="dark"] .bl-existing-folders-summary {
-        color: #c6d4ee;
-        border-color: #42557d;
-        background: rgba(18, 31, 58, .86);
-      }
-      #bl-quick-favorite-layer .bl-input {
-        margin-bottom: 10px;
-      }
-      #bl-quick-favorite-layer[data-theme="light"] .bl-input {
-        border-color: #d5def1;
-        background: rgba(255, 255, 255, .92);
-        color: #15213e;
-      }
-      #bl-quick-favorite-layer[data-theme="dark"] .bl-input {
-        border-color: #405075;
-        background: #101b34;
-        color: #edf2ff;
-      }
-      #bl-quick-favorite-layer .bl-folder-list {
-        max-height: 300px;
-        margin-bottom: 10px;
-      }
-      #bl-quick-favorite-layer[data-theme="light"] .bl-folder-list {
-        border-color: #d9e3f6;
-        background: rgba(255, 255, 255, .94);
-      }
-      #bl-quick-favorite-layer[data-theme="dark"] .bl-folder-list {
-        border-color: #455984;
-        background: rgba(12, 21, 41, .92);
-      }
-      .bl-quick-favorite-footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-      }
-      .bl-quick-favorite-footer .bl-btn {
-        min-width: 120px;
-      }
-
       #bl-playback-overlay {
         pointer-events: auto;
         position: fixed;
         left: 16px;
         bottom: 16px;
         z-index: 1000000;
-        width: min(360px, calc(100vw - 32px));
-        border-radius: 16px;
+        width: min(420px, calc(100vw - 32px));
+        border-radius: 22px;
         border: 1px solid;
-        padding: 12px;
-        box-shadow: 0 20px 42px rgba(8, 14, 30, .22);
+        padding: 14px;
+        box-shadow: 0 24px 56px rgba(8, 14, 30, .24);
       }
       #bl-playback-overlay[data-theme="light"] {
         border-color: rgba(208, 221, 246, .96);
-        background: rgba(255, 255, 255, .98);
+        background: linear-gradient(180deg, rgba(255, 255, 255, .99) 0%, rgba(244, 248, 255, .98) 100%);
         color: #17213b;
       }
       #bl-playback-overlay[data-theme="dark"] {
         border-color: rgba(82, 103, 154, .95);
-        background: rgba(16, 26, 49, .97);
+        background: linear-gradient(180deg, rgba(17, 27, 49, .98) 0%, rgba(10, 18, 35, .98) 100%);
         color: #e2e8f0;
+      }
+      .bl-playback-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .bl-playback-header-copy {
+        min-width: 0;
+        flex: 1;
       }
       .bl-playback-caption {
         margin: 0;
         font-size: 12px;
         font-weight: 700;
         letter-spacing: .02em;
+        text-transform: uppercase;
       }
       .bl-playback-title {
         margin: 8px 0 0;
-        font-size: 14px;
+        font-size: 15px;
         line-height: 1.45;
         font-weight: 700;
       }
@@ -2454,12 +2447,132 @@ import {
       }
       .bl-playback-actions {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
         margin-top: 12px;
       }
       .bl-playback-actions .bl-btn {
         width: 100%;
+      }
+      .bl-playback-header-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .bl-playback-header-actions .bl-btn {
+        min-width: 82px;
+      }
+      .bl-playback-list {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 292px;
+        overflow: auto;
+        padding-right: 2px;
+      }
+      .bl-playback-empty {
+        padding: 14px 10px;
+        border-radius: 14px;
+        font-size: 12px;
+        text-align: center;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-empty {
+        background: rgba(230, 238, 255, .72);
+        color: #5d6f92;
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-empty {
+        background: rgba(28, 40, 68, .82);
+        color: #a7b5d1;
+      }
+      .bl-playback-list-item {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 60px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 8px;
+        border-radius: 16px;
+        border: 1px solid;
+        text-align: left;
+        cursor: pointer;
+        transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-item {
+        border-color: rgba(208, 220, 245, .95);
+        background: rgba(255, 255, 255, .82);
+        color: #17213b;
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-item {
+        border-color: rgba(66, 84, 126, .95);
+        background: rgba(18, 27, 49, .9);
+        color: #e2e8f0;
+      }
+      .bl-playback-list-item:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+      .bl-playback-list-item.is-active,
+      .bl-playback-list-item:disabled {
+        cursor: default;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-item.is-active,
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-item:disabled {
+        border-color: rgba(92, 124, 255, .65);
+        background: rgba(235, 241, 255, .92);
+        box-shadow: inset 0 0 0 1px rgba(92, 124, 255, .1);
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-item.is-active,
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-item:disabled {
+        border-color: rgba(128, 156, 255, .72);
+        background: rgba(34, 48, 84, .96);
+        box-shadow: inset 0 0 0 1px rgba(140, 166, 255, .18);
+      }
+      .bl-playback-thumb {
+        width: 60px;
+        height: 40px;
+        border-radius: 12px;
+        object-fit: cover;
+        display: block;
+      }
+      .bl-playback-list-copy {
+        min-width: 0;
+      }
+      .bl-playback-list-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.35;
+      }
+      .bl-playback-list-meta {
+        margin: 4px 0 0;
+        font-size: 11px;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-meta {
+        color: #64748b;
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-meta {
+        color: #9fb0d0;
+      }
+      .bl-playback-list-index {
+        min-width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 800;
+      }
+      #bl-playback-overlay[data-theme="light"] .bl-playback-list-index {
+        background: rgba(224, 232, 250, .9);
+        color: #35508d;
+      }
+      #bl-playback-overlay[data-theme="dark"] .bl-playback-list-index {
+        background: rgba(43, 60, 96, .95);
+        color: #d7e3ff;
+      }
+      #bl-playback-overlay[data-collapsed="true"] .bl-playback-actions,
+      #bl-playback-overlay[data-collapsed="true"] .bl-playback-list {
+        display: none;
       }
 
       @media (max-width: 680px) {
@@ -2475,30 +2588,27 @@ import {
   }
 
   function bindEvents() {
-    if (!floatingBtn || !panel) return;
+    if (!floatingBtn || !panel || !panelBackdrop) return;
 
     floatingBtn.addEventListener("click", async () => {
       if (suppressButtonClick) return;
       if (!panel.classList.contains("bl-hidden")) {
-        closePanel();
+        closeCollectorModal();
         return;
       }
 
-      openPanel();
-      await refreshCollectorData();
+      await openCollectorModal();
     });
 
-    closeBtn?.addEventListener("click", () => closePanel());
+    closeBtn?.addEventListener("click", closeCollectorModal);
     saveBtn?.addEventListener("click", saveVideo);
-    quickFavoriteCloseBtn?.addEventListener("click", closeQuickFavoriteLayer);
-    quickFavoriteSaveBtn?.addEventListener("click", saveQuickFavorite);
 
     folderSearchInput?.addEventListener("input", (event) => {
       renderFolders(event.target.value || "");
     });
-    quickFavoriteSearchInput?.addEventListener("input", (event) => {
-      quickActiveFolderId = 0;
-      renderQuickFavoriteFolders(event.target.value || "");
+
+    customTagsInput?.addEventListener("input", () => {
+      renderCustomTagSuggestions();
     });
 
     openCreateFolderBtn?.addEventListener("click", () => {
@@ -2538,17 +2648,14 @@ import {
       }
     });
 
-    quickFavoriteLayer?.addEventListener("click", (event) => {
-      if (event.target === quickFavoriteLayer) {
-        closeQuickFavoriteLayer();
+    panelBackdrop.addEventListener("click", (event) => {
+      if (event.target === panelBackdrop) {
+        closeCollectorModal();
       }
     });
 
     window.addEventListener("resize", () => {
       updateFloatingUiVisibility();
-      if (!panel.classList.contains("bl-hidden")) {
-        positionPanelNearButton();
-      }
       const rect = floatingBtn.getBoundingClientRect();
       placeFloatingButtonAt(rect.left, rect.top, false);
     });
@@ -2560,6 +2667,11 @@ import {
 
     root = document.createElement("div");
     root.id = "bl-floating-root";
+
+    panelBackdrop = createEl("div", {
+      id: "bl-collector-backdrop",
+      className: "bl-hidden"
+    });
 
     panel = createEl(
       "div",
@@ -2580,11 +2692,7 @@ import {
                 ),
                 createEl("span", { text: t("title.collector") })
               ])
-            ]),
-            createEl("p", {
-              className: "bl-subtitle",
-              text: t("subtitle.collector")
-            })
+            ])
           ]),
           createEl("button", {
             id: "bl-close-btn",
@@ -2612,8 +2720,8 @@ import {
             }),
             createEl("p", {
               id: "bl-panel-existing-folders-summary",
-              className: "bl-existing-folders-summary",
-              text: t("status.savedFoldersNone")
+              className: "bl-existing-folders-summary bl-hidden",
+              text: ""
             })
           ])
         ]),
@@ -2671,6 +2779,10 @@ import {
             id: "bl-custom-tags",
             className: "bl-input",
             attrs: { placeholder: t("field.customTags") }
+          }),
+          createEl("div", {
+            id: "bl-custom-tag-suggestions",
+            className: "bl-tag-suggestions bl-hidden"
           })
         ]),
         createEl("div", { className: "bl-footer" }, [
@@ -2682,73 +2794,6 @@ import {
           })
         ]),
         createEl("p", { className: "bl-credit", text: t("footer.credit") })
-      ]
-    );
-
-    quickFavoriteLayer = createEl(
-      "div",
-      {
-        id: "bl-quick-favorite-layer",
-        className: "bl-hidden",
-        attrs: { "data-theme": "light" }
-      },
-      [
-        createEl("div", { className: "bl-quick-favorite-panel" }, [
-          createEl("div", { className: "bl-quick-favorite-header" }, [
-            createEl("div", {}, [
-              createEl("h3", {
-                id: "bl-quick-favorite-title",
-                className: "bl-quick-favorite-title",
-                text: t("quickFavorite.title")
-              }),
-                  createEl("p", {
-                    id: "bl-quick-favorite-hint",
-                    className: "bl-quick-favorite-subtitle",
-                    text: t("status.quickFavoriteHint", {
-                      shortcut: formatShortcutLabel(activeQuickFavoriteShortcut)
-                    })
-                  })
-                ]),
-            createEl("button", {
-              id: "bl-quick-favorite-close",
-              className: "bl-btn bl-btn-outline",
-              attrs: { type: "button" },
-              text: t("button.close")
-            })
-          ]),
-          createEl("p", {
-            id: "bl-quick-favorite-video-title",
-            className: "bl-quick-favorite-video-title",
-            text: t("status.noVideoTitle")
-          }),
-          createEl("p", {
-            id: "bl-existing-folders-summary",
-            className: "bl-existing-folders-summary",
-            text: t("status.savedFoldersNone")
-          }),
-          createEl("input", {
-            id: "bl-quick-favorite-search",
-            className: "bl-input",
-            attrs: { placeholder: t("field.quickFavoriteSearch") }
-          }),
-          createEl("div", {
-            id: "bl-quick-favorite-list",
-            className: "bl-folder-list"
-          }),
-          createEl("div", { className: "bl-quick-favorite-footer" }, [
-            createEl("span", {
-              id: "bl-quick-favorite-selected-count",
-              className: "bl-selected-count",
-              text: t("status.selectedCount", { count: 0 })
-            }),
-            createEl("button", {
-              id: "bl-quick-favorite-save",
-              className: "bl-btn bl-btn-primary",
-              attrs: { type: "button" },
-              text: t("button.quickSave")
-            })
-          ])
-        ])
       ]
     );
 
@@ -2846,19 +2891,33 @@ import {
       },
       [
         createEl("p", {
-          className: "bl-playback-caption",
-          text: t("playback.title")
-        }),
-        createEl("p", {
-          id: "bl-playback-current-title",
-          className: "bl-playback-title",
-          text: t("status.noVideoTitle")
-        }),
-        createEl("p", {
-          id: "bl-playback-progress",
-          className: "bl-playback-meta",
-          text: t("playback.progress", { current: 0, total: 0 })
-        }),
+          className: "bl-playback-header"
+        }, [
+          createEl("div", { className: "bl-playback-header-copy" }, [
+            createEl("p", {
+              className: "bl-playback-caption",
+              text: t("playback.title")
+            }),
+            createEl("p", {
+              id: "bl-playback-current-title",
+              className: "bl-playback-title",
+              text: t("status.noVideoTitle")
+            }),
+            createEl("p", {
+              id: "bl-playback-progress",
+              className: "bl-playback-meta",
+              text: t("playback.progress", { current: 0, total: 0 })
+            })
+          ]),
+          createEl("div", { className: "bl-playback-header-actions" }, [
+            createEl("button", {
+              id: "bl-playback-collapse",
+              className: "bl-btn bl-btn-outline",
+              attrs: { type: "button" },
+              text: t("button.collapse")
+            })
+          ])
+        ]),
         createEl("div", { className: "bl-playback-actions" }, [
           createEl("button", {
             id: "bl-playback-prev",
@@ -2873,18 +2932,16 @@ import {
             text: t("button.next")
           }),
           createEl("button", {
-            id: "bl-playback-open-manager",
+            id: "bl-playback-list-toggle",
             className: "bl-btn bl-btn-secondary",
             attrs: { type: "button" },
-            text: t("button.openManager")
-          }),
-          createEl("button", {
-            id: "bl-playback-end-session",
-            className: "bl-btn bl-btn-outline",
-            attrs: { type: "button" },
-            text: t("button.endPlayback")
+            text: t("button.hideList")
           })
-        ])
+        ]),
+        createEl("div", {
+          id: "bl-playback-list",
+          className: "bl-playback-list"
+        })
       ]
     );
 
@@ -2906,8 +2963,8 @@ import {
       attrs: { "aria-live": "polite", "aria-atomic": "true" }
     });
 
+    root.appendChild(panelBackdrop);
     root.appendChild(panel);
-    root.appendChild(quickFavoriteLayer);
     root.appendChild(modal);
     root.appendChild(playbackOverlay);
     root.appendChild(floatingBtn);
@@ -2918,16 +2975,9 @@ import {
     existingFoldersSummaryEl = panel.querySelector("#bl-panel-existing-folders-summary");
     folderSearchInput = panel.querySelector("#bl-folder-search");
     customTagsInput = panel.querySelector("#bl-custom-tags");
+    customTagSuggestionsEl = panel.querySelector("#bl-custom-tag-suggestions");
     saveBtn = panel.querySelector("#bl-save-btn");
     closeBtn = panel.querySelector("#bl-close-btn");
-    quickFavoriteTitleEl = quickFavoriteLayer.querySelector("#bl-quick-favorite-video-title");
-    quickFavoriteShortcutHintEl = quickFavoriteLayer.querySelector("#bl-quick-favorite-hint");
-    quickFavoriteSearchInput = quickFavoriteLayer.querySelector("#bl-quick-favorite-search");
-    quickFavoriteListEl = quickFavoriteLayer.querySelector("#bl-quick-favorite-list");
-    quickFavoriteSaveBtn = quickFavoriteLayer.querySelector("#bl-quick-favorite-save");
-    quickFavoriteCloseBtn = quickFavoriteLayer.querySelector("#bl-quick-favorite-close");
-    quickFavoriteSelectedCountEl = quickFavoriteLayer.querySelector("#bl-quick-favorite-selected-count");
-    quickFavoriteExistingSummaryEl = quickFavoriteLayer.querySelector("#bl-existing-folders-summary");
     openCreateFolderBtn = panel.querySelector("#bl-folder-create-open");
     selectAllFoldersBtn = panel.querySelector("#bl-select-all-folders");
     clearFolderSelectionBtn = panel.querySelector("#bl-clear-folders");
@@ -2947,24 +2997,24 @@ import {
     playbackOverlayProgressEl = playbackOverlay.querySelector("#bl-playback-progress");
     playbackPrevBtn = playbackOverlay.querySelector("#bl-playback-prev");
     playbackNextBtn = playbackOverlay.querySelector("#bl-playback-next");
-    playbackOpenManagerBtn = playbackOverlay.querySelector("#bl-playback-open-manager");
-    playbackEndSessionBtn = playbackOverlay.querySelector("#bl-playback-end-session");
-    const subtitleEl = panel.querySelector(".bl-subtitle");
-    if (subtitleEl) subtitleEl.textContent = t("subtitle.collector");
+    playbackListToggleBtn = playbackOverlay.querySelector("#bl-playback-list-toggle");
+    playbackCollapseBtn = playbackOverlay.querySelector("#bl-playback-collapse");
+    playbackListEl = playbackOverlay.querySelector("#bl-playback-list");
 
     applyInitialButtonPosition();
     void restoreStoredButtonPosition();
     void applyStoredButtonSide();
+    syncFloatingButtonLabel();
     bindFloatingButtonDrag();
     bindEvents();
     startFullscreenWatch();
     startPlaybackOverlayWatch();
     renderVideo(null);
     renderFolders("");
-    renderQuickFavoriteFolders("");
-    renderQuickFavoriteShortcutHint();
+    renderCustomTagSuggestions();
     renderExistingFolderSummary(existingFoldersSummaryEl);
-    renderExistingFolderSummary(quickFavoriteExistingSummaryEl);
+    renderPlaybackQueueList([], -1);
+    syncPlaybackOverlayState();
     syncCreateFolderCounter();
   }
 
@@ -3003,7 +3053,7 @@ import {
           activeQuickFavoriteShortcut = resolveStoredShortcut(
             changes[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY].newValue ?? null
           );
-          renderQuickFavoriteShortcutHint();
+          syncFloatingButtonLabel();
         }
       });
     }

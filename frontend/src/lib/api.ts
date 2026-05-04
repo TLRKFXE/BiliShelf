@@ -4,6 +4,8 @@ import type {
   AiSettings,
   AiSettingsModelsResponse,
   CreateVideoPayload,
+  FollowingUpImportStatus,
+  FollowedUp,
   FolderAiCategories,
   Folder,
   Pagination,
@@ -228,6 +230,26 @@ function extractErrorMessage(rawText: string) {
 export async function fetchFolders() {
   const data = await request<{ items: Folder[] }>("/folders");
   return data.items;
+}
+
+export async function fetchFollowingUps() {
+  const data = await request<{ items: FollowedUp[] }>("/following-ups");
+  return data.items;
+}
+
+export async function startFollowingUpImport(payload?: Record<string, never>) {
+  return request<{
+    ok: true;
+    started: boolean;
+    status: FollowingUpImportStatus;
+  }>("/sync/bilibili/following-ups/start", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
+export async function fetchFollowingUpImportStatus() {
+  return request<FollowingUpImportStatus>("/sync/bilibili/following-ups/status");
 }
 
 export async function createFolder(payload: {

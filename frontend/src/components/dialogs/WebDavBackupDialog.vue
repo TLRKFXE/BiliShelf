@@ -7,7 +7,6 @@ import {
   RefreshCcw,
   RotateCw,
   ServerCog,
-  ShieldCheck,
   Unplug,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
@@ -145,10 +144,6 @@ function handleTest() {
           <p v-if="settings?.lastError" class="mt-1 flex items-start gap-1 text-amber-600 dark:text-amber-400">
             <Unplug class="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>{{ settings.lastError }}</span>
-          </p>
-          <p v-else class="mt-1 flex items-start gap-1">
-            <ShieldCheck class="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-            <span>{{ t("webdav.desc") }}</span>
           </p>
         </div>
       </section>

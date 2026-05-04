@@ -5,6 +5,10 @@ import {
   isValidShortcutRecord,
   resolveStoredShortcut,
 } from "./utils/shortcut-config.js";
+import {
+  createPopupToastGate,
+  isModifierOnlyShortcutEvent,
+} from "./utils/popup-feedback.js";
 
 (function () {
   const THEME_KEY = "bili_like_ext_theme";
@@ -18,7 +22,7 @@ import {
   const I18N = {
     "popup.title": { [LOCALE_ZH]: "BiliShelf 助手", [LOCALE_EN]: "BiliShelf Helper" },
     "popup.subtitle": {
-      [LOCALE_ZH]: "设置采集悬浮窗主题，并打开管理中心",
+      [LOCALE_ZH]: "配置收藏悬浮窗主题，并快速打开管理页。",
       [LOCALE_EN]: "Configure collector theme and open manager",
     },
     "popup.credit": {
@@ -27,7 +31,7 @@ import {
     },
     "theme.title": { [LOCALE_ZH]: "悬浮窗主题", [LOCALE_EN]: "Floating Panel Theme" },
     "theme.subtitle": {
-      [LOCALE_ZH]: "可选浅色 / 深色 / 自动（跟随系统）",
+      [LOCALE_ZH]: "可选浅色、深色或自动跟随系统。",
       [LOCALE_EN]: "Choose light / dark / auto (follow system)",
     },
     "theme.auto": { [LOCALE_ZH]: "自动", [LOCALE_EN]: "Auto" },
@@ -39,7 +43,7 @@ import {
       [LOCALE_EN]: "Quick Favorite Shortcut",
     },
     "shortcut.subtitle": {
-      [LOCALE_ZH]: "在弹窗里录制自定义快捷键，或临时禁用它。",
+      [LOCALE_ZH]: "录制一个自定义快捷键，或临时禁用它。",
       [LOCALE_EN]: "Record a custom shortcut or temporarily disable it.",
     },
     "shortcut.button.startRecording": {
@@ -47,7 +51,7 @@ import {
       [LOCALE_EN]: "Start Recording",
     },
     "shortcut.button.recording": {
-      [LOCALE_ZH]: "按下快捷键...",
+      [LOCALE_ZH]: "请按下按键...",
       [LOCALE_EN]: "Press Keys...",
     },
     "shortcut.button.restoreDefault": {
@@ -56,19 +60,21 @@ import {
     },
     "shortcut.button.clear": { [LOCALE_ZH]: "清空", [LOCALE_EN]: "Clear" },
     "shortcut.hint.idle": {
-      [LOCALE_ZH]: "点击“开始录制”后，按下 Alt 或 Ctrl 加字母/数字；Esc 取消。",
-      [LOCALE_EN]: "Press Start Recording, then use Alt or Ctrl with one letter or number. Press Esc to cancel.",
+      [LOCALE_ZH]: "点击开始录制后，使用 Alt 或 Ctrl 搭配一个字母或数字，按 Esc 取消。",
+      [LOCALE_EN]:
+        "Press Start Recording, then use Alt or Ctrl with one letter or number. Press Esc to cancel.",
     },
     "shortcut.hint.recording": {
-      [LOCALE_ZH]: "正在录制：请按下 Alt 或 Ctrl 加字母/数字；Esc 取消。",
-      [LOCALE_EN]: "Recording: press Alt or Ctrl with one letter or number. Press Esc to cancel.",
+      [LOCALE_ZH]: "正在录制：请按下 Alt 或 Ctrl 搭配一个字母或数字，按 Esc 取消。",
+      [LOCALE_EN]:
+        "Recording: press Alt or Ctrl with one letter or number. Press Esc to cancel.",
     },
     "shortcut.hint.disabled": {
       [LOCALE_ZH]: "当前已禁用快捷键；可恢复默认或重新录制。",
       [LOCALE_EN]: "Shortcut is disabled. Restore default or record a new one.",
     },
     "button.openManager": { [LOCALE_ZH]: "打开管理中心", [LOCALE_EN]: "Open Manager" },
-    "button.openVideo": { [LOCALE_ZH]: "打开 Bilibili 视频页", [LOCALE_EN]: "Open Bilibili Video" },
+    "button.openVideo": { [LOCALE_ZH]: "打开 Bilibili 视频", [LOCALE_EN]: "Open Bilibili Video" },
     "toast.themeUpdated": {
       [LOCALE_ZH]: "主题已切换：{mode}",
       [LOCALE_EN]: "Theme updated: {mode}",
@@ -88,7 +94,7 @@ import {
       [LOCALE_EN]: "Default shortcut restored: {shortcut}",
     },
     "toast.shortcutInvalid": {
-      [LOCALE_ZH]: "仅支持 Alt/Ctrl + 可选 Shift + 字母/数字",
+      [LOCALE_ZH]: "仅支持 Alt/Ctrl + 可选 Shift + 单个字母或数字",
       [LOCALE_EN]: "Use Alt/Ctrl + optional Shift + one letter or number",
     },
     "toast.shortcutRecordingCancelled": {
@@ -121,6 +127,7 @@ import {
   let activeLocale = LOCALE_EN;
   let activeShortcut = resolveStoredShortcut(DEFAULT_QUICK_FAVORITE_SHORTCUT);
   let isRecordingShortcut = false;
+  const toastGate = createPopupToastGate();
 
   function t(key, vars = {}) {
     const table = I18N[key];
@@ -131,9 +138,7 @@ import {
   const toastRoot = document.getElementById("toast-root");
   const openManagerBtn = document.getElementById("open-manager");
   const openVideoBtn = document.getElementById("open-video");
-  const themeInputs = Array.from(
-    document.querySelectorAll('input[name="theme"]'),
-  );
+  const themeInputs = Array.from(document.querySelectorAll('input[name="theme"]'));
   const shortcutTitle = document.getElementById("shortcut-title");
   const shortcutSubtitle = document.getElementById("shortcut-subtitle");
   const shortcutCurrentLabel = document.getElementById("shortcut-current-label");
@@ -178,13 +183,15 @@ import {
     if (!toastRoot || !message) return;
     const normalizedType =
       type === "error" ? "error" : type === "info" ? "info" : "success";
+    if (!toastGate.shouldDisplay(message, normalizedType)) return;
+
     const node = document.createElement("div");
     node.className = `Vue-Toastification__toast Vue-Toastification__toast--${normalizedType}`;
 
     const icon = document.createElement("span");
     icon.className = "Vue-Toastification__icon";
     icon.textContent =
-      normalizedType === "error" ? "✖" : normalizedType === "info" ? "ℹ" : "✓";
+      normalizedType === "error" ? "!" : normalizedType === "info" ? "i" : "ok";
 
     const body = document.createElement("div");
     body.className = "Vue-Toastification__toast-body";
@@ -257,7 +264,7 @@ import {
         : t("shortcut.button.startRecording");
       shortcutStartRecordingBtn.setAttribute(
         "aria-pressed",
-        isRecordingShortcut ? "true" : "false",
+        isRecordingShortcut ? "true" : "false"
       );
     }
   }
@@ -343,6 +350,10 @@ import {
       return;
     }
 
+    if (isModifierOnlyShortcutEvent(event)) {
+      return;
+    }
+
     event.preventDefault();
     const record = buildShortcutRecordFromEvent(event);
     if (!isValidShortcutRecord(record)) {
@@ -359,7 +370,7 @@ import {
     if (areaName !== "local") return;
     if (!changes?.[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY]) return;
     activeShortcut = resolveStoredShortcut(
-      changes[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY].newValue ?? null,
+      changes[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY].newValue ?? null
     );
     renderShortcutState();
   }
@@ -397,7 +408,9 @@ import {
     shortcutRestoreDefaultBtn?.addEventListener("click", async () => {
       await restoreDefaultShortcut();
       stopShortcutRecording();
-      showToast(t("toast.shortcutRestored", { shortcut: formatShortcutLabel(activeShortcut) }));
+      showToast(
+        t("toast.shortcutRestored", { shortcut: formatShortcutLabel(activeShortcut) })
+      );
     });
 
     shortcutClearBtn?.addEventListener("click", async () => {
@@ -424,9 +437,6 @@ import {
   }
 
   init().catch((error) => {
-    showToast(
-      error instanceof Error ? error.message : t("toast.initFail"),
-      "error",
-    );
+    showToast(error instanceof Error ? error.message : t("toast.initFail"), "error");
   });
 })();

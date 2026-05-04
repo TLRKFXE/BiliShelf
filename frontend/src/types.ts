@@ -142,3 +142,23 @@ export type FolderAiCategories = {
     model: string;
   }>;
 };
+
+export type FollowedUp = {
+  uid: number;
+  name: string;
+  avatarUrl: string;
+  spaceUrl: string;
+  sortOrder: number;
+  importedAt: number;
+  updatedAt: number;
+};
+
+export type FollowingUpImportStatus = {
+  running: boolean;
+  total: number;
+  current: number;
+  created: number;
+  updated: number;
+  failed: number;
+  lastError: string | null;
+};

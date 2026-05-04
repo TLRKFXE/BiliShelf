@@ -15,24 +15,27 @@ async function readContentSource() {
 test("content script mounts a dedicated quick favorite layer with existing-folder summary", async () => {
   const source = await readContentSource();
 
-  assert.match(source, /id: "bl-quick-favorite-layer"/);
-  assert.match(source, /id: "bl-quick-favorite-search"/);
-  assert.match(source, /id: "bl-quick-favorite-list"/);
-  assert.match(source, /id: "bl-quick-favorite-save"/);
-  assert.match(source, /id: "bl-existing-folders-summary"/);
+  assert.doesNotMatch(source, /id: "bl-quick-favorite-layer"/);
+  assert.doesNotMatch(source, /id: "bl-quick-favorite-search"/);
+  assert.doesNotMatch(source, /id: "bl-quick-favorite-list"/);
+  assert.doesNotMatch(source, /id: "bl-quick-favorite-save"/);
+  assert.match(source, /id: "bl-panel-existing-folders-summary"/);
 });
 
-test("quick favorite layer resolves its shortcut from storage-backed config and resets transient selection", async () => {
+test("collector shortcut opens the unified collector modal and wires remembered folder storage", async () => {
   const source = await readContentSource();
 
   assert.match(source, /QUICK_FAVORITE_SHORTCUT_STORAGE_KEY/);
+  assert.match(source, /from "\.\/utils\/collector-folder-memory\.js"/);
+  assert.match(source, /COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY/);
   assert.match(source, /let activeQuickFavoriteShortcut = resolveStoredShortcut\(null\);/);
   assert.match(source, /matchesQuickFavoriteShortcut\(event,\s*activeQuickFavoriteShortcut\)/);
   assert.match(source, /formatShortcutLabel\(activeQuickFavoriteShortcut\)/);
   assert.match(source, /changes\[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY\]/);
-  assert.match(source, /quickSelectedFolderIds = new Set\(\);/);
   assert.match(source, /window\.addEventListener\("keydown", handleQuickFavoriteShortcut/);
-  assert.match(source, /quickSelectedFolderIds = new Set\(\);\s*quickActiveFolderId = 0;\s*openQuickFavoriteLayer\(\);/s);
+  assert.match(source, /void openCollectorModal\(\);/);
+  assert.doesNotMatch(source, /quickSelectedFolderIds = new Set\(\);/);
+  assert.doesNotMatch(source, /openQuickFavoriteLayer\(\)/);
 });
 
 test("duplicate save feedback references existing folders instead of only generic saved toast", async () => {
@@ -42,4 +45,65 @@ test("duplicate save feedback references existing folders instead of only generi
   assert.match(source, /toast\.savedAddedFolders/);
   assert.match(source, /toast\.savedMixedFolders/);
   assert.match(source, /buildQuickFavoriteToastMessage\(/);
+});
+
+test("collector source removes the redundant subtitle and empty saved-folder placeholder copy", async () => {
+  const source = await readContentSource();
+
+  assert.doesNotMatch(source, /subtitle\.collector/);
+  assert.doesNotMatch(source, /status\.savedFoldersNone/);
+});
+
+test("collector modal restores remembered folders on open and saves them only after a successful save", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /const rememberedFolderIds = await readRememberedCollectorFolderIds\(\);/);
+  assert.match(source, /const currentVideoFolderIds = currentVideoLocalFolders/);
+  assert.match(source, /selectedFolderIds = new Set\(\[\.\.\.currentVideoFolderIds, \.\.\.rememberedFolderIds\]\);/);
+  assert.match(source, /createRememberedCollectorFolderIdsRecord\(\[\.\.\.folderIds\]\)/);
+  assert.match(
+    source,
+    /const result = await requestLocalApi\("POST", "\/videos", payload\);[\s\S]*createRememberedCollectorFolderIdsRecord\(\[\.\.\.folderIds\]\)/,
+  );
+});
+
+test("collector custom tags keep comma-separated input while layering suggestion chips on top", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /from "\.\/utils\/custom-tag-suggestions\.js"/);
+  assert.match(source, /id: "bl-custom-tag-suggestions"/);
+  assert.match(source, /async function fetchAllCustomTags\(\)/);
+  assert.match(source, /renderCustomTagSuggestions\(\);/);
+  assert.match(source, /customTagsInput\?\.addEventListener\("input", \(\) => \{/);
+  assert.match(source, /appendSuggestedCustomTag\(/);
+  assert.match(source, /findMatchingCustomTagSuggestions\(/);
+});
+
+test("collector enter handling respects IME and create-folder modal guards before saving", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /if \(event\.isComposing\) return;/);
+  assert.match(
+    source,
+    /if \(event\.key === "Enter"\) \{\s*if \(modal && !modal\.classList\.contains\("bl-hidden"\)\) return;\s*event\.preventDefault\(\);\s*void saveVideo\(\);\s*\}/s,
+  );
+  assert.doesNotMatch(source, /void saveQuickFavorite\(\)/);
+});
+
+test("content script normalizes invalidated extension errors and uses larger solid toasts", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /toast\.extensionReloadRequired/);
+  assert.match(source, /let extensionContextInvalidated = false;/);
+  assert.match(source, /extensionContextInvalidated = true;/);
+  assert.match(source, /runtimeError\.message/);
+  assert.match(source, /showToast\(t\("toast\.extensionReloadRequired"\), "err"\);/);
+  assert.match(
+    source,
+    /\.Vue-Toastification__toast\s*\{[\s\S]*min-width:\s*280px;[\s\S]*font-size:\s*13px;/,
+  );
+  assert.match(
+    source,
+    /\.Vue-Toastification__toast--error\s*\{[\s\S]*linear-gradient\(/,
+  );
 });

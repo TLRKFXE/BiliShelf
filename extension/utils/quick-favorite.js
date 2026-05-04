@@ -40,6 +40,16 @@ export function buildQuickFavoriteToastMessage(result, t) {
   const existingFolderNames = Array.isArray(result?.existingFolderNames)
     ? result.existingFolderNames.map((name) => String(name || "").trim()).filter(Boolean)
     : [];
+  const removedFolderNames = Array.isArray(result?.removedFolderNames)
+    ? result.removedFolderNames.map((name) => String(name || "").trim()).filter(Boolean)
+    : [];
+
+  if (removedFolderNames.length > 0) {
+    return t("toast.savedRemovedFolders", {
+      folders: joinFolderNames(removedFolderNames),
+      count: removedFolderNames.length,
+    });
+  }
 
   if (addedFolderNames.length > 0 && existingFolderNames.length > 0) {
     return t("toast.savedMixedFolders", {

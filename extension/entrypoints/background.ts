@@ -38,6 +38,14 @@ import {
   mergeRecoveredInvalidVideoFields,
   normalizeRecoveredInvalidVideoMetadata,
 } from "../shared/invalid-video-recovery.js";
+import {
+  mergeFollowedUpRecords,
+  normalizeFollowedUpRecord
+} from "../shared/following-up.js";
+import type {
+  NormalizedFollowedUpRecord,
+  StoredFollowedUpRecord
+} from "../shared/following-up.js";
 import { reconcileRemoteFolderSortOrder } from "../shared/remote-folder-order.js";
 import {
   FOLDER_PLAYBACK_STORAGE_KEY,
@@ -103,6 +111,8 @@ type VideoTagRecord = {
   videoId: number;
   tagId: number;
 };
+
+type FollowedUpRecord = StoredFollowedUpRecord;
 
 type TagEnrichmentMeta = {
   paused: boolean;
@@ -173,6 +183,7 @@ type LocalState = {
   folderItems: FolderItemRecord[];
   tags: TagRecord[];
   videoTags: VideoTagRecord[];
+  followedUps: FollowedUpRecord[];
   syncMeta: SyncMeta;
   ai: AiState;
 };
@@ -236,6 +247,7 @@ const BILI_FOLDERS_API = "https://api.bilibili.com/x/v3/fav/folder/created/list-
 const BILI_FOLDER_VIDEOS_API = "https://api.bilibili.com/x/v3/fav/resource/list";
 const BILI_VIEW_API = "https://api.bilibili.com/x/web-interface/view";
 const BILI_ARCHIVE_TAGS_API = "https://api.bilibili.com/x/tag/archive/tags";
+const BILI_FOLLOWING_UPS_API = "https://api.bilibili.com/x/relation/followings";
 const BILI_ORIGIN = "https://www.bilibili.com";
 const BLOCKED_SYSTEM_TAGS = new Set(["uncategorized", "未分类"]);
 const DEFAULT_COVER = "https://i0.hdslb.com/bfs/archive/placeholder.jpg";
@@ -260,8 +272,10 @@ const SLOW_API_THRESHOLD_MS = 400;
 const INVALID_VIDEO_RECOVERY_API = "https://www.biliplus.com/api/view";
 const INVALID_VIDEO_RECOVERY_TIMEOUT_MS = 15_000;
 const INVALID_VIDEO_RECOVERY_GAP_MS = 1_200;
+const BILI_FOLLOWING_UPS_PAGE_SIZE = 50;
+const BILI_FOLLOWING_UPS_PAGE_GAP_MS = 900;
 
-type SyncFetchStage = "nav" | "folders" | "folderVideos";
+type SyncFetchStage = "nav" | "folders" | "folderVideos" | "followings";
 type FetchSource = "extension" | "page";
 
 type TabBridgePayload = {
@@ -321,6 +335,16 @@ type InvalidVideoRecoveryStatus = {
   current: number;
   recovered: number;
   notFound: number;
+  failed: number;
+  lastError: string | null;
+};
+
+type FollowingUpImportStatus = {
+  running: boolean;
+  total: number;
+  current: number;
+  created: number;
+  updated: number;
   failed: number;
   lastError: string | null;
 };
@@ -398,6 +422,7 @@ const defaultState = (): LocalState => ({
   folderItems: [],
   tags: [],
   videoTags: [],
+  followedUps: [],
   syncMeta: {
     tagEnrichment: defaultTagEnrichmentMeta(),
     bidirectionalSync: defaultBidirectionalSyncMeta(),
@@ -446,6 +471,18 @@ const defaultInvalidVideoRecoveryStatus = (): InvalidVideoRecoveryStatus => ({
   lastError: null
 });
 
+function defaultFollowingUpImportStatus(): FollowingUpImportStatus {
+  return {
+    running: false,
+    total: 0,
+    current: 0,
+    created: 0,
+    updated: 0,
+    failed: 0,
+    lastError: null
+  };
+}
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 let stateQueue: Promise<void> = Promise.resolve();
 let tagEnrichmentTask: Promise<void> | null = null;
@@ -457,6 +494,9 @@ let favoritesSyncStatus: FavoritesSyncStatus = defaultFavoritesSyncStatus();
 let invalidVideoRecoveryTask: Promise<void> | null = null;
 let invalidVideoRecoveryStatus: InvalidVideoRecoveryStatus =
   defaultInvalidVideoRecoveryStatus();
+let followingUpImportTask: Promise<void> | null = null;
+let followingUpImportStatus: FollowingUpImportStatus =
+  defaultFollowingUpImportStatus();
 let stage3ReconcileTask: Promise<void> | null = null;
 let folderAiCategoryTask: Promise<unknown> | null = null;
 let folderAiCategoryFolderId: number | null = null;
@@ -580,6 +620,28 @@ async function readState() {
         folderItems: raw.folderItems ?? [],
         tags: raw.tags ?? [],
         videoTags: raw.videoTags ?? [],
+        followedUps: (raw.followedUps ?? []).map((item, index) => ({
+          uid: toInt((item as Partial<FollowedUpRecord>).uid),
+          name: normalizeText((item as Partial<FollowedUpRecord>).name),
+          avatarUrl: normalizeText((item as Partial<FollowedUpRecord>).avatarUrl),
+          spaceUrl:
+            normalizeBiliSpaceUrl(
+              (item as Partial<FollowedUpRecord>).spaceUrl,
+              (item as Partial<FollowedUpRecord>).uid
+            ) || "",
+          sortOrder: Math.max(
+            0,
+            toInt((item as Partial<FollowedUpRecord>).sortOrder, index)
+          ),
+          importedAt: Math.max(
+            0,
+            toInt((item as Partial<FollowedUpRecord>).importedAt, 0)
+          ),
+          updatedAt: Math.max(
+            0,
+            toInt((item as Partial<FollowedUpRecord>).updatedAt, 0)
+          ),
+        })).filter((item) => item.uid > 0 && item.name),
         syncMeta: {
           tagEnrichment: {
             paused: Boolean(raw.syncMeta?.tagEnrichment?.paused),
@@ -1208,6 +1270,13 @@ type BiliFolderMediaListData = {
   };
 };
 
+type BiliFollowingUpsListData = {
+  list?: Array<Record<string, unknown>>;
+  items?: Array<Record<string, unknown>>;
+  cards?: Array<Record<string, unknown>>;
+  total?: unknown;
+};
+
 function resolveFolderHasMore(
   payload: BiliFolderMediaListData,
   page: number,
@@ -1311,7 +1380,7 @@ function parseCsvRows(content: string) {
   return rows;
 }
 
-function parseImportRows(format: "json" | "csv", content: string) {
+export function parseImportRows(format: "json" | "csv", content: string) {
   const nowTs = now();
   const rows: ImportVideoRow[] = [];
   let skipped = 0;
@@ -1559,9 +1628,33 @@ function buildWebDavFileUrl(meta: WebDavMeta, fileName: string) {
   return `${baseUrl}/${encodedPath}/${encodedFileName}`;
 }
 
+export function buildWebDavCollectionUrls(baseUrlInput: unknown, remotePathInput: unknown) {
+  const baseUrl = normalizeWebDavBaseUrl(baseUrlInput);
+  const path = normalizeWebDavRemotePath(remotePathInput);
+  if (!path) return [];
+
+  const segments = path
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const urls: string[] = [];
+  let currentPath = "";
+
+  for (const segment of segments) {
+    currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+    const encodedPath = currentPath
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/");
+    urls.push(`${baseUrl}/${encodedPath}`);
+  }
+
+  return urls;
+}
+
 async function requestWebDav(
   meta: WebDavMeta,
-  method: "GET" | "PUT" | "DELETE" | "HEAD",
+  method: "GET" | "PUT" | "DELETE" | "HEAD" | "MKCOL",
   fileName: string,
   body: string | null = null
 ) {
@@ -1589,6 +1682,36 @@ async function requestWebDav(
     "WebDAV request"
   );
   return response;
+}
+
+async function requestWebDavCollection(meta: WebDavMeta, method: "MKCOL", collectionUrl: string) {
+  const username = normalizeText(meta.username);
+  if (!username) throw new Error("WebDAV username is not configured");
+  if (!meta.password) throw new Error("WebDAV password is not configured");
+
+  const response = await fetchWithTimeout(
+    collectionUrl,
+    {
+      method,
+      headers: {
+        Authorization: toBasicAuthHeader(username, meta.password),
+      },
+    },
+    WEBDAV_REQUEST_TIMEOUT_MS,
+    "WebDAV request"
+  );
+  return response;
+}
+
+async function ensureWebDavRemoteDirectory(meta: WebDavMeta) {
+  const collectionUrls = buildWebDavCollectionUrls(meta.baseUrl, meta.remotePath);
+  for (const collectionUrl of collectionUrls) {
+    const response = await requestWebDavCollection(meta, "MKCOL", collectionUrl);
+    if ([200, 201, 204, 301, 302, 405].includes(response.status)) {
+      continue;
+    }
+    throw new Error(`WebDAV directory preparation failed (${response.status})`);
+  }
 }
 
 function getAllCookies(api: CookiesApi, details: { domain?: string }): Promise<CookieLike[]> {
@@ -2336,14 +2459,14 @@ function normalizeWebDavBaseUrl(rawUrl: unknown) {
   return parsed.toString().replace(/\/+$/, "");
 }
 
-function normalizeWebDavRemotePath(rawPath: unknown) {
+export function normalizeWebDavRemotePath(rawPath: unknown) {
   const text = normalizeText(rawPath).replace(/\\/g, "/");
   const cleaned = text
     .split("/")
     .map((segment) => segment.trim())
     .filter(Boolean)
     .join("/");
-  return cleaned || "bilishelf";
+  return cleaned;
 }
 
 function ensureWebDavMeta(state: LocalState) {
@@ -3324,6 +3447,168 @@ function updateInvalidVideoRecoveryStatus(
   };
 }
 
+function getFollowingUpImportStatus() {
+  return {
+    ...followingUpImportStatus
+  };
+}
+
+function updateFollowingUpImportStatus(
+  patch: Partial<FollowingUpImportStatus>
+) {
+  followingUpImportStatus = {
+    ...followingUpImportStatus,
+    ...patch
+  };
+}
+
+async function importFollowingUpsToState(initialState: LocalState) {
+  const baseFollowedUps = [...initialState.followedUps];
+  const importedRecords: NormalizedFollowedUpRecord[] = [];
+  let total = 0;
+  let current = 0;
+  let failed = 0;
+  let page = 1;
+
+  while (true) {
+    const query = new URLSearchParams({
+      vmid: String((await fetchBiliJson<{ isLogin?: boolean; mid?: number }>(BILI_NAV_API, "nav")).mid ?? 0),
+      pn: String(page),
+      ps: String(BILI_FOLLOWING_UPS_PAGE_SIZE),
+      order: "desc",
+    });
+
+    let payload: BiliFollowingUpsListData;
+    try {
+      payload = await fetchBiliJson<BiliFollowingUpsListData>(
+        `${BILI_FOLLOWING_UPS_API}?${query.toString()}`,
+        "followings"
+      );
+    } catch (error) {
+      failed += 1;
+      const message = isBiliRequestError(error)
+        ? formatBiliRequestError(error)
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      const isRisk = isBiliRequestError(error)
+        ? error.status === 412 || isRiskControlError(message)
+        : isRiskControlError(message);
+      updateFollowingUpImportStatus({
+        running: true,
+        total,
+        current,
+        failed,
+        lastError: message
+      });
+      if (isRisk) {
+        break;
+      }
+      break;
+    }
+
+    const rows = payload.list ?? payload.items ?? payload.cards ?? [];
+    const totalCandidate = toInt(payload.total, total);
+    if (totalCandidate > 0) {
+      total = totalCandidate;
+    }
+    if (rows.length === 0) {
+      break;
+    }
+
+    const normalizedPageRecords = rows
+      .map((item) => normalizeFollowedUpRecord(item))
+      .filter((item): item is NormalizedFollowedUpRecord => !!item);
+
+    importedRecords.push(...normalizedPageRecords);
+    current = importedRecords.length;
+
+    await withState((state) => {
+      const merged = mergeFollowedUpRecords(baseFollowedUps, importedRecords, now());
+      state.followedUps = merged.records;
+      updateFollowingUpImportStatus({
+        running: true,
+        total: Math.max(total, current),
+        current,
+        created: merged.created,
+        updated: merged.updated,
+        failed,
+        lastError: null
+      });
+    }, true);
+
+    if (rows.length < BILI_FOLLOWING_UPS_PAGE_SIZE) {
+      break;
+    }
+
+    page += 1;
+    await sleep(BILI_FOLLOWING_UPS_PAGE_GAP_MS);
+  }
+
+  await withState((state) => {
+    const merged = mergeFollowedUpRecords(baseFollowedUps, importedRecords, now());
+    state.followedUps = merged.records;
+    updateFollowingUpImportStatus({
+      running: true,
+      total: Math.max(total, current),
+      current,
+      created: merged.created,
+      updated: merged.updated,
+      failed,
+      lastError: followingUpImportStatus.lastError
+    });
+  }, true);
+}
+
+async function runFollowingUpImportTask() {
+  const nav = await fetchBiliJson<{ isLogin?: boolean; mid?: number }>(BILI_NAV_API, "nav");
+  const mid = toInt(nav.mid ?? 0, 0);
+  if (!nav.isLogin || mid <= 0) {
+    throw new Error("Please login to Bilibili in current browser first");
+  }
+
+  updateFollowingUpImportStatus({
+    running: true,
+    total: 0,
+    current: 0,
+    created: 0,
+    updated: 0,
+    failed: 0,
+    lastError: null
+  });
+
+  const initialState = await readState();
+  await importFollowingUpsToState(initialState);
+}
+
+function startFollowingUpImportTask() {
+  if (followingUpImportTask) {
+    return false;
+  }
+
+  updateFollowingUpImportStatus({
+    ...defaultFollowingUpImportStatus(),
+    running: true
+  });
+
+  followingUpImportTask = runFollowingUpImportTask()
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      updateFollowingUpImportStatus({
+        running: false,
+        lastError: message
+      });
+    })
+    .finally(() => {
+      updateFollowingUpImportStatus({
+        running: false
+      });
+      followingUpImportTask = null;
+    });
+
+  return true;
+}
+
 async function fetchInvalidVideoRecoveryMetadataFromBiliPlus(
   video: Pick<VideoRecord, "bvid">
 ) {
@@ -3605,17 +3890,50 @@ function startFavoritesSyncTask(params: {
 function buildExportPayload(state: LocalState) {
   const exportedAt = now();
   const stamp = new Date(exportedAt).toISOString().replace(/[:.]/g, "-");
+  const exportFolders = state.folders.filter((folder) => folder.deletedAt === null);
+  const exportFolderIds = new Set(exportFolders.map((folder) => folder.id));
+  const exportVideos = state.videos.filter((video) => video.deletedAt === null);
+  const exportVideoIds = new Set(exportVideos.map((video) => video.id));
+  const exportFolderItems = state.folderItems.filter(
+    (item) => exportFolderIds.has(item.folderId) && exportVideoIds.has(item.videoId)
+  );
+  const referencedTagIds = new Set(
+    state.videoTags
+      .filter((edge) => exportVideoIds.has(edge.videoId))
+      .map((edge) => edge.tagId)
+  );
+  const exportTags = state.tags.filter(
+    (tag) => tag.archivedAt === null && referencedTagIds.has(tag.id)
+  );
+  const exportTagIds = new Set(exportTags.map((tag) => tag.id));
+  const exportVideoTags = state.videoTags.filter(
+    (edge) => exportVideoIds.has(edge.videoId) && exportTagIds.has(edge.tagId)
+  );
   const {
     folderNamesByVideo,
     folderCountByVideo,
     latestAddedAtByVideo,
     customTagsByVideo,
     systemTagsByVideo
-  } = buildVideoExportMaps(state);
+  } = buildVideoExportMaps(
+    {
+      ...state,
+      folders: exportFolders,
+      folderItems: exportFolderItems,
+      tags: exportTags,
+      videoTags: exportVideoTags
+    },
+    exportVideoIds
+  );
 
   return {
     exportedAt,
     stamp,
+    exportFolders,
+    exportVideos,
+    exportFolderItems,
+    exportTags,
+    exportVideoTags,
     folderNamesByVideo,
     folderCountByVideo,
     latestAddedAtByVideo,
@@ -3624,23 +3942,28 @@ function buildExportPayload(state: LocalState) {
   };
 }
 
-function buildJsonExportResult(state: LocalState) {
-  const summary = {
-    folders: state.folders.length,
-    videos: state.videos.length,
-    tags: state.tags.length
-  };
+export function buildJsonExportResult(state: LocalState) {
   const {
     exportedAt,
     stamp,
+    exportFolders,
+    exportVideos: activeExportVideos,
+    exportFolderItems,
+    exportTags,
+    exportVideoTags,
     latestAddedAtByVideo,
     folderCountByVideo,
     folderNamesByVideo,
     customTagsByVideo,
     systemTagsByVideo
   } = buildExportPayload(state);
+  const summary = {
+    folders: exportFolders.length,
+    videos: activeExportVideos.length,
+    tags: exportTags.length
+  };
 
-  const exportVideos = state.videos.map((video) => {
+  const exportVideos = activeExportVideos.map((video) => {
     const metadata = buildExportVideoMetadata(video, {
       folderNamesByVideo,
       folderCountByVideo,
@@ -3648,17 +3971,17 @@ function buildJsonExportResult(state: LocalState) {
       customTagsByVideo,
       systemTagsByVideo
     });
+    const { partition: _partition, ...videoWithoutPartition } = video;
     return {
-      ...video,
+      ...videoWithoutPartition,
       uploaderSpaceUrl: normalizeBiliSpaceUrl(video.uploaderSpaceUrl),
-      partition: metadata.partition,
       folderCount: metadata.folderCount,
       publishAtText: formatTimestamp(video.publishAt),
       favoriteAt: metadata.favoriteAt,
       favoriteAtText: formatTimestamp(metadata.favoriteAt)
     };
   });
-  const exportFolderItems = state.folderItems.map((item) => ({
+  const exportFolderItemsWithText = exportFolderItems.map((item) => ({
     ...item,
     addedAtText: formatTimestamp(item.addedAt)
   }));
@@ -3670,11 +3993,11 @@ function buildJsonExportResult(state: LocalState) {
         exportedAtText: formatTimestamp(exportedAt),
         source: "bilishelf-extension-local"
       },
-      folders: state.folders,
+      folders: exportFolders,
       videos: exportVideos,
-      folderItems: exportFolderItems,
-      tags: state.tags,
-      videoTags: state.videoTags
+      folderItems: exportFolderItemsWithText,
+      tags: exportTags,
+      videoTags: exportVideoTags
     },
     null,
     2
@@ -3688,6 +4011,128 @@ function buildJsonExportResult(state: LocalState) {
     summary,
     stamp
   };
+}
+
+function listVideoFinalFolders(state: LocalState, videoId: number) {
+  return state.folderItems
+    .filter((item) => item.videoId === videoId)
+    .map((item) => state.folders.find((folder) => folder.id === item.folderId))
+    .filter((folder): folder is FolderRecord => !!folder && folder.deletedAt === null)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((folder) => ({ id: folder.id, name: folder.name }));
+}
+
+export function saveVideoSelectionToState(
+  state: LocalState,
+  body: Record<string, unknown>
+): ApiResult {
+  const bvid = normalizeText(body.bvid);
+  const title = normalizeText(body.title);
+  const bvidUrl = normalizeBiliVideoUrl(body.bvidUrl, bvid);
+  if (!bvid || !title || !bvidUrl) return fail(400, "Video payload is incomplete");
+
+  const folderIds = Array.isArray(body.folderIds) ? body.folderIds.map((id) => toInt(id)) : [];
+  const uniqueFolderIds = Array.from(new Set(folderIds.filter((id) => id > 0)));
+  const activeFolderIdSet = new Set(activeFolders(state).map((folder) => folder.id));
+  const validFolderIds = uniqueFolderIds.filter((id) => activeFolderIdSet.has(id));
+  const existed = state.videos.find((video) => normalizeKey(video.bvid) === normalizeKey(bvid));
+  if (validFolderIds.length === 0 && !existed) {
+    return fail(400, "At least one folder is required");
+  }
+
+  const timestamp = now();
+  const video: VideoRecord = existed || {
+    id: state.counters.video++,
+    bvid,
+    title,
+    coverUrl: normalizeText(body.coverUrl),
+    uploader: normalizeText(body.uploader),
+    uploaderSpaceUrl: normalizeBiliSpaceUrl(body.uploaderSpaceUrl),
+    description: normalizeText(body.description),
+    partition: normalizeVideoPartition(body.partition),
+    publishAt: toIntOrNull(body.publishAt),
+    bvidUrl,
+    isInvalid: false,
+    deletedAt: null,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  video.bvid = bvid;
+  video.title = title;
+  video.coverUrl = normalizeText(body.coverUrl);
+  video.uploader = normalizeText(body.uploader);
+  video.uploaderSpaceUrl = normalizeBiliSpaceUrl(body.uploaderSpaceUrl);
+  video.description = normalizeText(body.description);
+  video.partition = normalizeVideoPartition(body.partition);
+  video.publishAt = toIntOrNull(body.publishAt);
+  video.bvidUrl = bvidUrl;
+  video.isInvalid = Boolean(body.isInvalid);
+  video.deletedAt = null;
+  video.updatedAt = timestamp;
+
+  if (!existed) {
+    state.videos.push(video);
+  }
+
+  const addedFolderIds: number[] = [];
+  const existingFolderIds: number[] = [];
+  for (const folderId of validFolderIds) {
+    if (folderItemExists(state, folderId, video.id)) {
+      existingFolderIds.push(folderId);
+      continue;
+    }
+    state.folderItems.push({
+      id: state.counters.folderItem++,
+      folderId,
+      videoId: video.id,
+      addedAt: timestamp
+    });
+    addedFolderIds.push(folderId);
+  }
+
+  const validFolderIdSet = new Set(validFolderIds);
+  const removedFolderIds: number[] = [];
+  state.folderItems = state.folderItems.filter((item) => {
+    if (item.videoId !== video.id) return true;
+    if (validFolderIdSet.has(item.folderId)) return true;
+    if (!removedFolderIds.includes(item.folderId)) {
+      removedFolderIds.push(item.folderId);
+    }
+    return false;
+  });
+
+  const customTags = Array.isArray(body.customTags) ? body.customTags : [];
+  const systemTags = Array.isArray(body.systemTags) ? body.systemTags : [];
+  for (const tagName of customTags) {
+    const tag = ensureTag(state, tagName, "custom");
+    if (tag) ensureVideoTag(state, video.id, tag.id);
+  }
+  for (const tagName of systemTags) {
+    const tag = ensureTag(state, tagName, "system");
+    if (tag) ensureVideoTag(state, video.id, tag.id);
+  }
+
+  const finalFolders = listVideoFinalFolders(state, video.id);
+  const finalFolderIds = finalFolders.map((folder) => folder.id);
+  const deleted = finalFolderIds.length === 0;
+  if (deleted) {
+    removeVideoCompletely(state, video.id);
+  }
+
+  return ok(
+    {
+      video: mapVideo(state, video),
+      created: !existed,
+      deleted,
+      addedFolderIds,
+      existingFolderIds,
+      removedFolderIds,
+      finalFolderIds,
+      finalFolders,
+    },
+    existed ? 200 : 201
+  );
 }
 
 function applyImportRowsToState(
@@ -3966,6 +4411,24 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       return ok(getFavoritesSyncStatus());
     }
 
+    if (method === "GET" && path === "/sync/bilibili/tag-enrichment/status") {
+      const snapshot = await readState();
+      return ok(getTagEnrichmentStatus(snapshot));
+    }
+
+    if (method === "GET" && path === "/sync/bilibili/following-ups/status") {
+      return ok(getFollowingUpImportStatus());
+    }
+
+    if (method === "GET" && path === "/following-ups") {
+      const snapshot = await readState();
+      return ok({
+        items: [...snapshot.followedUps].sort(
+          (left, right) => left.sortOrder - right.sortOrder || left.uid - right.uid
+        )
+      });
+    }
+
     if (method === "POST" && path === "/sync/bilibili/history-model/start") {
       const selectedRemoteFolderIds = Array.isArray(body.selectedRemoteFolderIds)
         ? body.selectedRemoteFolderIds
@@ -3992,6 +4455,15 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         ok: true,
         started,
         status: getFavoritesSyncStatus()
+      });
+    }
+
+    if (method === "POST" && path === "/sync/bilibili/following-ups/start") {
+      const started = startFollowingUpImportTask();
+      return ok({
+        ok: true,
+        started,
+        status: getFollowingUpImportStatus()
       });
     }
 
@@ -4120,10 +4592,6 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       return await withState(async (state) => {
         if (method === "GET" && path === "/health") {
           return ok({ ok: true });
-        }
-
-        if (method === "GET" && path === "/sync/bilibili/tag-enrichment/status") {
-          return ok(getTagEnrichmentStatus(state));
         }
 
       if (method === "POST" && path === "/sync/bilibili/tag-enrichment/pause") {
@@ -4340,6 +4808,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           if (!meta.password) {
             throw new Error("WebDAV password is not configured");
           }
+          await ensureWebDavRemoteDirectory(meta);
           const probeName = `.bilishelf-probe-${Date.now()}.txt`;
           const putResponse = await requestWebDav(
             meta,
@@ -4380,6 +4849,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           if (!meta.enabled) {
             throw new Error("WebDAV backup is disabled");
           }
+          await ensureWebDavRemoteDirectory(meta);
           const jsonBackup = buildJsonExportResult(state);
           const latestFileName = WEBDAV_LATEST_FILE_NAME;
           const snapshotFileName = `bilishelf-${jsonBackup.stamp}.json`;
@@ -4590,14 +5060,11 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
 
       if (method === "GET" && path === "/export") {
         const format = params.get("format") === "csv" ? "csv" : "json";
-        const summary = {
-          folders: state.folders.length,
-          videos: state.videos.length,
-          tags: state.tags.length
-        };
         const {
-          exportedAt,
           stamp,
+          exportFolders,
+          exportVideos,
+          exportTags,
           folderNamesByVideo,
           folderCountByVideo,
           latestAddedAtByVideo,
@@ -4605,6 +5072,11 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           systemTagsByVideo
         } =
           buildExportPayload(state);
+        const summary = {
+          folders: exportFolders.length,
+          videos: exportVideos.length,
+          tags: exportTags.length
+        };
 
         if (format === "json") {
           return ok(buildJsonExportResult(state));
@@ -4613,7 +5085,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         const header = [...LIBRARY_EXPORT_VIDEO_CSV_HEADER];
         const lines = [header.join(",")];
 
-        for (const video of state.videos) {
+        for (const video of exportVideos) {
           const metadata = buildExportVideoMetadata(video, {
             folderNamesByVideo,
             folderCountByVideo,
@@ -4621,27 +5093,22 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
             customTagsByVideo,
             systemTagsByVideo
           });
-          const favoriteAtMs = metadata.favoriteAt ?? "";
-          const publishAtMs = video.publishAt ?? "";
           const row = [
             video.bvid,
             video.title,
             video.uploader,
             normalizeBiliSpaceUrl(video.uploaderSpaceUrl) ?? "",
-            video.description,
-            video.coverUrl,
             video.bvidUrl,
-            metadata.partition,
-            formatTimestamp(video.publishAt),
-            publishAtMs,
-            formatTimestamp(typeof favoriteAtMs === "number" ? favoriteAtMs : null),
-            favoriteAtMs,
-            metadata.folderCount,
+            video.coverUrl,
             metadata.folders.join("|"),
-            metadata.customTags.join("|"),
+            metadata.folderCount,
             metadata.systemTags.join("|"),
+            metadata.customTags.join("|"),
+            formatTimestamp(video.publishAt),
+            formatTimestamp(metadata.favoriteAt),
             video.isInvalid ? "1" : "0",
-            video.deletedAt ?? ""
+            formatTimestamp(video.deletedAt),
+            video.description
           ].map(csvEscape);
           lines.push(row.join(","));
         }
@@ -4821,94 +5288,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
       }
 
       if (method === "POST" && path === "/videos") {
-        const bvid = normalizeText(body.bvid);
-        const title = normalizeText(body.title);
-        const bvidUrl = normalizeBiliVideoUrl(body.bvidUrl, bvid);
-        if (!bvid || !title || !bvidUrl) return fail(400, "Video payload is incomplete");
-
-        const folderIds = Array.isArray(body.folderIds) ? body.folderIds.map((id) => toInt(id)) : [];
-        const activeFolderIdSet = new Set(activeFolders(state).map((folder) => folder.id));
-        const validFolderIds = folderIds.filter((id) => activeFolderIdSet.has(id));
-        if (validFolderIds.length === 0) return fail(400, "At least one folder is required");
-
-        const existed = state.videos.find((video) => normalizeKey(video.bvid) === normalizeKey(bvid));
-        const timestamp = now();
-        const video: VideoRecord = existed || {
-          id: state.counters.video++,
-          bvid,
-          title,
-          coverUrl: normalizeText(body.coverUrl),
-          uploader: normalizeText(body.uploader),
-          uploaderSpaceUrl: normalizeBiliSpaceUrl(body.uploaderSpaceUrl),
-          description: normalizeText(body.description),
-          partition: normalizeVideoPartition(body.partition),
-          publishAt: toIntOrNull(body.publishAt),
-          bvidUrl,
-          isInvalid: false,
-          deletedAt: null,
-          createdAt: timestamp,
-          updatedAt: timestamp
-        };
-
-        video.bvid = bvid;
-        video.title = title;
-        video.coverUrl = normalizeText(body.coverUrl);
-        video.uploader = normalizeText(body.uploader);
-        video.uploaderSpaceUrl = normalizeBiliSpaceUrl(body.uploaderSpaceUrl);
-        video.description = normalizeText(body.description);
-        video.partition = normalizeVideoPartition(body.partition);
-        video.publishAt = toIntOrNull(body.publishAt);
-        video.bvidUrl = bvidUrl;
-        video.isInvalid = Boolean(body.isInvalid);
-        video.deletedAt = null;
-        video.updatedAt = timestamp;
-
-        if (!existed) {
-          state.videos.push(video);
-        }
-
-        const addedFolderIds: number[] = [];
-        const existingFolderIds: number[] = [];
-        for (const folderId of validFolderIds) {
-          if (folderItemExists(state, folderId, video.id)) {
-            existingFolderIds.push(folderId);
-            continue;
-          }
-          state.folderItems.push({
-            id: state.counters.folderItem++,
-            folderId,
-            videoId: video.id,
-            addedAt: timestamp
-          });
-          addedFolderIds.push(folderId);
-        }
-
-        const customTags = Array.isArray(body.customTags) ? body.customTags : [];
-        const systemTags = Array.isArray(body.systemTags) ? body.systemTags : [];
-        for (const tagName of customTags) {
-          const tag = ensureTag(state, tagName, "custom");
-          if (tag) ensureVideoTag(state, video.id, tag.id);
-        }
-        for (const tagName of systemTags) {
-          const tag = ensureTag(state, tagName, "system");
-          if (tag) ensureVideoTag(state, video.id, tag.id);
-        }
-
-        const finalFolders = state.folderItems
-          .filter((item) => item.videoId === video.id)
-          .map((item) => state.folders.find((folder) => folder.id === item.folderId))
-          .filter((folder): folder is FolderRecord => !!folder && folder.deletedAt === null)
-          .sort((left, right) => left.sortOrder - right.sortOrder)
-          .map((folder) => ({ id: folder.id, name: folder.name }));
-
-        return ok({
-          video: mapVideo(state, video),
-          created: !existed,
-          addedFolderIds,
-          existingFolderIds,
-          finalFolderIds: finalFolders.map((folder) => folder.id),
-          finalFolders,
-        }, existed ? 200 : 201);
+        return saveVideoSelectionToState(state, body);
       }
 
       const videoByIdMatch = path.match(/^\/videos\/(\d+)$/);

@@ -9,14 +9,14 @@ import {
   matchesQuickFavoriteShortcut,
 } from "../utils/quick-favorite.js";
 
-test("matches quick favorite shortcut only for Alt+Shift+S without control or meta", () => {
+test("matches quick favorite shortcut only for Ctrl+Alt+1 without shift or meta", () => {
   assert.equal(
     matchesQuickFavoriteShortcut({
-      key: "S",
-      code: "KeyS",
+      key: "1",
+      code: "Digit1",
       altKey: true,
-      shiftKey: true,
-      ctrlKey: false,
+      shiftKey: false,
+      ctrlKey: true,
       metaKey: false,
       repeat: false,
     }),
@@ -24,10 +24,10 @@ test("matches quick favorite shortcut only for Alt+Shift+S without control or me
   );
   assert.equal(
     matchesQuickFavoriteShortcut({
-      key: "s",
-      code: "KeyS",
-      altKey: false,
-      shiftKey: true,
+      key: "1",
+      code: "Digit1",
+      altKey: true,
+      shiftKey: false,
       ctrlKey: false,
       metaKey: false,
       repeat: false,
@@ -36,8 +36,8 @@ test("matches quick favorite shortcut only for Alt+Shift+S without control or me
   );
   assert.equal(
     matchesQuickFavoriteShortcut({
-      key: "s",
-      code: "KeyS",
+      key: "1",
+      code: "Digit1",
       altKey: true,
       shiftKey: true,
       ctrlKey: true,
@@ -98,43 +98,55 @@ test("editable target detection ignores shortcut handling inside text inputs", (
   assert.equal(isEditableTarget({ tagName: "BUTTON", isContentEditable: false }), false);
 });
 
-test("quick favorite toast message distinguishes added folders from duplicate folders", () => {
+test("quick favorite toast message distinguishes added, duplicate, and removed folders", () => {
   const t = (key, vars = {}) => `${key}:${JSON.stringify(vars)}`;
 
   assert.equal(
     buildQuickFavoriteToastMessage(
       {
-        addedFolderNames: ["稍后重看"],
+        addedFolderNames: ["Watch Later"],
         existingFolderNames: [],
       },
       t,
     ),
-    'toast.savedAddedFolders:{"folders":"稍后重看","count":1}',
+    'toast.savedAddedFolders:{"folders":"Watch Later","count":1}',
   );
 
   assert.equal(
     buildQuickFavoriteToastMessage(
       {
         addedFolderNames: [],
-        existingFolderNames: ["默认收藏夹", "教程"],
+        existingFolderNames: ["Favorites", "Tutorials"],
       },
       t,
     ),
-    'toast.savedDuplicate:{"folders":"默认收藏夹、教程","count":2}',
+    'toast.savedDuplicate:{"folders":"Favorites、Tutorials","count":2}',
   );
 
   assert.equal(
     buildQuickFavoriteToastMessage(
       {
-        addedFolderNames: ["稍后重看"],
-        existingFolderNames: ["默认收藏夹"],
+        addedFolderNames: ["Watch Later"],
+        existingFolderNames: ["Favorites"],
       },
       t,
     ),
-    'toast.savedMixedFolders:{"addedFolders":"稍后重看","addedCount":1,"existingFolders":"默认收藏夹","existingCount":1}',
+    'toast.savedMixedFolders:{"addedFolders":"Watch Later","addedCount":1,"existingFolders":"Favorites","existingCount":1}',
+  );
+
+  assert.equal(
+    buildQuickFavoriteToastMessage(
+      {
+        addedFolderNames: [],
+        existingFolderNames: ["Music"],
+        removedFolderNames: ["Favorites"],
+      },
+      t,
+    ),
+    'toast.savedRemovedFolders:{"folders":"Favorites","count":1}',
   );
 });
 
 test("quick favorite shortcut label stays stable for copy and UI hints", () => {
-  assert.equal(QUICK_FAVORITE_SHORTCUT_LABEL, "Alt+Shift+S");
+  assert.equal(QUICK_FAVORITE_SHORTCUT_LABEL, "Ctrl+Alt+1");
 });

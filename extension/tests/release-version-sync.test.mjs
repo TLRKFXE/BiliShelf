@@ -24,7 +24,7 @@ test("frontend package, extension package, and extension manifest versions stay 
   assert.ok(manifestVersion, "expected manifest version in extension/wxt.config.ts");
   assert.equal(frontendPackage.version, extensionPackage.version);
   assert.equal(manifestVersion, extensionPackage.version);
-  assert.notEqual(extensionPackage.version, "0.1.0");
+  assert.equal(extensionPackage.version, "0.1.5");
 });
 
 test("release packaging script does not hardcode the initial extension version", async () => {
