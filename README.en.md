@@ -13,7 +13,7 @@ Have you ever felt frustrated by Bilibili's favorites limits or the weak search 
 - It stores video metadata, folder relations, and tags locally, solves the limits of native Bilibili favorites and their weak search experience, and provides more flexible organization, search, sync, and backup workflows than the default Bilibili experience.
 - Please read all notes carefully.
 
-<img width="1111" height="744" alt="a2bd6a4d-5b3b-4768-aaf0-13a1e18d64fa" src="https://github.com/user-attachments/assets/4c5d155a-9e13-4645-ba23-4dfe993f8939" />
+<img width="2499" height="1286" alt="ea5e8bc5-7a57-4921-a66a-8b00f144da23" src="https://github.com/user-attachments/assets/3386ddf5-b467-46f7-9af3-33dd36e27a6a" />
 
 ## What It Solves
 
