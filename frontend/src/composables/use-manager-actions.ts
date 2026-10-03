@@ -96,6 +96,7 @@ export function useManagerActions(params: UseManagerActionsParams) {
   async function handleCreateFolder(payload: {
     name: string;
     description?: string;
+    groupName?: string | null;
   }) {
     try {
       await createFolder(payload);
@@ -110,6 +111,7 @@ export function useManagerActions(params: UseManagerActionsParams) {
     id: number;
     name?: string;
     description?: string | null;
+    groupName?: string | null;
   }) {
     try {
       await updateFolder(payload.id, payload);

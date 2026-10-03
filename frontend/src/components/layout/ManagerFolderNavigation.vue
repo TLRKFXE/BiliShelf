@@ -32,8 +32,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [number | null];
-  create: [{ name: string; description?: string }];
-  update: [{ id: number; name?: string; description?: string | null }];
+  create: [{ name: string; description?: string; groupName?: string | null }];
+  update: [{ id: number; name?: string; description?: string | null; groupName?: string | null }];
   remove: [number];
   reorder: [number[]];
   startPlayback: [number];

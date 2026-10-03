@@ -60,14 +60,16 @@ test("collector keeps saved state semantic and uses only inline save feedback", 
   assert.match(source, /refreshFloatingFavoriteStateFromPage\(true\)/);
 });
 
-test("collector panel keeps motion while saved bookmark styling stays unchanged", async () => {
+test("collector panel keeps motion and shows a filled saved bookmark state", async () => {
   const source = await readContentSource();
 
   assert.match(source, /"aria-pressed": "false"/);
   assert.match(source, /"aria-expanded": "false"/);
   assert.doesNotMatch(source, /bl-floating-bookmark-fill/);
   assert.doesNotMatch(source, /bl-floating-saved-dot/);
-  assert.doesNotMatch(source, /data-favorite-state="saved"/);
+  assert.match(source, /#bl-floating-btn\[data-favorite-state='saved'\]/);
+  assert.match(source, /#bl-floating-btn\[data-favorite-state='saved'\] > svg path/);
+  assert.match(source, /fill: currentColor/);
   assert.doesNotMatch(source, /bl-favorite-confirm/);
   assert.match(source, /@keyframes bl-panel-in/);
   assert.match(source, /#bl-floating-panel\.is-closing/);

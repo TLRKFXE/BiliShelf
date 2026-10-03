@@ -2,9 +2,14 @@
   containsFavoriteActionKeyword,
   extractFavoriteFolderIdFromUrl,
   extractBvidFromAny,
+  extractAidFromAny,
+  extractBangumiSeasonId,
+  extractAudioId,
   isActionSyncPageUrl,
+  isDynamicVideoUrl,
   isArticleUiUrl,
   isCollectorUiUrl,
+  isSpecialMediaUrl,
   extractOpusId,
   normalizeBvidToken,
 } from "./utils/bili-action-sync.js";
@@ -44,6 +49,11 @@ import {
   const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
   const BILI_VIEW_API = "https://api.bilibili.com/x/web-interface/view";
   const BILI_TAG_API = "https://api.bilibili.com/x/tag/archive/tags";
+  const BILI_BANGUMI_SEASON_API = "https://api.bilibili.com/pgc/view/web/season";
+  const BILI_AUDIO_INFO_APIS = [
+    "https://www.bilibili.com/audio/music-service-c/web/song/info",
+    "https://api.bilibili.com/audio/music-service-c/web/song/info"
+  ];
   const DEFAULT_COVER = "https://i0.hdslb.com/bfs/archive/placeholder.jpg";
 
   const BUTTON_POS_STORAGE_KEY = "bili_like_button_pos_v3";
@@ -118,10 +128,24 @@ import {
     "status.videosCount": { [LOCALE_ZH]: "{count} 个视频", [LOCALE_EN]: "{count} videos" },
     "status.articlesCount": { [LOCALE_ZH]: "{count} 篇专栏", [LOCALE_EN]: "{count} articles" },
     "status.noFolders": { [LOCALE_ZH]: "没有匹配的收藏夹", [LOCALE_EN]: "No folders found" },
+    "status.expandFolderGroup": { [LOCALE_ZH]: "展开收藏夹分组", [LOCALE_EN]: "Expand folder group" },
+    "status.collapseFolderGroup": { [LOCALE_ZH]: "收起收藏夹分组", [LOCALE_EN]: "Collapse folder group" },
     "status.favoriteButton": { [LOCALE_ZH]: "收藏视频", [LOCALE_EN]: "Save video" },
     "status.favoriteButtonSaved": {
       [LOCALE_ZH]: "该视频已收藏，点击管理",
       [LOCALE_EN]: "This video is saved. Click to manage"
+    },
+    "status.localFavoriteNearNative": {
+      [LOCALE_ZH]: "BiliShelf 已收藏",
+      [LOCALE_EN]: "BiliShelf saved"
+    },
+    "status.localFavoriteNearNativeIdle": {
+      [LOCALE_ZH]: "BiliShelf 未收藏",
+      [LOCALE_EN]: "BiliShelf not saved"
+    },
+    "status.localFavoriteNearNativeLoading": {
+      [LOCALE_ZH]: "BiliShelf 检查中",
+      [LOCALE_EN]: "Checking BiliShelf"
     },
     "status.favoriteArticleButton": {
       [LOCALE_ZH]: "收藏专栏",
@@ -158,6 +182,11 @@ import {
     "modal.createArticleFolder": { [LOCALE_ZH]: "新建专栏文件夹", [LOCALE_EN]: "Create Article Folder" },
     "modal.name": { [LOCALE_ZH]: "名称", [LOCALE_EN]: "Name" },
     "modal.description": { [LOCALE_ZH]: "简介", [LOCALE_EN]: "Description" },
+    "modal.group": { [LOCALE_ZH]: "分组", [LOCALE_EN]: "Group" },
+    "modal.groupPlaceholder": {
+      [LOCALE_ZH]: "例如：学习、娱乐（可选）",
+      [LOCALE_EN]: "e.g. Learning, Entertainment (optional)"
+    },
     "modal.folderNamePlaceholder": { [LOCALE_ZH]: "收藏夹名称", [LOCALE_EN]: "Folder name" },
     "modal.folderDescPlaceholder": {
       [LOCALE_ZH]: "收藏夹简介",
@@ -321,12 +350,16 @@ import {
     const label = `${actionLabel} (${shortcutLabel})`;
     floatingBtn.title = label;
     floatingBtn.setAttribute("aria-label", label);
+    syncNativeFavoriteStatus();
   }
 
   let root = null;
   let panelBackdrop = null;
   let panel = null;
   let floatingBtn = null;
+  let nativeFavoriteStatus = null;
+  let nativeFavoriteStatusObserver = null;
+  let nativeFavoriteMountTimer = 0;
   let modal = null;
   let toastRoot = null;
   let folderListEl = null;
@@ -340,6 +373,7 @@ import {
   let selectAllFoldersBtn = null;
   let clearFolderSelectionBtn = null;
   let selectedCountEl = null;
+  let currentFavoriteFoldersEl = null;
   let videoTitleEl = null;
   let videoMetaEl = null;
   let videoCoverEl = null;
@@ -350,6 +384,7 @@ import {
   let folderDescCountEl = null;
   let folderModalNameInput = null;
   let folderModalDescInput = null;
+  let folderModalGroupInput = null;
   let folderModalSaveBtn = null;
   let folderModalCancelBtn = null;
   let folderModalCloseBtn = null;
@@ -378,6 +413,7 @@ import {
   let suppressButtonClick = false;
   let allFolders = [];
   let allCustomTags = [];
+  const collapsedFolderGroups = new Set();
   let selectedFolderIds = new Set();
   let currentVideo = null;
   let currentVideoLocalFolders = [];
@@ -557,8 +593,35 @@ import {
     ];
   }
 
+  function normalizeLocalContentKey(value) {
+    const bvid = normalizeBvidToken(value);
+    return bvid || String(value || "").trim().toLowerCase();
+  }
+
+  function resolveSpecialMediaFromUrl(rawUrl) {
+    const bangumiSeasonId = extractBangumiSeasonId(rawUrl);
+    if (bangumiSeasonId) {
+      return {
+        mediaKind: "bangumi",
+        mediaId: bangumiSeasonId,
+        contentKey: `bilishelf:bangumi:${bangumiSeasonId}`
+      };
+    }
+    const audioId = extractAudioId(rawUrl);
+    if (audioId) {
+      return {
+        mediaKind: "audio",
+        mediaId: audioId,
+        contentKey: `bilishelf:audio:${audioId}`
+      };
+    }
+    return null;
+  }
+
   function pickBasePayload() {
     const canonical = attrOf('link[rel="canonical"]', "href") || location.href;
+    const specialMedia =
+      resolveSpecialMediaFromUrl(location.href) || resolveSpecialMediaFromUrl(canonical);
     const canonicalBvid = normalizeBvidToken(
       canonical.match(/\/video\/(BV[0-9A-Za-z]+)/i)?.[1] || ""
     );
@@ -568,8 +631,21 @@ import {
     const queryBvid = normalizeBvidToken(
       new URLSearchParams(location.search).get("bvid")
     );
-    const detectedBvid = canonicalBvid || pathnameBvid || queryBvid;
+    const dynamicBvid = normalizeBvidToken(
+      [...document.querySelectorAll("a[href], script")]
+        .map((element) => element.getAttribute?.("href") || element.textContent || "")
+        .find((href) => /\/video\/BV[0-9A-Za-z]+|BV[0-9A-Za-z]{10}/i.test(href)) ||
+        document.documentElement?.innerHTML.match(/BV[0-9A-Za-z]{10}/i)?.[0] ||
+        ""
+    );
+    const detectedBvid = canonicalBvid || pathnameBvid || queryBvid || dynamicBvid;
+    const detectedAid = extractAidFromAny(location.href) ||
+      extractAidFromAny(canonical) ||
+      extractAidFromAny(new URLSearchParams(location.search).get("oid"));
     const canonicalUrl = ensureAbsoluteUrl(canonical, location.href);
+    const contentKey = specialMedia?.contentKey || detectedBvid;
+    const mediaKind = specialMedia?.mediaKind || "video";
+    const mediaId = specialMedia?.mediaId || detectedBvid || (detectedAid ? `av${detectedAid}` : "");
 
     const uploaderHref =
       attrOf(".up-name", "href") ||
@@ -583,8 +659,14 @@ import {
       : "";
 
     return {
-      bvid: detectedBvid,
-      bvidUrl: detectedBvid
+      bvid: contentKey,
+      aid: specialMedia ? null : detectedAid || null,
+      mediaKind,
+      mediaId,
+      contentKey,
+      bvidUrl: specialMedia
+        ? ensureAbsoluteUrl(location.href, canonicalUrl)
+        : detectedBvid
         ? `https://www.bilibili.com/video/${detectedBvid}/`
         : canonicalUrl,
       title:
@@ -644,7 +726,15 @@ import {
 
   function pickSafeDescription(detail) {
     const apiDesc = normalizeDescription(
-      typeof detail?.desc === "string" ? detail.desc : ""
+      typeof detail?.desc === "string"
+        ? detail.desc
+        : typeof detail?.evaluate === "string"
+          ? detail.evaluate
+          : typeof detail?.description === "string"
+            ? detail.description
+            : typeof detail?.intro === "string"
+              ? detail.intro
+              : ""
     );
     if (apiDesc) return apiDesc;
 
@@ -657,8 +747,11 @@ import {
     return "";
   }
 
-  async function fetchVideoDetail(bvid) {
-    const url = `${BILI_VIEW_API}?bvid=${encodeURIComponent(bvid)}`;
+  async function fetchVideoDetail(bvid, aid = 0) {
+    const query = bvid
+      ? `bvid=${encodeURIComponent(bvid)}`
+      : `aid=${encodeURIComponent(String(aid))}`;
+    const url = `${BILI_VIEW_API}?${query}`;
     const response = await fetch(url, { credentials: "include" });
     if (!response.ok) {
       throw new Error(`Bilibili API error ${response.status}`);
@@ -692,6 +785,90 @@ import {
         typeof item?.tag_name === "string" ? item.tag_name.trim() : ""
       )
       .filter(Boolean);
+  }
+
+  async function fetchSpecialApi(url) {
+    const response = await fetch(url, { credentials: "include" });
+    if (!response.ok) {
+      throw new Error(`Bilibili API error ${response.status}`);
+    }
+    const body = await response.json();
+    if (body?.code !== undefined && body.code !== 0 && body.code !== "0") {
+      throw new Error(body?.message || "Invalid Bilibili API response");
+    }
+    return body?.data ?? body?.result ?? body;
+  }
+
+  async function fetchBangumiDetail(seasonId) {
+    return fetchSpecialApi(
+      `${BILI_BANGUMI_SEASON_API}?season_id=${encodeURIComponent(
+        seasonId.replace(/^ss/i, "")
+      )}`
+    );
+  }
+
+  async function fetchAudioDetail(audioId) {
+    const sid = audioId.replace(/^au/i, "");
+    let lastError = null;
+    for (const endpoint of BILI_AUDIO_INFO_APIS) {
+      try {
+        return await fetchSpecialApi(`${endpoint}?sid=${encodeURIComponent(sid)}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError || new Error("Unable to load audio metadata");
+  }
+
+  function firstNonEmptyText(...values) {
+    for (const value of values) {
+      const text = typeof value === "string" ? value.trim() : "";
+      if (text) return text;
+    }
+    return "";
+  }
+
+  function firstFiniteNumber(...values) {
+    for (const value of values) {
+      const number = Number(value);
+      if (Number.isFinite(number) && number > 0) return number;
+    }
+    return null;
+  }
+
+  function pickSpecialMetadata(detail, mediaKind) {
+    const nested = mediaKind === "bangumi"
+      ? [detail?.season, detail?.series, detail]
+      : [detail?.song, detail?.music, detail?.data, detail];
+    const title = firstNonEmptyText(
+      ...nested.flatMap((item) => [item?.season_title, item?.song_title, item?.title, item?.name])
+    );
+    const coverUrl = firstNonEmptyText(
+      ...nested.flatMap((item) => [item?.cover, item?.cover_url, item?.pic, item?.image, item?.album?.cover])
+    );
+    const uploader = firstNonEmptyText(
+      ...nested.flatMap((item) => [
+        item?.owner?.name,
+        item?.up_info?.uname,
+        item?.upper?.name,
+        item?.artist?.name,
+        item?.artist?.uname,
+        item?.artist,
+        item?.author,
+        item?.uname
+      ])
+    );
+    const uploaderSpaceUrl = firstNonEmptyText(
+      ...nested.flatMap((item) => [
+        item?.owner?.mid ? `https://space.bilibili.com/${item.owner.mid}` : "",
+        item?.up_info?.mid ? `https://space.bilibili.com/${item.up_info.mid}` : "",
+        item?.artist?.mid ? `https://space.bilibili.com/${item.artist.mid}` : ""
+      ])
+    );
+    const publishAt = firstFiniteNumber(
+      ...nested.flatMap((item) => [item?.pubdate, item?.pubtime, item?.ctime, item?.created_at])
+    );
+    return { title, coverUrl, uploader, uploaderSpaceUrl, publishAt };
   }
 
   function mergeSystemTags(apiTags, detail) {
@@ -827,6 +1004,195 @@ import {
     floatingBtn.dataset.favoriteState = saved ? "saved" : "idle";
     floatingBtn.setAttribute("aria-pressed", saved ? "true" : "false");
     syncFloatingButtonLabel();
+    mountNativeFavoriteStatus();
+  }
+
+  function findNativeFavoriteAnchor() {
+    const selectors = [
+      ".video-toolbar-left .video-fav",
+      ".video-toolbar-left [class*='fav']",
+      ".video-toolbar .video-fav",
+      "button[aria-label*='收藏']",
+      "button[title*='收藏']",
+      "[role='button'][aria-label*='收藏']"
+    ];
+    for (const selector of selectors) {
+      for (const candidate of document.querySelectorAll(selector)) {
+        if (
+          candidate !== nativeFavoriteStatus &&
+          !candidate.closest?.("[data-bilishelf-native-status='true']") &&
+          (!root || !root.contains(candidate))
+        ) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  }
+
+  function findNativeToolbarActionItem(element) {
+    if (!(element instanceof Element)) return null;
+    return (
+      element.closest(
+        ".video-toolbar-left-item, .video-toolbar-item, [class*='video-toolbar-left-item'], [class*='video-toolbar-item']"
+      ) || element
+    );
+  }
+
+  function findNativeToolbarContainer(element) {
+    const actionItem = findNativeToolbarActionItem(element);
+    return (
+      actionItem?.closest?.(
+        ".video-toolbar-left, .video-toolbar, [class*='video-toolbar-left']:not([class*='item']), [class*='video-toolbar']:not([class*='item'])"
+      ) || actionItem?.parentElement || null
+    );
+  }
+
+  function findNativeForwardActionItem(favoriteAnchor) {
+    const favoriteItem = findNativeToolbarActionItem(favoriteAnchor);
+    const toolbar = findNativeToolbarContainer(favoriteAnchor);
+    if (!toolbar) return null;
+
+    const selectors = [
+      ".video-toolbar-left-item-share",
+      ".video-toolbar-item-share",
+      "[class*='video-toolbar-left-item-share']",
+      "[class*='video-toolbar-item-share']",
+      "button[aria-label*='转发']",
+      "button[title*='转发']",
+      "[role='button'][aria-label*='转发']",
+      "[class*='share']"
+    ];
+    for (const selector of selectors) {
+      for (const candidate of toolbar.querySelectorAll(selector)) {
+        if (
+          candidate === favoriteAnchor ||
+          candidate === nativeFavoriteStatus ||
+          candidate.closest?.("[data-bilishelf-native-status='true']") ||
+          favoriteItem === candidate ||
+          favoriteItem?.contains?.(candidate)
+        ) {
+          continue;
+        }
+        return findNativeToolbarActionItem(candidate);
+      }
+    }
+    return null;
+  }
+
+  function syncNativeFavoriteStatus() {
+    if (!nativeFavoriteStatus) return;
+    const state = floatingBtn?.dataset.favoriteState || "loading";
+    nativeFavoriteStatus.dataset.state = state;
+    nativeFavoriteStatus.textContent =
+      state === "loading"
+        ? t("status.localFavoriteNearNativeLoading")
+        : state === "saved"
+          ? t("status.localFavoriteNearNative")
+          : t("status.localFavoriteNearNativeIdle");
+    nativeFavoriteStatus.setAttribute("aria-label", nativeFavoriteStatus.textContent);
+    nativeFavoriteStatus.title = nativeFavoriteStatus.textContent;
+    nativeFavoriteStatus.style.color = state === "saved"
+      ? "#fb7299"
+      : "var(--text2, #61666d)";
+    nativeFavoriteStatus.style.borderColor = state === "saved"
+      ? "rgba(251,114,153,.55)"
+      : "rgba(128,128,128,.35)";
+    nativeFavoriteStatus.style.background = state === "saved"
+      ? "rgba(251,114,153,.1)"
+      : "var(--bg1, rgba(255,255,255,.72))";
+  }
+
+  function placeNativeFavoriteStatus(anchor) {
+    if (!nativeFavoriteStatus || !anchor?.isConnected) return;
+    const anchorItem = findNativeToolbarActionItem(anchor);
+    const toolbar = findNativeToolbarContainer(anchor);
+    const forwardItem = findNativeForwardActionItem(anchor);
+    const targetItem = forwardItem || anchorItem;
+    if (!targetItem) return;
+
+    if (toolbar) {
+      if (getComputedStyle(toolbar).position === "static") {
+        toolbar.style.position = "relative";
+      }
+      if (nativeFavoriteStatus.parentNode !== toolbar) {
+        toolbar.appendChild(nativeFavoriteStatus);
+      }
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const targetRect = targetItem.getBoundingClientRect();
+      nativeFavoriteStatus.style.position = "absolute";
+      nativeFavoriteStatus.style.left = `${Math.max(0, targetRect.right - toolbarRect.left + 10)}px`;
+      nativeFavoriteStatus.style.top = `${Math.max(
+        0,
+        targetRect.top - toolbarRect.top + (targetRect.height - nativeFavoriteStatus.offsetHeight) / 2
+      )}px`;
+      return;
+    }
+
+    const parent = targetItem.parentNode;
+    if (!parent) return;
+    nativeFavoriteStatus.style.position = "static";
+    if (nativeFavoriteStatus.parentNode !== parent || nativeFavoriteStatus.previousElementSibling !== targetItem) {
+      parent.insertBefore(nativeFavoriteStatus, targetItem.nextSibling);
+    }
+  }
+
+  function mountNativeFavoriteStatus() {
+    if (!isCollectorUiUrl(location.href) || articleMode || isSpecialMediaUrl(location.href)) {
+      nativeFavoriteStatus?.remove();
+      nativeFavoriteStatus = null;
+      return;
+    }
+    const anchor = findNativeFavoriteAnchor();
+    if (!anchor) {
+      nativeFavoriteStatus?.remove();
+      nativeFavoriteStatus = null;
+      return;
+    }
+    if (nativeFavoriteStatus?.isConnected) {
+      syncNativeFavoriteStatus();
+      placeNativeFavoriteStatus(anchor);
+      return;
+    }
+    nativeFavoriteStatus?.remove();
+    nativeFavoriteStatus = createEl("button", {
+      className: "bl-native-favorite-status",
+      attrs: { type: "button", "data-bilishelf-native-status": "true" }
+    });
+    nativeFavoriteStatus.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void openCollectorModal();
+    }, true);
+    nativeFavoriteStatus.style.cssText = [
+      "display:inline-flex",
+      "flex:0 0 auto",
+      "align-items:center",
+      "justify-content:center",
+      "align-self:center",
+      "z-index:2",
+      "min-height:24px",
+      "margin-left:8px",
+      "padding:2px 8px",
+      "border:1px solid rgba(128,128,128,.3)",
+      "border-radius:6px",
+      "font:500 12px/1.4 system-ui,sans-serif",
+      "letter-spacing:0",
+      "white-space:nowrap",
+      "box-shadow:0 1px 3px rgba(0,0,0,.08)",
+      "cursor:pointer",
+      "transition:color .16s ease,border-color .16s ease,background .16s ease"
+    ].join(";");
+    placeNativeFavoriteStatus(anchor);
+    syncNativeFavoriteStatus();
+  }
+
+  function scheduleNativeFavoriteStatusMount() {
+    if (nativeFavoriteMountTimer) window.clearTimeout(nativeFavoriteMountTimer);
+    nativeFavoriteMountTimer = window.setTimeout(() => {
+      nativeFavoriteMountTimer = 0;
+      mountNativeFavoriteStatus();
+    }, 80);
   }
 
   function normalizeArticleText(value, max = 12000) {
@@ -843,7 +1209,9 @@ import {
     if (!opusId) return null;
     const canonical = ensureAbsoluteUrl(
       attrOf('link[rel="canonical"]', "href"),
-      `https://www.bilibili.com/opus/${opusId}`
+      /^\/read\/cv/i.test(location.pathname)
+        ? `https://www.bilibili.com/read/cv${opusId}`
+        : `https://www.bilibili.com/opus/${opusId}`
     );
     const contentSelectors = [
       ".opus-module-content",
@@ -938,20 +1306,22 @@ import {
   }
 
   async function refreshFloatingFavoriteStateFromPage(force = false) {
-    const bvid = normalizeBvidToken(pickBasePayload()?.bvid || "");
-    if (!bvid) {
+    const base = pickBasePayload();
+    const contentKey = normalizeLocalContentKey(base?.contentKey || base?.bvid || "");
+    if (!contentKey) {
       lastFloatingFavoriteBvid = "";
       setFloatingFavoriteState(false);
       return;
     }
-    if (!force && bvid === lastFloatingFavoriteBvid) return;
-    lastFloatingFavoriteBvid = bvid;
+    if (!force && contentKey === lastFloatingFavoriteBvid) return;
+    lastFloatingFavoriteBvid = contentKey;
     const requestId = ++floatingFavoriteRequestId;
     floatingBtn?.setAttribute("data-favorite-state", "loading");
+    syncFloatingButtonLabel();
     try {
-      const folders = await fetchCurrentVideoLocalFoldersByBvid(bvid);
+      const folders = await fetchCurrentVideoLocalFoldersByBvid(contentKey);
       if (requestId !== floatingFavoriteRequestId) return;
-      if (normalizeBvidToken(currentVideo?.bvid || "") === bvid) {
+      if (normalizeLocalContentKey(currentVideo?.bvid || "") === contentKey) {
         currentVideoLocalFolders = folders;
       }
       setFloatingFavoriteState(folders.length > 0);
@@ -964,36 +1334,28 @@ import {
   }
 
   async function fetchCurrentVideoLocalFoldersByBvid(bvid) {
-    const normalizedBvid = normalizeBvidToken(bvid || "");
-    if (!normalizedBvid) return [];
-
-    const query = encodeURIComponent(normalizedBvid);
-    const searchResult = await requestLocalApi(
+    const normalizedContentKey = normalizeLocalContentKey(bvid || "");
+    if (!normalizedContentKey) return [];
+    const result = await requestLocalApi(
       "GET",
-      `/videos/search?q=${query}&page=1&pageSize=20`
+      `/videos/by-bvid?bvid=${encodeURIComponent(normalizedContentKey)}`
     );
-    const items = Array.isArray(searchResult?.items) ? searchResult.items : [];
-    const matched = items.find(
-      (item) => normalizeBvidToken(item?.bvid || "") === normalizedBvid
-    );
-    if (!matched?.id) return [];
-    const detail = await requestLocalApi("GET", `/videos/${matched.id}`);
-    return Array.isArray(detail?.folders) ? detail.folders : [];
+    return Array.isArray(result?.folders) ? result.folders : [];
   }
 
   async function refreshCurrentVideoLocalFolders() {
-    const bvid = normalizeBvidToken(currentVideo?.bvid || "");
-    if (!bvid) {
+    const contentKey = normalizeLocalContentKey(currentVideo?.contentKey || currentVideo?.bvid || "");
+    if (!contentKey) {
       currentVideoLocalFolders = [];
       syncCurrentFavoriteUi();
       return;
     }
     try {
-      currentVideoLocalFolders = await fetchCurrentVideoLocalFoldersByBvid(bvid);
+      currentVideoLocalFolders = await fetchCurrentVideoLocalFoldersByBvid(contentKey);
     } catch {
       currentVideoLocalFolders = [];
     }
-    lastFloatingFavoriteBvid = bvid;
+    lastFloatingFavoriteBvid = contentKey;
     syncCurrentFavoriteUi();
   }
 
@@ -1196,6 +1558,7 @@ import {
   }
 
   function bindNativeFavoriteActionListener() {
+    if (isDynamicVideoUrl(location.href) || isSpecialMediaUrl(location.href)) return;
     if (nativeFavoriteActionListenerBound) return;
     nativeFavoriteActionListenerBound = true;
     document.addEventListener(
@@ -1281,6 +1644,21 @@ import {
     });
   }
 
+  function renderCurrentFavoriteFolders() {
+    if (!currentFavoriteFoldersEl) return;
+    const ids = new Set(currentCollectorFolderIds());
+    const names = allFolders
+      .filter((folder) => ids.has(Number(folder.id)))
+      .map((folder) => String(folder.name || "").trim())
+      .filter(Boolean);
+    currentFavoriteFoldersEl.textContent = names.length > 0
+      ? `${activeLocale === LOCALE_ZH ? "已收藏到：" : "Saved in: "} ${names.join("、")}`
+      : activeLocale === LOCALE_ZH
+        ? "当前内容尚未收藏到 BiliShelf"
+        : "This content is not saved in BiliShelf";
+    currentFavoriteFoldersEl.dataset.saved = names.length > 0 ? "true" : "false";
+  }
+
   function renderCustomTagSuggestions() {
     if (!customTagSuggestionsEl) return;
     customTagSuggestionsEl.replaceChildren();
@@ -1324,6 +1702,22 @@ import {
     const visible = allFolders.filter((folder) =>
       folder.name.toLowerCase().includes(lower)
     );
+    const grouped = new Map();
+    for (const folder of visible) {
+      const key = String(folder.groupName || "").trim();
+      const bucket = grouped.get(key) || [];
+      bucket.push(folder);
+      grouped.set(key, bucket);
+    }
+    const currentFolderIds = new Set(currentCollectorFolderIds());
+    const groupedVisible = [...grouped.entries()].sort(([left, leftFolders], [right, rightFolders]) => {
+      if (!left && right) return 1;
+      if (left && !right) return -1;
+      const leftHasCurrent = leftFolders.some((folder) => currentFolderIds.has(Number(folder.id)));
+      const rightHasCurrent = rightFolders.some((folder) => currentFolderIds.has(Number(folder.id)));
+      if (leftHasCurrent !== rightHasCurrent) return leftHasCurrent ? -1 : 1;
+      return left.localeCompare(right, activeLocale);
+    });
 
     folderListEl.replaceChildren();
     if (visible.length === 0) {
@@ -1331,11 +1725,48 @@ import {
         createEl("div", { className: "bl-empty", text: t("status.noFolders") })
       );
       renderSelectedCount();
+      renderCurrentFavoriteFolders();
       return;
     }
 
-    for (const folder of visible) {
-      const node = createEl("label", { className: "bl-folder-item" });
+    for (const [groupKey, folders] of groupedVisible) {
+      const collapsed = collapsedFolderGroups.has(groupKey);
+      const groupHeader = createEl("div", { className: "bl-folder-group" });
+      const groupLabel = createEl("span", {
+        text: groupKey || (activeLocale === LOCALE_ZH ? "未分组" : "Ungrouped")
+      });
+      const groupToggle = createEl("button", {
+        className: "bl-folder-group-toggle",
+        attrs: {
+          type: "button",
+          "aria-expanded": collapsed ? "false" : "true",
+          "aria-label": collapsed
+            ? t("status.expandFolderGroup")
+            : t("status.collapseFolderGroup")
+        },
+        text: collapsed ? "▸" : "▾"
+      });
+      groupToggle.addEventListener("click", () => {
+        if (collapsed) collapsedFolderGroups.delete(groupKey);
+        else collapsedFolderGroups.add(groupKey);
+        renderFolders(keyword);
+      });
+      groupHeader.append(groupLabel, groupToggle);
+      folderListEl.appendChild(groupHeader);
+      if (collapsed) continue;
+
+      folders.sort((left, right) => {
+        const leftCurrent = currentFolderIds.has(Number(left.id));
+        const rightCurrent = currentFolderIds.has(Number(right.id));
+        if (leftCurrent !== rightCurrent) return leftCurrent ? -1 : 1;
+        return String(left.name || "").localeCompare(String(right.name || ""), activeLocale);
+      });
+      for (const folder of folders) {
+        const node = createEl("label", {
+          className: currentFolderIds.has(Number(folder.id))
+            ? "bl-folder-item is-active"
+            : "bl-folder-item"
+        });
       const checkbox = createEl("input", {
         attrs: {
           type: "checkbox",
@@ -1364,10 +1795,12 @@ import {
         renderSelectedCount();
       });
 
-      folderListEl.appendChild(node);
+        folderListEl.appendChild(node);
+      }
     }
 
     renderSelectedCount();
+    renderCurrentFavoriteFolders();
   }
 
   async function readRememberedCollectorFolderIds() {
@@ -1721,7 +2154,7 @@ import {
   async function loadVideo() {
     setStatus(t("status.readingCurrentPage"), "info");
     const base = pickBasePayload();
-    if (!base.bvid) {
+    if (!base.contentKey && !base.aid) {
       currentVideo = null;
       currentVideoLocalFolders = [];
       renderVideo(null);
@@ -1731,43 +2164,71 @@ import {
 
     let detail = null;
     let apiSystemTags = [];
-    try {
-      detail = await fetchVideoDetail(base.bvid);
-    } catch {
-      detail = null;
-    }
-    try {
-      apiSystemTags = await fetchVideoTags(base.bvid);
-    } catch {
-      apiSystemTags = [];
+    if (base.mediaKind === "bangumi") {
+      try {
+        detail = await fetchBangumiDetail(base.mediaId);
+      } catch {
+        detail = null;
+      }
+    } else if (base.mediaKind === "audio") {
+      try {
+        detail = await fetchAudioDetail(base.mediaId);
+      } catch {
+        detail = null;
+      }
+    } else {
+      try {
+        detail = await fetchVideoDetail(base.bvid, base.aid);
+      } catch {
+        detail = null;
+      }
+      try {
+        apiSystemTags = await fetchVideoTags(base.bvid);
+      } catch {
+        apiSystemTags = [];
+      }
     }
 
-    const publishAt =
-      typeof detail?.pubdate === "number" && Number.isFinite(detail.pubdate)
-        ? Math.trunc(detail.pubdate * 1000)
-        : null;
+    const specialMetadata = base.mediaKind === "video"
+      ? {}
+      : pickSpecialMetadata(detail, base.mediaKind);
+    const rawPublishAt = base.mediaKind === "video"
+      ? detail?.pubdate
+      : specialMetadata.publishAt;
+    const publishAt = Number.isFinite(Number(rawPublishAt))
+      ? Math.trunc(Number(rawPublishAt) > 1e12 ? Number(rawPublishAt) : Number(rawPublishAt) * 1000)
+      : null;
 
     currentVideo = {
-      bvid: (base.bvid || detail?.bvid || "").trim(),
+      bvid: (base.contentKey || base.bvid || detail?.bvid || "").trim(),
       aid:
-        typeof detail?.aid === "number" && Number.isFinite(detail.aid)
+        base.mediaKind === "video" && typeof detail?.aid === "number" && Number.isFinite(detail.aid)
           ? Math.trunc(detail.aid)
+          : base.mediaKind === "video" && Number(base.aid) > 0
+            ? Number(base.aid)
           : null,
-      bvidUrl: ensureAbsoluteUrl(
-        base.bvidUrl,
-        `https://www.bilibili.com/video/${base.bvid}`
+      mediaKind: base.mediaKind,
+      mediaId: base.mediaId,
+      contentKey: base.contentKey || base.bvid || "",
+      bvidUrl: ensureAbsoluteUrl(base.bvidUrl, location.href),
+      title: (specialMetadata.title || detail?.title || base.title || "").trim(),
+      coverUrl: ensureAbsoluteUrl(
+        specialMetadata.coverUrl || detail?.pic || base.coverUrl,
+        DEFAULT_COVER
       ),
-      title: (detail?.title || base.title || "").trim(),
-      coverUrl: ensureAbsoluteUrl(detail?.pic || base.coverUrl, DEFAULT_COVER),
       uploader:
-        (detail?.owner?.name || base.uploader || "").trim() ||
+        (specialMetadata.uploader || detail?.owner?.name || base.uploader || "").trim() ||
         t("status.unknownUploader"),
       uploaderSpaceUrl:
-        (typeof detail?.owner?.mid === "number" && Number.isFinite(detail.owner.mid)
+        (base.mediaKind === "video" && typeof detail?.owner?.mid === "number" && Number.isFinite(detail.owner.mid)
           ? `https://space.bilibili.com/${Math.trunc(detail.owner.mid)}`
-          : base.uploaderSpaceUrl || ""),
+          : specialMetadata.uploaderSpaceUrl || base.uploaderSpaceUrl || ""),
       description: pickSafeDescription(detail),
-      partition: typeof detail?.tname === "string" ? detail.tname.trim() : "",
+      partition: firstNonEmptyText(
+        detail?.tname,
+        detail?.type_name,
+        base.mediaKind === "bangumi" ? "Bangumi" : base.mediaKind === "audio" ? "Audio" : ""
+      ),
       publishAt,
       systemTags: mergeSystemTags(apiSystemTags, detail)
     };
@@ -1813,6 +2274,7 @@ import {
   async function handleCreateFolder() {
     const name = (folderModalNameInput?.value || "").trim();
     const description = (folderModalDescInput?.value || "").trim();
+    const groupName = (folderModalGroupInput?.value || "").trim();
     if (!name) {
       setStatus(t("toast.folderNameRequired"), "err");
       return;
@@ -1822,10 +2284,15 @@ import {
     folderModalSaveBtn.disabled = true;
 
     try {
-      const created = await createFolder({ name, description: description || undefined });
+      const created = await createFolder({
+        name,
+        description: description || undefined,
+        groupName: groupName || null
+      });
 
       folderModalNameInput.value = "";
       folderModalDescInput.value = "";
+      folderModalGroupInput.value = "";
       syncCreateFolderCounter();
       closeCreateFolderModal();
 
@@ -2314,6 +2781,8 @@ import {
   }
 
   function isLikelyFullscreenPlayback() {
+    // Bilibili Music uses fullscreen-related body classes for its normal player layout.
+    if (isSpecialMediaUrl(location.href)) return false;
     if (document.fullscreenElement || document.webkitFullscreenElement) {
       return true;
     }
@@ -2334,6 +2803,10 @@ import {
 
   function updateFloatingUiVisibility() {
     if (!root) return;
+    if (isSpecialMediaUrl(location.href)) {
+      root.classList.remove("bl-fullscreen-hidden");
+      return;
+    }
     const shouldHide = isLikelyFullscreenPlayback();
     root.classList.toggle("bl-fullscreen-hidden", shouldHide);
     if (shouldHide) {
@@ -2424,6 +2897,7 @@ import {
     if (floatingBtn) floatingBtn.dataset.theme = mode;
     if (modal) modal.dataset.theme = mode;
     if (playbackOverlay) playbackOverlay.dataset.theme = mode;
+    if (nativeFavoriteStatus) nativeFavoriteStatus.dataset.theme = mode;
   }
 
   function injectStyles() {
@@ -2472,6 +2946,22 @@ import {
         color: #f1f3f7;
         box-shadow: 0 8px 24px rgba(0, 0, 0, .32), 0 1px 2px rgba(0, 0, 0, .24);
       }
+      #bl-floating-btn[data-favorite-state='saved'][data-theme="light"] {
+        background: rgba(255, 245, 248, .98);
+        border-color: rgba(251, 114, 153, .7);
+        color: #d94872;
+        box-shadow: 0 8px 24px rgba(217, 72, 114, .2), 0 0 0 3px rgba(251, 114, 153, .08);
+      }
+      #bl-floating-btn[data-favorite-state='saved'][data-theme="dark"] {
+        background: rgba(67, 28, 42, .98);
+        border-color: rgba(251, 114, 153, .78);
+        color: #ff91b1;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, .34), 0 0 0 3px rgba(251, 114, 153, .14);
+      }
+      #bl-floating-btn[data-favorite-state='saved'] > svg path {
+        fill: currentColor;
+        stroke: currentColor;
+      }
       #bl-floating-btn:hover { transform: translateY(-2px); }
       #bl-floating-btn[data-theme="light"]:hover {
         border-color: rgba(251, 114, 153, .48);
@@ -2484,6 +2974,9 @@ import {
       #bl-floating-btn:active { cursor: grabbing; transform: scale(.98); }
       #bl-floating-btn > svg { width: 22px; height: 22px; }
       #bl-floating-btn[data-favorite-state="loading"] > svg { animation: bl-favorite-loading .8s ease-in-out infinite alternate; }
+      .bl-native-favorite-status { vertical-align: middle; }
+      .bl-native-favorite-status[data-state="loading"] { opacity: .68; }
+      .bl-native-favorite-status:hover { border-color: #d94872 !important; }
       @keyframes bl-favorite-loading {
         from { opacity: .38; transform: scale(.92); }
         to { opacity: .8; transform: scale(1.04); }
@@ -2618,6 +3111,9 @@ import {
       .bl-selected-count { font-size: 12px; }
       #bl-floating-panel[data-theme="light"] .bl-selected-count { color: #5f6f8f; }
       #bl-floating-panel[data-theme="dark"] .bl-selected-count { color: #93a4c3; }
+      .bl-current-favorite-folders { margin: 0 0 8px; font-size: 11px; line-height: 1.4; }
+      #bl-floating-panel[data-theme="light"] .bl-current-favorite-folders { color: #17675d; }
+      #bl-floating-panel[data-theme="dark"] .bl-current-favorite-folders { color: #a8eee5; }
 
       .bl-folder-list {
         max-height: 230px;
@@ -2629,6 +3125,8 @@ import {
       #bl-floating-panel[data-theme="light"] .bl-folder-list { border-color: #d7dfe1; background: #fff; }
       #bl-floating-panel[data-theme="dark"] .bl-folder-list { border-color: #465761; background: #11191f; }
       .bl-folder-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px; border-radius: 8px; }
+      .bl-folder-group { margin: 8px 6px 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 700; color: #63717a; }
+      .bl-folder-group-toggle { border: 0; padding: 0 3px; background: transparent; color: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
       .bl-folder-item.is-active {
         outline: 2px solid rgba(217, 72, 114, .32);
         outline-offset: -1px;
@@ -2904,6 +3402,7 @@ import {
       .bl-folder-actions-left { gap: 6px; }
       .bl-selected-count { color: #17675d; font-size: 11px; font-weight: 700; }
       #bl-floating-panel[data-theme="dark"] .bl-selected-count { color: #a8eee5; }
+      .bl-current-favorite-folders { margin-bottom: 8px; font-size: 10.5px; }
       .bl-folder-list { max-height: 196px; padding: 4px; border-radius: 7px; }
       .bl-folder-item { gap: 8px; padding: 7px 8px; border-radius: 6px; }
       .bl-folder-item.is-active { outline: 1px solid rgba(217, 72, 114, .52); }
@@ -3361,6 +3860,7 @@ import {
       updateFloatingUiVisibility();
       const rect = floatingBtn.getBoundingClientRect();
       placeFloatingButtonAt(rect.left, rect.top, false);
+      scheduleNativeFavoriteStatusMount();
     });
     window.addEventListener("keydown", handleQuickFavoriteShortcut);
   }
@@ -3459,6 +3959,13 @@ import {
               text: t(articleMode ? "button.newArticleFolder" : "button.newFolder")
             })
           ]),
+          createEl("p", {
+            id: "bl-current-favorite-folders",
+            className: "bl-current-favorite-folders",
+            text: activeLocale === LOCALE_ZH
+              ? "当前内容尚未收藏到 BiliShelf"
+              : "This content is not saved in BiliShelf"
+          }),
           createEl("div", { className: "bl-folder-actions" }, [
             createEl("div", { className: "bl-folder-actions-left" }, [
               createEl("button", {
@@ -3597,6 +4104,20 @@ import {
               }
             })
           ]),
+          createEl("div", { className: "bl-form-item" }, [
+            createEl("span", {
+              className: "bl-form-label",
+              text: t("modal.group")
+            }),
+            createEl("input", {
+              id: "bl-modal-folder-group",
+              className: "bl-input",
+              attrs: {
+                maxlength: "40",
+                placeholder: t("modal.groupPlaceholder")
+              }
+            })
+          ]),
           createEl("div", { className: "bl-modal-actions" }, [
             createEl("button", {
               id: "bl-modal-folder-cancel",
@@ -3719,6 +4240,7 @@ import {
     selectAllFoldersBtn = panel.querySelector("#bl-select-all-folders");
     clearFolderSelectionBtn = panel.querySelector("#bl-clear-folders");
     selectedCountEl = panel.querySelector("#bl-selected-count");
+    currentFavoriteFoldersEl = panel.querySelector("#bl-current-favorite-folders");
     videoTitleEl = panel.querySelector("#bl-video-title");
     videoMetaEl = panel.querySelector("#bl-video-meta");
     videoCoverEl = panel.querySelector("#bl-video-cover");
@@ -3730,6 +4252,7 @@ import {
     folderDescCountEl = modal.querySelector("#bl-folder-desc-count");
     folderModalNameInput = modal.querySelector("#bl-modal-folder-name");
     folderModalDescInput = modal.querySelector("#bl-modal-folder-desc");
+    folderModalGroupInput = modal.querySelector("#bl-modal-folder-group");
     folderModalSaveBtn = modal.querySelector("#bl-modal-folder-save");
     folderModalCancelBtn = modal.querySelector("#bl-modal-folder-cancel");
     folderModalCloseBtn = modal.querySelector("#bl-modal-folder-close");
@@ -3747,6 +4270,10 @@ import {
     syncFloatingButtonLabel();
     bindFloatingButtonDrag();
     bindEvents();
+    mountNativeFavoriteStatus();
+    if (nativeFavoriteStatusObserver) nativeFavoriteStatusObserver.disconnect();
+    nativeFavoriteStatusObserver = new MutationObserver(scheduleNativeFavoriteStatusMount);
+    nativeFavoriteStatusObserver.observe(document.body, { childList: true, subtree: true });
     startFullscreenWatch();
     startPlaybackOverlayWatch();
     renderVideo(null);

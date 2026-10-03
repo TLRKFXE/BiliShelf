@@ -321,6 +321,7 @@ export async function updateFavoriteArticleFolders(id: number, folderIds: number
 export async function createArticleFolder(payload: {
   name: string;
   description?: string;
+  groupName?: string | null;
 }) {
   return request<Folder>("/article-folders", {
     method: "POST",
@@ -330,7 +331,7 @@ export async function createArticleFolder(payload: {
 
 export async function updateArticleFolder(
   id: number,
-  payload: { name?: string; description?: string | null },
+  payload: { name?: string; description?: string | null; groupName?: string | null },
 ) {
   return request<Folder>(`/article-folders/${id}`, {
     method: "PATCH",
@@ -367,6 +368,7 @@ export async function fetchFollowingUpImportStatus() {
 export async function createFolder(payload: {
   name: string;
   description?: string;
+  groupName?: string | null;
 }) {
   return request<Folder>("/folders", {
     method: "POST",
@@ -376,7 +378,7 @@ export async function createFolder(payload: {
 
 export async function updateFolder(
   id: number,
-  payload: { name?: string; description?: string | null }
+  payload: { name?: string; description?: string | null; groupName?: string | null }
 ) {
   return request<Folder>(`/folders/${id}`, {
     method: "PATCH",

@@ -2,6 +2,7 @@ export type Folder = {
   id: number;
   name: string;
   description: string | null;
+  groupName?: string | null;
   sortOrder?: number;
   deletedAt?: number | null;
   itemCount?: number;

@@ -209,6 +209,9 @@ const {
   fromDate,
   toDate,
   newCustomTagName,
+  manageCustomTagSearch,
+  manageCustomTagSort,
+  manageCustomTagFilteredTotal,
   manageCustomTagPage,
   videoPage,
   videoPageSize,
@@ -483,6 +486,7 @@ const { prevManageCustomTagPage, nextManageCustomTagPage } =
     toolsOpen,
     manageCustomTagPage,
     manageCustomTagTotalPages,
+    manageCustomTagSearch,
   });
 
 async function refreshFolders() {
@@ -719,6 +723,7 @@ async function loadFavoriteArticles() {
 async function handleCreateArticleFolder(payload: {
   name: string;
   description?: string;
+  groupName?: string | null;
 }) {
   try {
     await createArticleFolder(payload);
@@ -733,6 +738,7 @@ async function handleUpdateArticleFolder(payload: {
   id: number;
   name?: string;
   description?: string | null;
+  groupName?: string | null;
 }) {
   try {
     await updateArticleFolder(payload.id, payload);
@@ -3975,8 +3981,13 @@ onBeforeUnmount(() => {
       :page="manageCustomTagPage"
       :total-pages="manageCustomTagTotalPages"
       :new-tag-name="newCustomTagName"
+      :search="manageCustomTagSearch"
+      :sort="manageCustomTagSort"
+      :filtered-total="manageCustomTagFilteredTotal"
       @update:open="toolsOpen = $event"
       @update:new-tag-name="newCustomTagName = $event"
+      @update:search="manageCustomTagSearch = $event"
+      @update:sort="manageCustomTagSort = $event"
       @create-tag="handleCreateCustomTag()"
       @rename-tag="openRenameCustomTagDialog"
       @delete-tag="handleDeleteCustomTag"

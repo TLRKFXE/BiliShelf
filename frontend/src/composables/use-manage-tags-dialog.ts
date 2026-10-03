@@ -4,10 +4,11 @@ type UseManageTagsDialogParams = {
   toolsOpen: Ref<boolean>;
   manageCustomTagPage: Ref<number>;
   manageCustomTagTotalPages: Ref<number>;
+  manageCustomTagSearch: Ref<string>;
 };
 
 export function useManageTagsDialog(params: UseManageTagsDialogParams) {
-  const { toolsOpen, manageCustomTagPage, manageCustomTagTotalPages } = params;
+  const { toolsOpen, manageCustomTagPage, manageCustomTagTotalPages, manageCustomTagSearch } = params;
 
   watch(
     () => manageCustomTagTotalPages.value,
@@ -24,6 +25,10 @@ export function useManageTagsDialog(params: UseManageTagsDialogParams) {
 
   watch(toolsOpen, (open) => {
     if (open) manageCustomTagPage.value = 1;
+  });
+
+  watch(manageCustomTagSearch, () => {
+    manageCustomTagPage.value = 1;
   });
 
   function prevManageCustomTagPage() {

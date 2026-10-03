@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronLeft, ChevronRight, PencilLine, Plus, Tag, Trash2 } from "lucide-vue-next";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, PencilLine, Plus, Search, Tag, Trash2 } from "lucide-vue-next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,17 +20,33 @@ const props = defineProps<{
   page: number;
   totalPages: number;
   newTagName: string;
+  search: string;
+  sort: "name-asc" | "name-desc" | "usage-asc" | "usage-desc" | "created-asc" | "created-desc";
+  filteredTotal: number;
 }>();
 
 const emit = defineEmits<{
   "update:open": [value: boolean];
   "update:newTagName": [value: string];
+  "update:search": [value: string];
+  "update:sort": [value: "name-asc" | "name-desc" | "usage-asc" | "usage-desc" | "created-asc" | "created-desc"];
   createTag: [];
   renameTag: [tag: TagItem];
   deleteTag: [tag: TagItem];
   prevPage: [];
   nextPage: [];
 }>();
+
+function toggleSort(field: "name" | "usage" | "created") {
+  const currentField = props.sort.split("-")[0];
+  const nextDirection = field === currentField && props.sort.endsWith("-desc") ? "asc" : "desc";
+  emit("update:sort", `${field}-${nextDirection}` as typeof props.sort);
+}
+
+function sortTitle(field: "name" | "usage" | "created", labelKey: string) {
+  const direction = props.sort === `${field}-asc` ? "tools.sortAscending" : "tools.sortDescending";
+  return `${props.t(labelKey)} · ${props.t(direction)}`;
+}
 </script>
 
 <template>
@@ -62,18 +78,43 @@ const emit = defineEmits<{
             {{ t("tools.totalTags", { count: customTags.length }) }}
           </Badge>
         </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative min-w-[220px] flex-1">
+            <Search class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              :model-value="search"
+              :placeholder="t('tools.searchTagsPlaceholder')"
+              class="pl-9"
+              @update:model-value="emit('update:search', String($event))"
+            />
+          </div>
+          <div class="flex flex-wrap items-center gap-1">
+            <Button size="sm" :variant="sort.startsWith('name-') ? 'secondary' : 'outline'" :title="sortTitle('name', 'tools.sortTagsName')" @click="toggleSort('name')">
+              <component :is="sort === 'name-asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
+              {{ t("tools.sortTagsName") }}
+            </Button>
+            <Button size="sm" :variant="sort.startsWith('usage-') ? 'secondary' : 'outline'" :title="sortTitle('usage', 'tools.sortTagsUsage')" @click="toggleSort('usage')">
+              <component :is="sort === 'usage-asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
+              {{ t("tools.sortTagsUsage") }}
+            </Button>
+            <Button size="sm" :variant="sort.startsWith('created-') ? 'secondary' : 'outline'" :title="sortTitle('created', 'tools.sortTagsCreated')" @click="toggleSort('created')">
+              <component :is="sort === 'created-asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
+              {{ t("tools.sortTagsCreated") }}
+            </Button>
+          </div>
+        </div>
 
         <div
-          v-if="customTags.length === 0"
+          v-if="customTags.length === 0 || pagedCustomTags.length === 0"
           class="panel-surface-soft rounded-lg border border-dashed p-4 text-sm text-muted-foreground"
         >
-          {{ t("tools.noCustomTag") }}
+          {{ customTags.length === 0 ? t("tools.noCustomTag") : t("tools.noMatchingTag") }}
         </div>
 
         <template v-else>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <p class="text-xs text-muted-foreground">
-              {{ t("common.page", { page, totalPage: totalPages, total: customTags.length }) }}
+              {{ t("common.page", { page, totalPage: totalPages, total: filteredTotal }) }}
             </p>
             <div v-if="totalPages > 1" class="flex items-center gap-2">
               <Button

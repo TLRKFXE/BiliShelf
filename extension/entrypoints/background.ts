@@ -97,6 +97,7 @@ type FolderRecord = {
   id: number;
   name: string;
   description: string | null;
+  groupName?: string | null;
   remoteMediaId: number | null;
   sortOrder: number;
   deletedAt: number | null;
@@ -137,6 +138,7 @@ type ArticleFolderRecord = {
   id: number;
   name: string;
   description: string | null;
+  groupName?: string | null;
   sortOrder: number;
   deletedAt: number | null;
   createdAt: number;
@@ -724,7 +726,7 @@ type FollowingUpImportStatus = {
 
 type CookieLike = { name?: unknown; value?: unknown };
 type CookiesGetAll = (
-  details: { domain?: string },
+  details: { domain?: string; storeId?: string },
   callback?: (cookies: CookieLike[]) => void
 ) => Promise<CookieLike[]> | void;
 type CookiesApi = {
@@ -1499,7 +1501,7 @@ const videoQueryResultCache = new Map<string, { revision: number; ids: number[] 
 let stateQueue: Promise<void> = Promise.resolve();
 let tagEnrichmentTask: Promise<void> | null = null;
 let tagEnrichmentStopRequested = false;
-let biliCookieHeaderCache: { value: string; expiresAt: number } | null = null;
+let biliCookieHeaderCache = new Map<string, { value: string; expiresAt: number }>();
 let nextBiliRequestAt = 0;
 let biliRequestThrottleQueue: Promise<void> = Promise.resolve();
 let favoritesSyncTask: Promise<void> | null = null;
@@ -1897,6 +1899,7 @@ function normalizeStoredArticleFolder(
     id,
     name,
     description: normalizeText(source.description) || null,
+    groupName: normalizeText(source.groupName) || null,
     sortOrder: Math.max(1, toInt(source.sortOrder, fallbackId)),
     deletedAt: toIntOrNull(source.deletedAt),
     createdAt,
@@ -1953,6 +1956,7 @@ async function readState() {
                 id: toInt(folder.id),
                 name: folder.name,
                 description: folder.description,
+                groupName: folder.groupName,
                 sortOrder: index + 1,
                 deletedAt: null,
                 createdAt: folder.createdAt,
@@ -2005,6 +2009,7 @@ async function readState() {
         },
         folders: (raw.folders ?? []).map((folder) => ({
           ...folder,
+          groupName: normalizeText((folder as Partial<FolderRecord>).groupName) || null,
           remoteMediaId:
             folder.remoteMediaId === null || folder.remoteMediaId === undefined
               ? null
@@ -3046,6 +3051,7 @@ type ImportVideoRow = {
   addedAt: number;
   partition: string;
   folders: string[];
+  folderGroups?: Record<string, string>;
   customTags: string[];
   systemTags: string[];
 };
@@ -3057,6 +3063,7 @@ type ImportCommentRow = NormalizedFavoriteComment & {
 
 type ImportArticleRow = SharedFavoriteArticleRecord & {
   folderNames: string[];
+  folderGroups?: Record<string, string>;
 };
 
 type ImportFollowedUpRow = NormalizedFollowedUpRecord;
@@ -3163,6 +3170,7 @@ export function parseImportRows(format: "json" | "csv", content: string) {
       addedAt: parseTimestampInput(row.addedAt) ?? nowTs,
       partition: normalizeVideoPartition(row.partition),
       folders: uniqueTextList((row.folders ?? []) as unknown[]),
+      folderGroups: row.folderGroups ?? {},
       customTags: uniqueTextList((row.customTags ?? []) as unknown[]),
       systemTags: uniqueTextList((row.systemTags ?? []) as unknown[])
     });
@@ -3193,19 +3201,25 @@ export function parseImportRows(format: "json" | "csv", content: string) {
       : [];
 
     const folderNameById = new Map<number, string>();
+    const folderGroupByName = new Map<string, string>();
     for (const folder of jsonFolders) {
       const id = Number(folder.id);
       const name = normalizeText(folder.name);
       if (Number.isFinite(id) && id > 0 && name) {
         folderNameById.set(Math.trunc(id), name);
+        const groupName = normalizeText(folder.groupName);
+        if (groupName) folderGroupByName.set(normalizeKey(name), groupName);
       }
     }
     const articleFolderNameById = new Map<number, string>();
+    const articleFolderGroupByName = new Map<string, string>();
     for (const folder of jsonArticleFolders) {
       const id = Number(folder.id);
       const name = normalizeText(folder.name);
       if (Number.isFinite(id) && id > 0 && name) {
         articleFolderNameById.set(Math.trunc(id), name);
+        const groupName = normalizeText(folder.groupName);
+        if (groupName) articleFolderGroupByName.set(normalizeKey(name), groupName);
       }
     }
 
@@ -3248,7 +3262,16 @@ export function parseImportRows(format: "json" | "csv", content: string) {
                   "",
               )
               .filter(Boolean);
-        articles.push({ ...normalized, folderNames });
+        articles.push({
+          ...normalized,
+          folderNames,
+          folderGroups: Object.fromEntries(
+            folderNames.flatMap((name) => {
+              const group = articleFolderGroupByName.get(normalizeKey(name));
+              return group ? [[name, group]] : [];
+            }),
+          ),
+        });
       } catch {
         // Ignore malformed article rows while preserving the rest of the backup.
       }
@@ -3325,6 +3348,12 @@ export function parseImportRows(format: "json" | "csv", content: string) {
         partition: normalizeVideoPartition(video.partition),
         addedAt: favoriteAt,
         folders: foldersByVideoId.get(key) ?? ["Imported"],
+        folderGroups: Object.fromEntries(
+          (foldersByVideoId.get(key) ?? []).flatMap((name) => {
+            const group = folderGroupByName.get(normalizeKey(name));
+            return group ? [[name, group]] : [];
+          }),
+        ),
         customTags: customTagsByVideoId.get(key) ?? [],
         systemTags: systemTagsByVideoId.get(key) ?? []
       });
@@ -3539,7 +3568,7 @@ async function ensureWebDavRemoteDirectory(meta: WebDavMeta) {
   }
 }
 
-function getAllCookies(api: CookiesApi, details: { domain?: string }): Promise<CookieLike[]> {
+function getAllCookies(api: CookiesApi, details: { domain?: string; storeId?: string }): Promise<CookieLike[]> {
   return new Promise<CookieLike[]>((resolve, reject) => {
     const getAll = api.getAll;
     if (!getAll) {
@@ -3572,11 +3601,33 @@ function getAllCookies(api: CookiesApi, details: { domain?: string }): Promise<C
   });
 }
 
+async function findBilibiliTabContext() {
+  const tabs = await chrome.tabs.query({
+    url: ["https://*.bilibili.com/*", "http://*.bilibili.com/*"]
+  });
+  return (
+    tabs.find((tab) => tab.active && typeof tab.id === "number") ??
+    tabs.find((tab) => typeof tab.id === "number") ??
+    null
+  );
+}
+
+async function getActiveBilibiliCookieStoreId() {
+  try {
+    const tab = await findBilibiliTabContext();
+    const storeId = (tab as { cookieStoreId?: unknown } | null)?.cookieStoreId;
+    return typeof storeId === "string" && storeId.trim() ? storeId.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 async function getBiliCookieHeader(forceRefresh = false) {
   const nowTs = Date.now();
-  if (!forceRefresh && biliCookieHeaderCache && biliCookieHeaderCache.expiresAt > nowTs) {
-    return biliCookieHeaderCache.value;
-  }
+  const storeId = await getActiveBilibiliCookieStoreId();
+  const cacheKey = storeId || "default";
+  const cached = biliCookieHeaderCache.get(cacheKey);
+  if (!forceRefresh && cached && cached.expiresAt > nowTs) return cached.value;
 
   const cookiesApi =
     (globalThis as { chrome?: { cookies?: { getAll?: CookiesApi["getAll"] } } }).chrome?.cookies ??
@@ -3585,7 +3636,10 @@ async function getBiliCookieHeader(forceRefresh = false) {
     return "";
   }
 
-  const cookies = await getAllCookies(cookiesApi, { domain: "bilibili.com" });
+  const cookies = await getAllCookies(
+    cookiesApi,
+    storeId ? { domain: "bilibili.com", storeId } : { domain: "bilibili.com" }
+  );
   const validPairs = cookies
     .map((item) => ({
       name: normalizeText(item.name),
@@ -3598,10 +3652,10 @@ async function getBiliCookieHeader(forceRefresh = false) {
   }
 
   const header = validPairs.map((item) => `${item.name}=${item.value}`).join("; ");
-  biliCookieHeaderCache = {
+  biliCookieHeaderCache.set(cacheKey, {
     value: header,
     expiresAt: nowTs + 90_000
-  };
+  });
   return header;
 }
 
@@ -3637,13 +3691,8 @@ async function injectSyncBridgeScript(tabId: number) {
 }
 
 async function findBilibiliTabId() {
-  const tabs = await chrome.tabs.query({
-    url: ["https://*.bilibili.com/*", "http://*.bilibili.com/*"]
-  });
-  const activeTab = tabs.find((tab) => tab.active && typeof tab.id === "number");
-  if (activeTab?.id) return activeTab.id;
-  const fallback = tabs.find((tab) => typeof tab.id === "number");
-  return fallback?.id ?? null;
+  const tab = await findBilibiliTabContext();
+  return typeof tab?.id === "number" ? tab.id : null;
 }
 
 async function fetchBiliJsonViaPageContext<T>(url: string, stage: SyncFetchStage): Promise<T> {
@@ -4268,6 +4317,16 @@ function validateAiSettings(meta: AiMeta) {
   }
 }
 
+function sameAiOrganizerSettings(meta: AiMeta, task: AiOrganizerTaskRecord) {
+  const normalizeUrl = (provider: string, value: string) =>
+    normalizeAiProviderBaseUrl(provider, value).replace(/\/+$/, "").toLowerCase();
+  return (
+    normalizeKey(meta.provider) === normalizeKey(task.provider) &&
+    normalizeKey(meta.model) === normalizeKey(task.model) &&
+    normalizeUrl(meta.provider, meta.baseUrl) === normalizeUrl(task.provider, task.baseUrl)
+  );
+}
+
 function joinUrl(baseUrl: string, path: string) {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
@@ -4795,11 +4854,7 @@ async function processAiOrganizerPlanning(task: AiOrganizerTaskRecord) {
   const aiMeta = ensureAiMeta(liveState);
   if (!aiMeta.enabled) throw new Error("AI organization is disabled in settings");
   validateAiSettings(aiMeta);
-  if (
-    aiMeta.provider !== task.provider ||
-    aiMeta.model !== task.model ||
-    aiMeta.baseUrl !== task.baseUrl
-  ) {
+  if (!sameAiOrganizerSettings(aiMeta, task)) {
     throw new Error("AI provider or model changed. Restore the original setting or start a new task");
   }
   const prompt = buildAiOrganizerTaxonomyPrompt(
@@ -4849,11 +4904,7 @@ async function processAiOrganizerBatch(task: AiOrganizerTaskRecord) {
   const aiMeta = ensureAiMeta(liveState);
   if (!aiMeta.enabled) throw new Error("AI organization is disabled in settings");
   validateAiSettings(aiMeta);
-  if (
-    aiMeta.provider !== task.provider ||
-    aiMeta.model !== task.model ||
-    aiMeta.baseUrl !== task.baseUrl
-  ) {
+  if (!sameAiOrganizerSettings(aiMeta, task)) {
     throw new Error("AI provider or model changed. Restore the original setting or start a new task");
   }
   const batch = buildAiOrganizerVideoContext(
@@ -6521,9 +6572,6 @@ async function pullSingleFavoriteVideoFromBiliToLocal(
       folderLinksAdded += 1;
       continue;
     }
-    if (timestamp > existingLink.addedAt) {
-      existingLink.addedAt = timestamp;
-    }
   }
   let folderLinksRemoved = 0;
   if (reconciledRemoteFolderIdSet.size > 0) {
@@ -6592,6 +6640,7 @@ function ensureArticleFolderByNameForImport(state: LocalState, rawName: unknown)
     id: Math.max(1, toInt(state.counters.articleFolder, 1)),
     name,
     description: "Imported",
+    groupName: null,
     sortOrder: activeArticleFolders(state).length + 1,
     deletedAt: null,
     createdAt: timestamp,
@@ -7067,8 +7116,6 @@ async function syncFromBilibiliToState(
               addedAt: favAt
             });
             folderLinksAdded += 1;
-          } else if (favAt !== existingLink.addedAt) {
-            existingLink.addedAt = favAt;
           }
         }
         if (stopped) break folderLoop;
@@ -7934,6 +7981,7 @@ function buildExportPayload(state: LocalState) {
             id: folder.id,
             name: folder.name,
             description: folder.description,
+            groupName: folder.groupName,
             sortOrder: index + 1,
             deletedAt: null,
             createdAt: folder.createdAt,
@@ -8268,6 +8316,8 @@ function applyImportRowsToState(
     for (const folderName of folderNames) {
       const ensured = ensureFolderByNameForImport(state, folderName);
       if (!ensured) continue;
+      const importedGroupName = row.folderGroups?.[folderName];
+      if (importedGroupName) ensured.folder.groupName = normalizeText(importedGroupName) || null;
       if (ensured.created) summary.foldersCreated += 1;
 
       const addedAt = row.addedAt > 0 ? row.addedAt : timestamp;
@@ -8282,8 +8332,6 @@ function applyImportRowsToState(
           addedAt
         });
         summary.folderLinksAdded += 1;
-      } else if (addedAt > existingLink.addedAt) {
-        existingLink.addedAt = addedAt;
       }
     }
 
@@ -8348,6 +8396,10 @@ function applyImportRowsToState(
       for (const folderName of uniqueTextList(row.folderNames ?? [])) {
         const ensured = ensureArticleFolderByNameForImport(state, folderName);
         if (!ensured) continue;
+        const importedGroupName = row.folderGroups?.[folderName];
+        if (importedGroupName) {
+          ensured.folder.groupName = normalizeText(importedGroupName) || null;
+        }
         if (ensured.created) summary.foldersCreated += 1;
         folderIds.push(ensured.folder.id);
       }
@@ -8843,6 +8895,24 @@ function handleReadOnlyApi(
       params.get("pageSize")
     );
     return ok(data);
+  }
+
+  if (path === "/videos/by-bvid") {
+    const bvid = normalizeOutputBvid(params.get("bvid") || "");
+    if (!bvid) return ok(null);
+    const video = state.videos.find(
+      (row) =>
+        row.deletedAt === null &&
+        (normalizeOutputBvid(row.bvid) === bvid ||
+          normalizeKey(normalizeOutputBvid(row.bvid)) === normalizeKey(bvid)),
+    );
+    if (!video) return ok(null);
+    const folders = state.folderItems
+      .filter((item) => item.videoId === video.id)
+      .map((item) => state.folders.find((folder) => folder.id === item.folderId))
+      .filter((folder): folder is FolderRecord => !!folder && folder.deletedAt === null)
+      .map((folder) => ({ id: folder.id, name: folder.name }));
+    return ok({ video: mapVideo(state, video), folders });
   }
 
   if (path === "/comments/keys") {
@@ -9978,6 +10048,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           id: state.counters.folder++,
           name,
           description: normalizeText(body.description) || null,
+          groupName: normalizeText(body.groupName) || null,
           remoteMediaId: null,
           sortOrder: activeFolders(state).length + 1,
           deletedAt: null,
@@ -10002,6 +10073,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
           id: nextId,
           name,
           description: normalizeText(body.description) || null,
+          groupName: normalizeText(body.groupName) || null,
           sortOrder: activeArticleFolders(state).length + 1,
           deletedAt: null,
           createdAt: timestamp,
@@ -10031,6 +10103,9 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
         }
         if (Object.prototype.hasOwnProperty.call(body, "description")) {
           folder.description = normalizeText(body.description) || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "groupName")) {
+          folder.groupName = normalizeText(body.groupName) || null;
         }
         folder.updatedAt = now();
         return ok(folder);
@@ -10106,6 +10181,9 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
 
         if (Object.prototype.hasOwnProperty.call(body, "description")) {
           folder.description = normalizeText(body.description) || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "groupName")) {
+          folder.groupName = normalizeText(body.groupName) || null;
         }
 
         folder.updatedAt = now();

@@ -34,25 +34,30 @@ function extractJsonObject(rawText) {
 }
 
 function extractOpenAiLikeText(payload) {
-  const choice = Array.isArray(payload.choices) ? payload.choices[0] : null;
-  const message =
-    choice && typeof choice === "object" && choice !== null ? choice.message : null;
-  const content =
-    message && typeof message === "object" && message !== null
-      ? message.content
-      : null;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((item) =>
-        item && typeof item === "object" && "text" in item
-          ? normalizeText(item.text)
-          : "",
-      )
-      .filter(Boolean)
-      .join("\n");
+  const extractValue = (value) => {
+    if (typeof value === "string") return normalizeText(value);
+    if (Array.isArray(value)) {
+      return value.map((item) => extractValue(item)).filter(Boolean).join("\n");
+    }
+    if (!value || typeof value !== "object") return "";
+    if (typeof value.text === "string") return normalizeText(value.text);
+    if (typeof value.output_text === "string") return normalizeText(value.output_text);
+    if (value.content !== undefined) return extractValue(value.content);
+    return "";
+  };
+
+  const choices = Array.isArray(payload.choices) ? payload.choices : [];
+  for (const choice of choices) {
+    if (!choice || typeof choice !== "object") continue;
+    const text = extractValue(choice.message?.content) ||
+      extractValue(choice.message?.reasoning_content) ||
+      extractValue(choice.content) ||
+      extractValue(choice.text);
+    if (text) return text;
   }
-  return "";
+  const topLevel = extractValue(payload.output_text) || extractValue(payload.output);
+  if (topLevel) return topLevel;
+  return extractValue(payload.result) || extractValue(payload.response);
 }
 
 function extractClaudeText(payload) {
@@ -101,6 +106,7 @@ export async function requestAiJson(meta, prompt, options = {}) {
   );
 
   let response;
+  let responseText = null;
   if (meta.provider === "gemini") {
     response = await fetchImpl(
       `${joinUrl(meta.baseUrl, `models/${encodeURIComponent(meta.model)}:generateContent`)}?key=${encodeURIComponent(meta.apiKey)}`,
@@ -147,33 +153,52 @@ export async function requestAiJson(meta, prompt, options = {}) {
       }),
     });
   } else {
-    response = await fetchImpl(joinUrl(meta.baseUrl, "chat/completions"), {
+    const requestBody = {
+      model: meta.model,
+      max_tokens: maxTokens,
+      temperature,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Return JSON only. Do not include markdown fences or extra prose.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      ...(meta.provider === "deepseek" || meta.provider === "openai"
+        ? { response_format: { type: "json_object" } }
+        : {}),
+    };
+    const requestUrl = joinUrl(meta.baseUrl, "chat/completions");
+    const requestInit = {
       method: "POST",
       signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${meta.apiKey}`,
       },
-      body: JSON.stringify({
-        model: meta.model,
-        max_tokens: maxTokens,
-        temperature,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Return JSON only. Do not include markdown fences or extra prose.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      }),
-    });
+      body: JSON.stringify(requestBody),
+    };
+    response = await fetchImpl(requestUrl, requestInit);
+    responseText = await response.text();
+    // Some OpenAI-compatible gateways expose JSON mode but reject the
+    // response_format field for newer or vendor-specific models. Retry once
+    // with the same prompt so those models still get a chance to answer.
+    if (!response.ok && response.status === 400 && requestBody.response_format) {
+      const fallbackBody = { ...requestBody };
+      delete fallbackBody.response_format;
+      response = await fetchImpl(requestUrl, {
+        ...requestInit,
+        body: JSON.stringify(fallbackBody),
+      });
+      responseText = await response.text();
+    }
   }
 
-  const responseText = await response.text();
+  if (responseText === null) responseText = await response.text();
   if (!response.ok) {
     throw new Error(formatAiProviderErrorMessage(response.status, responseText));
   }

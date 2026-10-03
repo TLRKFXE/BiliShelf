@@ -9,6 +9,10 @@ import {
   isCollectorUiUrl,
   normalizeBvidToken,
   extractBvidFromAny,
+  extractAidFromAny,
+  extractBangumiSeasonId,
+  extractAudioId,
+  isSpecialMediaUrl,
 } from '../utils/bili-action-sync.js';
 
 test('content script matches include favorites pages for Bilibili->local action sync', () => {
@@ -16,9 +20,22 @@ test('content script matches include favorites pages for Bilibili->local action 
   assert.ok(CONTENT_SCRIPT_MATCHES.includes('https://www.bilibili.com/list/ml*'));
 });
 
-test('collector UI only runs on video/watchlater pages', () => {
+test('content script matches special media pages', () => {
+  assert.ok(CONTENT_SCRIPT_MATCHES.includes('https://www.bilibili.com/bangumi/play/*'));
+  assert.ok(CONTENT_SCRIPT_MATCHES.includes('https://www.bilibili.com/audio/*'));
+  assert.ok(CONTENT_SCRIPT_MATCHES.includes('https://bilibili.com/bangumi/play/*'));
+  assert.ok(CONTENT_SCRIPT_MATCHES.includes('https://bilibili.com/audio/*'));
+});
+
+test('collector UI supports video, Bangumi, and audio pages', () => {
   assert.equal(isCollectorUiUrl('https://www.bilibili.com/video/BV1xx411c7mD'), true);
   assert.equal(isCollectorUiUrl('https://www.bilibili.com/list/watchlater?bvid=BV1xx411c7mD'), true);
+  assert.equal(isCollectorUiUrl('https://www.bilibili.com/video/av412935552'), true);
+  assert.equal(isCollectorUiUrl('https://www.bilibili.com/list/ml47438371?oid=1&bvid=BV1xx411c7mD'), true);
+  assert.equal(isCollectorUiUrl('https://t.bilibili.com/123456789'), true);
+  assert.equal(isCollectorUiUrl('https://www.bilibili.com/bangumi/play/ss123'), true);
+  assert.equal(isCollectorUiUrl('https://www.bilibili.com/audio/au456'), true);
+  assert.equal(isCollectorUiUrl('https://bilibili.com/audio/au456'), true);
   assert.equal(isCollectorUiUrl('https://space.bilibili.com/123/favlist'), false);
 });
 
@@ -27,6 +44,20 @@ test('action sync page detection covers favorites pages', () => {
   assert.equal(isActionSyncPageUrl('https://bilibili.com/video/BV1xx411c7mD'), true);
   assert.equal(isActionSyncPageUrl('https://space.bilibili.com/123/favlist?fid=456'), true);
   assert.equal(isActionSyncPageUrl('https://www.bilibili.com/list/ml123456'), true);
+  assert.equal(isActionSyncPageUrl('https://www.bilibili.com/read/cv328714'), true);
+  assert.equal(isActionSyncPageUrl('https://www.bilibili.com/bangumi/play/ss123'), true);
+  assert.equal(isActionSyncPageUrl('https://www.bilibili.com/audio/au456'), true);
+  assert.equal(isActionSyncPageUrl('https://bilibili.com/audio/au456'), true);
+});
+
+test('special media URL parsers return stable identifiers', () => {
+  assert.equal(extractBangumiSeasonId('https://www.bilibili.com/bangumi/play/ss123?from_spmid=1'), 'ss123');
+  assert.equal(extractBangumiSeasonId('https://www.bilibili.com/video/BV1xx411c7mD'), '');
+  assert.equal(extractAudioId('https://www.bilibili.com/audio/au456'), 'au456');
+  assert.equal(extractAudioId('https://www.bilibili.com/audio/au456/'), 'au456');
+  assert.equal(isSpecialMediaUrl('https://www.bilibili.com/bangumi/play/ss123'), true);
+  assert.equal(isSpecialMediaUrl('https://www.bilibili.com/audio/au456'), true);
+  assert.equal(isSpecialMediaUrl('https://www.bilibili.com/video/BV1xx411c7mD'), false);
 });
 
 test('bvid parser is case-insensitive and preserves BV + suffix case', () => {
@@ -34,6 +65,8 @@ test('bvid parser is case-insensitive and preserves BV + suffix case', () => {
   assert.equal(extractBvidFromAny('/video/bV1ab411c7md?p=2'), 'BV1ab411c7md');
   assert.equal(extractBvidFromAny('https://www.bilibili.com/video/BV1xx411c7mD'), 'BV1xx411c7mD');
   assert.equal(extractBvidFromAny('no-bvid-here'), '');
+  assert.equal(extractAidFromAny('https://www.bilibili.com/video/av412935552'), 412935552);
+  assert.equal(extractAidFromAny('https://www.bilibili.com/list/ml47438371?oid=412935552'), 412935552);
 });
 
 test('favorite folder id parser supports space/favlist and list/ml urls', () => {

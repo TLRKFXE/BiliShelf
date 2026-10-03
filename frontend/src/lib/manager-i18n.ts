@@ -1118,6 +1118,12 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
     "zh-CN": "新建自定义标签",
     "en-US": "New custom tag",
   },
+  "tools.searchTagsPlaceholder": { "zh-CN": "搜索标签名称", "en-US": "Search tag names" },
+  "tools.sortTagsCreated": { "zh-CN": "按创建时间", "en-US": "Created recently" },
+  "tools.sortTagsName": { "zh-CN": "按名称", "en-US": "By name" },
+  "tools.sortTagsUsage": { "zh-CN": "按使用次数", "en-US": "By usage" },
+  "tools.sortAscending": { "zh-CN": "升序", "en-US": "Ascending" },
+  "tools.sortDescending": { "zh-CN": "降序", "en-US": "Descending" },
   "tools.tagUsage": {
     "zh-CN": "已关联 {count} 条",
     "en-US": "Linked {count}",
@@ -1129,6 +1135,10 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "tools.noCustomTag": {
     "zh-CN": "暂无自定义标签。",
     "en-US": "No custom tags yet.",
+  },
+  "tools.noMatchingTag": {
+    "zh-CN": "没有匹配的标签。",
+    "en-US": "No matching tags.",
   },
   "detail.title": { "zh-CN": "Video Detail", "en-US": "Video Detail" },
   "detail.bv": { "zh-CN": "BV", "en-US": "BV" },

@@ -22,11 +22,13 @@ const articleUrls = [
   "https://www.bilibili.com/opus/463389081041541660/?from=readlist",
   "https://www.bilibili.com/opus/1230104343281139717",
   "https://www.bilibili.com/opus/1171849743365570560?spm_id_from=333.1387.0.0",
+  "https://www.bilibili.com/read/cv328714",
 ];
 const expectedOpusIds = [
   "463389081041541660",
   "1230104343281139717",
   "1171849743365570560",
+  "328714",
 ];
 
 test("article URLs are recognized and preserve the opus id", () => {

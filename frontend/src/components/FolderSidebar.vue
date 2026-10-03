@@ -3,6 +3,8 @@ import {
   ArrowDownAZ,
   Bot,
   CalendarClock,
+  ChevronDown,
+  ChevronRight,
   FolderOpen,
   FolderPlus,
   GripVertical,
@@ -57,8 +59,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   select: [number | null];
-  create: [{ name: string; description?: string }];
-  update: [{ id: number; name?: string; description?: string | null }];
+  create: [{ name: string; description?: string; groupName?: string | null }];
+  update: [{ id: number; name?: string; description?: string | null; groupName?: string | null }];
   remove: [number];
   reorder: [number[]];
   startPlayback: [number];
@@ -69,6 +71,7 @@ const emit = defineEmits<{
 
 const folderName = ref("");
 const folderDescription = ref("");
+const folderGroupName = ref("");
 const createDialogOpen = ref(false);
 const searchKeyword = ref("");
 const sortBy = ref<"manual" | "updatedAt" | "name" | "count">("manual");
@@ -77,6 +80,7 @@ const editingName = ref("");
 const editingDescription = ref("");
 const draggingFolderId = ref<number | null>(null);
 const dragOverFolderId = ref<number | null>(null);
+const collapsedGroups = ref<Set<string>>(new Set());
 
 const SIDEBAR_TEXT: Record<
   | "folders"
@@ -102,6 +106,10 @@ const SIDEBAR_TEXT: Record<
   | "description"
   | "namePlaceholder"
   | "descriptionPlaceholder"
+  | "group"
+  | "groupPlaceholder"
+  | "expandGroup"
+  | "collapseGroup"
   | "create"
   | "playbackTitle"
   | "playbackNoFolder"
@@ -148,6 +156,10 @@ const SIDEBAR_TEXT: Record<
     "zh-CN": "可填写该收藏夹的用途说明",
     "en-US": "Describe this folder",
   },
+  group: { "zh-CN": "分组", "en-US": "Group" },
+  groupPlaceholder: { "zh-CN": "例如：学习、娱乐（可选）", "en-US": "e.g. Learning, Entertainment (optional)" },
+  expandGroup: { "zh-CN": "展开分组", "en-US": "Expand group" },
+  collapseGroup: { "zh-CN": "收起分组", "en-US": "Collapse group" },
   create: { "zh-CN": "创建", "en-US": "Create" },
   playbackTitle: { "zh-CN": "连续播放", "en-US": "Playback" },
   playbackNoFolder: {
@@ -202,6 +214,34 @@ const displayedFolders = computed(() => {
   return rows;
 });
 
+const displayedFolderGroups = computed(() => {
+  const groups = new Map<string, Folder[]>();
+  for (const folder of displayedFolders.value) {
+    const key = folder.groupName?.trim() || "";
+    const rows = groups.get(key) ?? [];
+    rows.push(folder);
+    groups.set(key, rows);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => {
+      if (!left) return 1;
+      if (!right) return -1;
+      return left.localeCompare(right, props.locale);
+    })
+    .map(([name, folders]) => ({ name, folders }));
+});
+
+function groupLabel(name: string) {
+  return name || (props.locale === "zh-CN" ? "未分组" : "Ungrouped");
+}
+
+function toggleGroup(name: string) {
+  const next = new Set(collapsedGroups.value);
+  if (next.has(name)) next.delete(name);
+  else next.add(name);
+  collapsedGroups.value = next;
+}
+
 const canDragSort = computed(
   () => sortBy.value === "manual" && !searchKeyword.value.trim()
 );
@@ -253,9 +293,11 @@ function handleCreate() {
   emit("create", {
     name,
     description: folderDescription.value.trim() || undefined,
+    groupName: folderGroupName.value.trim() || null,
   });
   folderName.value = "";
   folderDescription.value = "";
+  folderGroupName.value = "";
   createDialogOpen.value = false;
 }
 
@@ -263,12 +305,14 @@ function startEdit(folder: Folder) {
   editingId.value = folder.id;
   editingName.value = folder.name;
   editingDescription.value = folder.description ?? "";
+  folderGroupName.value = folder.groupName ?? "";
 }
 
 function cancelEdit() {
   editingId.value = null;
   editingName.value = "";
   editingDescription.value = "";
+  folderGroupName.value = "";
 }
 
 function submitEdit() {
@@ -279,6 +323,7 @@ function submitEdit() {
     id: editingId.value,
     name,
     description: editingDescription.value.trim() || null,
+    groupName: folderGroupName.value.trim() || null,
   });
   cancelEdit();
 }
@@ -494,16 +539,34 @@ function triggerClear() {
           <span class="truncate">{{ props.collectionLabel || t("allVideos") }}</span>
         </button>
 
-        <div
-          v-for="folder in displayedFolders"
-          :key="folder.id"
-          class="rounded-md"
-          :draggable="canDragSort"
-          @dragstart="handleDragStart(folder.id)"
-          @dragover.prevent="handleDragOver(folder.id)"
-          @drop.prevent="handleDrop(folder.id)"
-          @dragend="handleDragEnd"
-        >
+        <div v-for="group in displayedFolderGroups" :key="group.name || 'ungrouped'" class="mb-3">
+          <div class="flex items-center justify-between px-2 pb-1">
+            <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {{ groupLabel(group.name) }}
+            </span>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              class="h-6 w-6"
+              :aria-label="collapsedGroups.has(group.name) ? t('expandGroup') : t('collapseGroup')"
+              :title="collapsedGroups.has(group.name) ? t('expandGroup') : t('collapseGroup')"
+              @click="toggleGroup(group.name)"
+            >
+              <ChevronRight v-if="collapsedGroups.has(group.name)" class="h-3.5 w-3.5" />
+              <ChevronDown v-else class="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <template v-if="!collapsedGroups.has(group.name)">
+          <div
+            v-for="folder in group.folders"
+            :key="folder.id"
+            class="rounded-md"
+            :draggable="canDragSort"
+            @dragstart="handleDragStart(folder.id)"
+            @dragover.prevent="handleDragOver(folder.id)"
+            @drop.prevent="handleDrop(folder.id)"
+            @dragend="handleDragEnd"
+          >
           <template v-if="editingId === folder.id">
             <div class="space-y-2 rounded-md border border-primary/35 bg-primary/5 p-2">
               <Input v-model="editingName" :placeholder="t('folderName')" />
@@ -513,6 +576,7 @@ function triggerClear() {
                 :placeholder="t('folderDescription')"
                 class="text-xs"
               />
+              <Input v-model="folderGroupName" :placeholder="t('groupPlaceholder')" />
               <div class="flex justify-end gap-2">
                 <Button size="sm" variant="ghost" @click="cancelEdit">
                   {{ t("cancel") }}
@@ -577,6 +641,8 @@ function triggerClear() {
               </Button>
             </div>
           </template>
+          </div>
+          </template>
         </div>
       </div>
     </div>
@@ -606,6 +672,11 @@ function triggerClear() {
                 :placeholder="t('namePlaceholder')"
                 @keyup.enter="handleCreate"
               />
+            </div>
+
+            <div class="space-y-2">
+              <span class="text-sm font-medium">{{ t("group") }}</span>
+              <Input v-model="folderGroupName" :placeholder="t('groupPlaceholder')" maxlength="40" />
             </div>
 
             <div class="space-y-2">

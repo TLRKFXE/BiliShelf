@@ -50,6 +50,10 @@ export const useLibraryStore = defineStore("library", () => {
   const fromDate = ref("");
   const toDate = ref("");
   const newCustomTagName = ref("");
+  const manageCustomTagSearch = ref("");
+  const manageCustomTagSort = ref<
+    "name-asc" | "name-desc" | "usage-asc" | "usage-desc" | "created-asc" | "created-desc"
+  >("created-desc");
   const manageCustomTagPage = ref(1);
   const videoPage = ref(1);
   const videoPageSize = ref(30);
@@ -75,15 +79,31 @@ export const useLibraryStore = defineStore("library", () => {
   const customTags = computed(() =>
     tags.value.filter((tag) => tag.type === "custom")
   );
+  const filteredManageCustomTags = computed(() => {
+    const keyword = manageCustomTagSearch.value.trim().toLocaleLowerCase();
+    const rows = customTags.value.filter((tag) =>
+      keyword ? tag.name.toLocaleLowerCase().includes(keyword) : true,
+    );
+    const [field, direction] = manageCustomTagSort.value.split("-");
+    const factor = direction === "asc" ? 1 : -1;
+    return rows.slice().sort((left, right) => {
+      if (field === "name") return factor * left.name.localeCompare(right.name);
+      if (field === "usage") {
+        return factor * (left.usageCount - right.usageCount) || left.name.localeCompare(right.name);
+      }
+      return factor * (left.createdAt - right.createdAt) || left.name.localeCompare(right.name);
+    });
+  });
   const manageCustomTagTotalPages = computed(() =>
     Math.max(
       1,
-      Math.ceil(customTags.value.length / MANAGE_CUSTOM_TAG_PAGE_SIZE)
+      Math.ceil(filteredManageCustomTags.value.length / MANAGE_CUSTOM_TAG_PAGE_SIZE)
     )
   );
+  const manageCustomTagFilteredTotal = computed(() => filteredManageCustomTags.value.length);
   const pagedManageCustomTags = computed(() => {
     const start = (manageCustomTagPage.value - 1) * MANAGE_CUSTOM_TAG_PAGE_SIZE;
-    return customTags.value.slice(start, start + MANAGE_CUSTOM_TAG_PAGE_SIZE);
+    return filteredManageCustomTags.value.slice(start, start + MANAGE_CUSTOM_TAG_PAGE_SIZE);
   });
   const hasSelection = computed(() => selectedVideoIds.value.length > 0);
   const canMoveFromCurrentFolder = computed(
@@ -477,6 +497,9 @@ export const useLibraryStore = defineStore("library", () => {
     fromDate,
     toDate,
     newCustomTagName,
+    manageCustomTagSearch,
+    manageCustomTagSort,
+    manageCustomTagFilteredTotal,
     manageCustomTagPage,
     videoPage,
     videoPageSize,
