@@ -227,6 +227,11 @@ export const MANAGER_I18N: Record<string, Record<Locale, string>> = {
   "settings.storeVersion": { "zh-CN": "商店版本", "en-US": "Store version" },
   "settings.githubVersion": { "zh-CN": "GitHub 版本", "en-US": "GitHub version" },
   "settings.notPublished": { "zh-CN": "未发布或未配置", "en-US": "Not published or configured" },
+  "settings.sponsorThanks": { "zh-CN": "赞助感谢名单", "en-US": "Sponsor thanks" },
+  "settings.sponsorThanksDescription": {
+    "zh-CN": "感谢支持 BiliShelf 的用户。",
+    "en-US": "Thank you to the users who support BiliShelf.",
+  },
   "settings.storeReady": { "zh-CN": "商店已发布", "en-US": "Available in store" },
   "settings.storePending": { "zh-CN": "商店审核中", "en-US": "Store review pending" },
   "settings.storePendingDescription": {

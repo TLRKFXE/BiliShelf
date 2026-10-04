@@ -820,6 +820,14 @@ watch(
               </div>
             </div>
 
+            <section class="space-y-2 border-t pt-4">
+              <p class="text-xs font-medium">{{ t("settings.sponsorThanks") }}</p>
+              <p class="text-xs leading-5 text-muted-foreground">{{ t("settings.sponsorThanksDescription") }}</p>
+              <ul class="flex flex-wrap gap-2" :aria-label="t('settings.sponsorThanks')">
+                <li class="rounded-md border bg-muted/20 px-3 py-1.5 text-sm">沫*o</li>
+              </ul>
+            </section>
+
             <div
               v-if="updateStatus?.updateAvailable"
               class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm"

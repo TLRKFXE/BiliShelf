@@ -76,6 +76,32 @@ test("collector panel keeps motion and shows a filled saved bookmark state", asy
   assert.match(source, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
+test("collector stacking does not create a full-screen root layer over Bilibili navigation", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /#bl-floating-root\s*\{\s*position:\s*static;/);
+  assert.match(source, /#bl-floating-btn\s*\{[\s\S]*z-index:\s*900;/);
+  assert.match(source, /\.bl-toast-root\s*\{[\s\S]*z-index:\s*900;/);
+  assert.match(source, /#bl-playback-overlay\s*\{[\s\S]*z-index:\s*900;/);
+  assert.doesNotMatch(source, /#bl-floating-root\s*\{[^}]*z-index:/);
+});
+
+test("collector styles are scoped and native favorite status ignores navigation nodes", async () => {
+  const source = await readContentSource();
+
+  assert.match(source, /style\.textContent = `[\s\S]*`\.replace\(/);
+  assert.match(source, /\"\$1#bl-floating-root \$2\"/);
+  assert.doesNotMatch(source, /\n\s*\.bl-hidden\s*\{/);
+  assert.match(source, /function isNativeVideoToolbarElement\(element\)/);
+  assert.match(source, /#biliMainHeader, header, nav, \[class\*='bili-header'\]/);
+  assert.match(source, /#arc_toolbar_report, \.video-toolbar-left, \.video-toolbar/);
+  assert.match(source, /function startNativeFavoriteStatusWatch\(\)/);
+  assert.doesNotMatch(source, /nativeFavoriteStatusObserver/);
+  assert.match(source, /function waitForBilibiliShell\(\)/);
+  assert.match(source, /await waitForBilibiliShell\(\);/);
+  assert.match(source, /\(document\.documentElement \|\| document\.body\)\.appendChild\(root\)/);
+});
+
 test("collector source removes the redundant subtitle and empty saved-folder placeholder copy", async () => {
   const source = await readContentSource();
 

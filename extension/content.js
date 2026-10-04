@@ -13,7 +13,10 @@
   extractOpusId,
   normalizeBvidToken,
 } from "./utils/bili-action-sync.js";
-import { buildArticleSourceKey, normalizeOpusId } from "./shared/article-favorite.js";
+import {
+  buildArticleSourceKey,
+  normalizeOpusId,
+} from "./shared/article-favorite.js";
 import {
   buildQuickFavoriteToastMessage,
   isEditableTarget,
@@ -49,10 +52,11 @@ import {
   const LOCAL_API_MESSAGE = "BILISHELF_LOCAL_API";
   const BILI_VIEW_API = "https://api.bilibili.com/x/web-interface/view";
   const BILI_TAG_API = "https://api.bilibili.com/x/tag/archive/tags";
-  const BILI_BANGUMI_SEASON_API = "https://api.bilibili.com/pgc/view/web/season";
+  const BILI_BANGUMI_SEASON_API =
+    "https://api.bilibili.com/pgc/view/web/season";
   const BILI_AUDIO_INFO_APIS = [
     "https://www.bilibili.com/audio/music-service-c/web/song/info",
-    "https://api.bilibili.com/audio/music-service-c/web/song/info"
+    "https://api.bilibili.com/audio/music-service-c/web/song/info",
   ];
   const DEFAULT_COVER = "https://i0.hdslb.com/bfs/archive/placeholder.jpg";
 
@@ -77,220 +81,323 @@ import {
   const I18N = {
     "title.collector": {
       [LOCALE_ZH]: "BiliShelf 收藏助手",
-      [LOCALE_EN]: "BiliShelf Collector"
+      [LOCALE_EN]: "BiliShelf Collector",
     },
     "footer.credit": {
       [LOCALE_ZH]: "By TLRK · © 2026 TLRK · MIT License",
-      [LOCALE_EN]: "By TLRK · © 2026 TLRK · MIT License"
+      [LOCALE_EN]: "By TLRK · © 2026 TLRK · MIT License",
     },
     "button.close": { [LOCALE_ZH]: "关闭", [LOCALE_EN]: "Close" },
     "button.save": { [LOCALE_ZH]: "保存", [LOCALE_EN]: "Save" },
     "button.saving": { [LOCALE_ZH]: "正在保存...", [LOCALE_EN]: "Saving..." },
-    "button.newFolder": { [LOCALE_ZH]: "新建收藏夹", [LOCALE_EN]: "New Folder" },
-    "button.newArticleFolder": { [LOCALE_ZH]: "新建专栏文件夹", [LOCALE_EN]: "New Article Folder" },
+    "button.newFolder": {
+      [LOCALE_ZH]: "新建收藏夹",
+      [LOCALE_EN]: "New Folder",
+    },
+    "button.newArticleFolder": {
+      [LOCALE_ZH]: "新建专栏文件夹",
+      [LOCALE_EN]: "New Article Folder",
+    },
     "button.selectAll": { [LOCALE_ZH]: "全选", [LOCALE_EN]: "Select all" },
     "button.clear": { [LOCALE_ZH]: "清空", [LOCALE_EN]: "Clear" },
     "button.cancel": { [LOCALE_ZH]: "取消", [LOCALE_EN]: "Cancel" },
     "button.create": { [LOCALE_ZH]: "创建", [LOCALE_EN]: "Create" },
-    "button.quickSave": { [LOCALE_ZH]: "快捷收藏", [LOCALE_EN]: "Quick favorite" },
+    "button.quickSave": {
+      [LOCALE_ZH]: "快捷收藏",
+      [LOCALE_EN]: "Quick favorite",
+    },
     "button.previous": { [LOCALE_ZH]: "上一个", [LOCALE_EN]: "Previous" },
     "button.next": { [LOCALE_ZH]: "下一个", [LOCALE_EN]: "Next" },
     "button.showList": { [LOCALE_ZH]: "查看列表", [LOCALE_EN]: "Show queue" },
     "button.hideList": { [LOCALE_ZH]: "收起列表", [LOCALE_EN]: "Hide queue" },
     "button.collapse": { [LOCALE_ZH]: "收起", [LOCALE_EN]: "Collapse" },
     "button.expand": { [LOCALE_ZH]: "展开", [LOCALE_EN]: "Expand" },
-    "button.openManager": { [LOCALE_ZH]: "回到管理页", [LOCALE_EN]: "Open manager" },
-    "button.endPlayback": { [LOCALE_ZH]: "结束播放", [LOCALE_EN]: "End playback" },
-    "button.favoriteComment": { [LOCALE_ZH]: "收藏评论", [LOCALE_EN]: "Save comment" },
+    "button.openManager": {
+      [LOCALE_ZH]: "回到管理页",
+      [LOCALE_EN]: "Open manager",
+    },
+    "button.endPlayback": {
+      [LOCALE_ZH]: "结束播放",
+      [LOCALE_EN]: "End playback",
+    },
+    "button.favoriteComment": {
+      [LOCALE_ZH]: "收藏评论",
+      [LOCALE_EN]: "Save comment",
+    },
     "button.savedComment": { [LOCALE_ZH]: "已收藏", [LOCALE_EN]: "Saved" },
-    "button.unfavoriteComment": { [LOCALE_ZH]: "取消收藏", [LOCALE_EN]: "Remove saved comment" },
+    "button.unfavoriteComment": {
+      [LOCALE_ZH]: "取消收藏",
+      [LOCALE_EN]: "Remove saved comment",
+    },
     "section.folders": { [LOCALE_ZH]: "收藏夹", [LOCALE_EN]: "Folders" },
-    "section.articleFolders": { [LOCALE_ZH]: "专栏文件夹", [LOCALE_EN]: "Article Folders" },
-    "section.customTags": { [LOCALE_ZH]: "自定义标签", [LOCALE_EN]: "Custom Tags" },
-    "field.searchFolders": { [LOCALE_ZH]: "搜索收藏夹...", [LOCALE_EN]: "Search folders..." },
+    "section.articleFolders": {
+      [LOCALE_ZH]: "专栏文件夹",
+      [LOCALE_EN]: "Article Folders",
+    },
+    "section.customTags": {
+      [LOCALE_ZH]: "自定义标签",
+      [LOCALE_EN]: "Custom Tags",
+    },
+    "field.searchFolders": {
+      [LOCALE_ZH]: "搜索收藏夹...",
+      [LOCALE_EN]: "Search folders...",
+    },
     "field.quickFavoriteSearch": {
       [LOCALE_ZH]: "搜索并选择收藏夹",
-      [LOCALE_EN]: "Search and pick folders"
+      [LOCALE_EN]: "Search and pick folders",
     },
     "field.customTags": {
       [LOCALE_ZH]: "自定义标签（逗号分隔）",
-      [LOCALE_EN]: "Custom tags (comma separated)"
+      [LOCALE_EN]: "Custom tags (comma separated)",
     },
-    "status.noVideoTitle": { [LOCALE_ZH]: "未检测到视频", [LOCALE_EN]: "No video detected" },
+    "status.noVideoTitle": {
+      [LOCALE_ZH]: "未检测到视频",
+      [LOCALE_EN]: "No video detected",
+    },
     "status.noVideoDesc": {
       [LOCALE_ZH]: "请先打开一个 Bilibili 视频页面。",
-      [LOCALE_EN]: "Open a Bilibili video page first."
+      [LOCALE_EN]: "Open a Bilibili video page first.",
     },
-    "status.unknownUploader": { [LOCALE_ZH]: "未知 UP 主", [LOCALE_EN]: "Unknown uploader" },
+    "status.unknownUploader": {
+      [LOCALE_ZH]: "未知 UP 主",
+      [LOCALE_EN]: "Unknown uploader",
+    },
     "status.untitled": { [LOCALE_ZH]: "未命名视频", [LOCALE_EN]: "Untitled" },
     "status.coverAlt": { [LOCALE_ZH]: "视频封面", [LOCALE_EN]: "Video cover" },
-    "status.selectedCount": { [LOCALE_ZH]: "已选 {count}", [LOCALE_EN]: "{count} selected" },
-    "status.videosCount": { [LOCALE_ZH]: "{count} 个视频", [LOCALE_EN]: "{count} videos" },
-    "status.articlesCount": { [LOCALE_ZH]: "{count} 篇专栏", [LOCALE_EN]: "{count} articles" },
-    "status.noFolders": { [LOCALE_ZH]: "没有匹配的收藏夹", [LOCALE_EN]: "No folders found" },
-    "status.expandFolderGroup": { [LOCALE_ZH]: "展开收藏夹分组", [LOCALE_EN]: "Expand folder group" },
-    "status.collapseFolderGroup": { [LOCALE_ZH]: "收起收藏夹分组", [LOCALE_EN]: "Collapse folder group" },
-    "status.favoriteButton": { [LOCALE_ZH]: "收藏视频", [LOCALE_EN]: "Save video" },
+    "status.selectedCount": {
+      [LOCALE_ZH]: "已选 {count}",
+      [LOCALE_EN]: "{count} selected",
+    },
+    "status.videosCount": {
+      [LOCALE_ZH]: "{count} 个视频",
+      [LOCALE_EN]: "{count} videos",
+    },
+    "status.articlesCount": {
+      [LOCALE_ZH]: "{count} 篇专栏",
+      [LOCALE_EN]: "{count} articles",
+    },
+    "status.noFolders": {
+      [LOCALE_ZH]: "没有匹配的收藏夹",
+      [LOCALE_EN]: "No folders found",
+    },
+    "status.expandFolderGroup": {
+      [LOCALE_ZH]: "展开收藏夹分组",
+      [LOCALE_EN]: "Expand folder group",
+    },
+    "status.collapseFolderGroup": {
+      [LOCALE_ZH]: "收起收藏夹分组",
+      [LOCALE_EN]: "Collapse folder group",
+    },
+    "status.favoriteButton": {
+      [LOCALE_ZH]: "收藏视频",
+      [LOCALE_EN]: "Save video",
+    },
     "status.favoriteButtonSaved": {
       [LOCALE_ZH]: "该视频已收藏，点击管理",
-      [LOCALE_EN]: "This video is saved. Click to manage"
+      [LOCALE_EN]: "This video is saved. Click to manage",
     },
     "status.localFavoriteNearNative": {
       [LOCALE_ZH]: "BiliShelf 已收藏",
-      [LOCALE_EN]: "BiliShelf saved"
+      [LOCALE_EN]: "BiliShelf saved",
     },
     "status.localFavoriteNearNativeIdle": {
       [LOCALE_ZH]: "BiliShelf 未收藏",
-      [LOCALE_EN]: "BiliShelf not saved"
+      [LOCALE_EN]: "BiliShelf not saved",
     },
     "status.localFavoriteNearNativeLoading": {
       [LOCALE_ZH]: "BiliShelf 检查中",
-      [LOCALE_EN]: "Checking BiliShelf"
+      [LOCALE_EN]: "Checking BiliShelf",
     },
     "status.favoriteArticleButton": {
       [LOCALE_ZH]: "收藏专栏",
-      [LOCALE_EN]: "Save article"
+      [LOCALE_EN]: "Save article",
     },
     "status.favoriteArticleButtonSaved": {
       [LOCALE_ZH]: "该专栏已收藏，点击管理",
-      [LOCALE_EN]: "This article is saved. Click to manage"
+      [LOCALE_EN]: "This article is saved. Click to manage",
     },
-    "status.articleSaved": { [LOCALE_ZH]: "专栏已收藏", [LOCALE_EN]: "Article saved" },
-    "status.articleRemoved": { [LOCALE_ZH]: "已取消专栏收藏", [LOCALE_EN]: "Article removed" },
-    "status.favoriteSavedTitle": { [LOCALE_ZH]: "收藏成功", [LOCALE_EN]: "Saved" },
+    "status.articleSaved": {
+      [LOCALE_ZH]: "专栏已收藏",
+      [LOCALE_EN]: "Article saved",
+    },
+    "status.articleRemoved": {
+      [LOCALE_ZH]: "已取消专栏收藏",
+      [LOCALE_EN]: "Article removed",
+    },
+    "status.favoriteSavedTitle": {
+      [LOCALE_ZH]: "收藏成功",
+      [LOCALE_EN]: "Saved",
+    },
     "status.favoriteAlreadySavedTitle": {
       [LOCALE_ZH]: "该视频已经收藏",
-      [LOCALE_EN]: "This video is already saved"
+      [LOCALE_EN]: "This video is already saved",
     },
     "status.favoriteUpdatedTitle": {
       [LOCALE_ZH]: "收藏夹已更新",
-      [LOCALE_EN]: "Folders updated"
+      [LOCALE_EN]: "Folders updated",
     },
-    "status.articleSavedTitle": { [LOCALE_ZH]: "专栏收藏成功", [LOCALE_EN]: "Article saved" },
-    "status.articleAlreadySavedTitle": { [LOCALE_ZH]: "该专栏已经收藏", [LOCALE_EN]: "This article is already saved" },
-    "status.articleUpdatedTitle": { [LOCALE_ZH]: "专栏文件夹已更新", [LOCALE_EN]: "Article folders updated" },
-    "status.articleRemovedTitle": { [LOCALE_ZH]: "已取消专栏收藏", [LOCALE_EN]: "Article removed" },
+    "status.articleSavedTitle": {
+      [LOCALE_ZH]: "专栏收藏成功",
+      [LOCALE_EN]: "Article saved",
+    },
+    "status.articleAlreadySavedTitle": {
+      [LOCALE_ZH]: "该专栏已经收藏",
+      [LOCALE_EN]: "This article is already saved",
+    },
+    "status.articleUpdatedTitle": {
+      [LOCALE_ZH]: "专栏文件夹已更新",
+      [LOCALE_EN]: "Article folders updated",
+    },
+    "status.articleRemovedTitle": {
+      [LOCALE_ZH]: "已取消专栏收藏",
+      [LOCALE_EN]: "Article removed",
+    },
     "status.favoriteRemovedTitle": {
       [LOCALE_ZH]: "已取消本地收藏",
-      [LOCALE_EN]: "Removed from local library"
+      [LOCALE_EN]: "Removed from local library",
     },
     "status.quickFavoriteHint": {
       [LOCALE_ZH]: "快捷键 {shortcut}",
-      [LOCALE_EN]: "Shortcut {shortcut}"
+      [LOCALE_EN]: "Shortcut {shortcut}",
     },
-    "modal.createFolder": { [LOCALE_ZH]: "新建收藏夹", [LOCALE_EN]: "Create Folder" },
-    "modal.createArticleFolder": { [LOCALE_ZH]: "新建专栏文件夹", [LOCALE_EN]: "Create Article Folder" },
+    "modal.createFolder": {
+      [LOCALE_ZH]: "新建收藏夹",
+      [LOCALE_EN]: "Create Folder",
+    },
+    "modal.createArticleFolder": {
+      [LOCALE_ZH]: "新建专栏文件夹",
+      [LOCALE_EN]: "Create Article Folder",
+    },
     "modal.name": { [LOCALE_ZH]: "名称", [LOCALE_EN]: "Name" },
     "modal.description": { [LOCALE_ZH]: "简介", [LOCALE_EN]: "Description" },
     "modal.group": { [LOCALE_ZH]: "分组", [LOCALE_EN]: "Group" },
     "modal.groupPlaceholder": {
       [LOCALE_ZH]: "例如：学习、娱乐（可选）",
-      [LOCALE_EN]: "e.g. Learning, Entertainment (optional)"
+      [LOCALE_EN]: "e.g. Learning, Entertainment (optional)",
     },
-    "modal.folderNamePlaceholder": { [LOCALE_ZH]: "收藏夹名称", [LOCALE_EN]: "Folder name" },
+    "modal.folderNamePlaceholder": {
+      [LOCALE_ZH]: "收藏夹名称",
+      [LOCALE_EN]: "Folder name",
+    },
     "modal.folderDescPlaceholder": {
       [LOCALE_ZH]: "收藏夹简介",
-      [LOCALE_EN]: "Folder description"
+      [LOCALE_EN]: "Folder description",
     },
     "toast.detectBvidFail": {
       [LOCALE_ZH]: "无法从当前页面识别 BV 号",
-      [LOCALE_EN]: "Cannot detect BV from current page"
+      [LOCALE_EN]: "Cannot detect BV from current page",
     },
-    "toast.videoLoadFail": { [LOCALE_ZH]: "视频信息读取失败", [LOCALE_EN]: "Load failed" },
+    "toast.videoLoadFail": {
+      [LOCALE_ZH]: "视频信息读取失败",
+      [LOCALE_EN]: "Load failed",
+    },
     "toast.folderLoadFail": {
       [LOCALE_ZH]: "加载收藏夹失败",
-      [LOCALE_EN]: "Load folders failed"
+      [LOCALE_EN]: "Load folders failed",
     },
     "toast.folderNameRequired": {
       [LOCALE_ZH]: "收藏夹名称不能为空",
-      [LOCALE_EN]: "Folder name cannot be empty"
+      [LOCALE_EN]: "Folder name cannot be empty",
     },
     "toast.folderCreatedSelected": {
       [LOCALE_ZH]: "已创建并选中新收藏夹",
-      [LOCALE_EN]: "Folder created and selected"
+      [LOCALE_EN]: "Folder created and selected",
     },
     "toast.folderExistsSelected": {
       [LOCALE_ZH]: "已存在同名收藏夹，已自动选中",
-      [LOCALE_EN]: "Folder already exists, selected it"
+      [LOCALE_EN]: "Folder already exists, selected it",
     },
-    "toast.folderCreateFail": { [LOCALE_ZH]: "创建收藏夹失败", [LOCALE_EN]: "Create folder failed" },
+    "toast.folderCreateFail": {
+      [LOCALE_ZH]: "创建收藏夹失败",
+      [LOCALE_EN]: "Create folder failed",
+    },
     "toast.videoIncomplete": {
       [LOCALE_ZH]: "视频信息不完整，无法保存",
-      [LOCALE_EN]: "Video info is incomplete"
+      [LOCALE_EN]: "Video info is incomplete",
     },
     "toast.articleIncomplete": {
       [LOCALE_ZH]: "专栏信息不完整，无法保存",
-      [LOCALE_EN]: "Article info is incomplete"
+      [LOCALE_EN]: "Article info is incomplete",
     },
     "toast.articleFolderRequired": {
       [LOCALE_ZH]: "请至少选择一个专栏文件夹",
-      [LOCALE_EN]: "Select at least one article folder"
+      [LOCALE_EN]: "Select at least one article folder",
     },
-    "toast.saved": { [LOCALE_ZH]: "已保存到本地 BiliShelf", [LOCALE_EN]: "Saved to local BiliShelf" },
+    "toast.saved": {
+      [LOCALE_ZH]: "已保存到本地 BiliShelf",
+      [LOCALE_EN]: "Saved to local BiliShelf",
+    },
     "toast.savedAddedFolders": {
       [LOCALE_ZH]: "已加入收藏夹 {folders}",
-      [LOCALE_EN]: "Added to folders: {folders}"
+      [LOCALE_EN]: "Added to folders: {folders}",
     },
     "toast.savedDuplicate": {
       [LOCALE_ZH]: "该视频已在收藏夹 {folders} 中",
-      [LOCALE_EN]: "This video is already in folders: {folders}"
+      [LOCALE_EN]: "This video is already in folders: {folders}",
     },
     "toast.savedMixedFolders": {
       [LOCALE_ZH]: "已加入 {addedFolders}；原本已在 {existingFolders} 中",
-      [LOCALE_EN]: "Added to {addedFolders}; already existed in {existingFolders}"
+      [LOCALE_EN]:
+        "Added to {addedFolders}; already existed in {existingFolders}",
     },
     "toast.savedRemovedFolders": {
       [LOCALE_ZH]: "已从本地收藏夹移除 {folders}",
-      [LOCALE_EN]: "Removed from local folders: {folders}"
+      [LOCALE_EN]: "Removed from local folders: {folders}",
     },
     "toast.savedWithBiliSync": {
       [LOCALE_ZH]: "已同步写回 B站收藏夹 {count} 个",
-      [LOCALE_EN]: "Also synced to {count} Bilibili favorite folders"
+      [LOCALE_EN]: "Also synced to {count} Bilibili favorite folders",
     },
     "toast.savedWithBiliSyncWarning": {
       [LOCALE_ZH]: "本地已保存，但写回 B站失败",
-      [LOCALE_EN]: "Saved locally, but Bilibili sync-back failed"
+      [LOCALE_EN]: "Saved locally, but Bilibili sync-back failed",
     },
     "toast.biliPullSynced": {
       [LOCALE_ZH]: "检测到B站收藏动作，已同步到本地",
-      [LOCALE_EN]: "Detected Bilibili favorite action and synced locally"
+      [LOCALE_EN]: "Detected Bilibili favorite action and synced locally",
     },
     "toast.saveFail": { [LOCALE_ZH]: "保存失败", [LOCALE_EN]: "Save failed" },
-    "toast.commentSaveFail": { [LOCALE_ZH]: "评论收藏失败", [LOCALE_EN]: "Failed to save comment" },
+    "toast.commentSaveFail": {
+      [LOCALE_ZH]: "评论收藏失败",
+      [LOCALE_EN]: "Failed to save comment",
+    },
     "toast.commentReadFail": {
       [LOCALE_ZH]: "暂时无法读取这条评论，请展开评论后重试",
-      [LOCALE_EN]: "This comment could not be read. Expand it and try again"
+      [LOCALE_EN]: "This comment could not be read. Expand it and try again",
     },
-    "status.readingCurrentPage": { [LOCALE_ZH]: "正在读取当前页面...", [LOCALE_EN]: "Reading current page..." },
+    "status.readingCurrentPage": {
+      [LOCALE_ZH]: "正在读取当前页面...",
+      [LOCALE_EN]: "Reading current page...",
+    },
     "quickFavorite.title": {
       [LOCALE_ZH]: "快捷收藏",
-      [LOCALE_EN]: "Quick favorite"
+      [LOCALE_EN]: "Quick favorite",
     },
     "playback.title": {
       [LOCALE_ZH]: "收藏夹连续播放",
-      [LOCALE_EN]: "Folder playback"
+      [LOCALE_EN]: "Folder playback",
     },
     "playback.progress": {
       [LOCALE_ZH]: "第 {current} / {total} 个",
-      [LOCALE_EN]: "{current} / {total}"
+      [LOCALE_EN]: "{current} / {total}",
     },
     "playback.folder": {
       [LOCALE_ZH]: "收藏夹 #{folderId}",
-      [LOCALE_EN]: "Folder #{folderId}"
+      [LOCALE_EN]: "Folder #{folderId}",
     },
     "playback.queueEmpty": {
       [LOCALE_ZH]: "当前播放队列为空",
-      [LOCALE_EN]: "Playback queue is empty"
+      [LOCALE_EN]: "Playback queue is empty",
     },
     "playback.current": {
       [LOCALE_ZH]: "当前播放",
-      [LOCALE_EN]: "Now playing"
+      [LOCALE_EN]: "Now playing",
     },
     "toast.extensionReloadRequired": {
       [LOCALE_ZH]: "扩展已更新，请刷新当前页面后再试",
-      [LOCALE_EN]: "The extension was updated. Reload this page and try again."
+      [LOCALE_EN]: "The extension was updated. Reload this page and try again.",
     },
-    "error.unknown": { [LOCALE_ZH]: "未知错误", [LOCALE_EN]: "Unknown error" }
+    "error.unknown": { [LOCALE_ZH]: "未知错误", [LOCALE_EN]: "Unknown error" },
   };
   function resolveLocaleFromBrowser() {
     const language = (
@@ -309,15 +416,18 @@ import {
       if (saved === LOCALE_ZH || saved === LOCALE_EN) {
         return saved;
       }
-    } catch {
-    }
+    } catch {}
     return fallback;
   }
 
   async function resolveQuickFavoriteShortcutPreference() {
     try {
-      const result = await chrome.storage.local.get([QUICK_FAVORITE_SHORTCUT_STORAGE_KEY]);
-      return resolveStoredShortcut(result?.[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY] ?? null);
+      const result = await chrome.storage.local.get([
+        QUICK_FAVORITE_SHORTCUT_STORAGE_KEY,
+      ]);
+      return resolveStoredShortcut(
+        result?.[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY] ?? null,
+      );
     } catch {
       return resolveStoredShortcut(null);
     }
@@ -331,9 +441,10 @@ import {
 
   function t(key, vars = {}) {
     const table = I18N[key];
-    const template =
-      table?.[activeLocale] || table?.[LOCALE_EN] || key;
-    return template.replace(/\{(\w+)\}/g, (_, token) => String(vars[token] ?? ""));
+    const template = table?.[activeLocale] || table?.[LOCALE_EN] || key;
+    return template.replace(/\{(\w+)\}/g, (_, token) =>
+      String(vars[token] ?? ""),
+    );
   }
 
   function syncFloatingButtonLabel() {
@@ -358,8 +469,8 @@ import {
   let panel = null;
   let floatingBtn = null;
   let nativeFavoriteStatus = null;
-  let nativeFavoriteStatusObserver = null;
   let nativeFavoriteMountTimer = 0;
+  let nativeFavoriteStatusPollTimer = 0;
   let modal = null;
   let toastRoot = null;
   let folderListEl = null;
@@ -422,7 +533,7 @@ import {
   let activeQuickFavoriteShortcut = resolveStoredShortcut(null);
   let bidirectionalSettingsCache = {
     value: null,
-    expiresAt: 0
+    expiresAt: 0,
   };
   let nativeFavoritePullTimer = 0;
   let pendingNativeFavoriteBvid = "";
@@ -460,7 +571,7 @@ import {
     for (const child of children) {
       if (child === null || child === undefined) continue;
       parent.appendChild(
-        typeof child === "string" ? document.createTextNode(child) : child
+        typeof child === "string" ? document.createTextNode(child) : child,
       );
     }
   }
@@ -483,33 +594,56 @@ import {
   }
 
   function createBrandMarkSvg() {
-    return createSvgEl(
-      "svg",
-      { viewBox: "0 0 128 128", fill: "none" },
-      [
-        createSvgEl("rect", {
-          x: "6", y: "6", width: "116", height: "116", rx: "30", fill: "#18232D"
-        }),
-        createSvgEl("rect", {
-          x: "23", y: "36", width: "75", height: "46", rx: "10", fill: "#344550"
-        }),
-        createSvgEl("rect", {
-          x: "30", y: "28", width: "75", height: "48", rx: "10", fill: "#F7F9FA"
-        }),
-        createSvgEl("path", {
-          d: "M59 42.5V61.5L75 52L59 42.5Z", fill: "#18232D"
-        }),
-        createSvgEl("path", {
-          d: "M84 20H103V63L93.5 56.5L84 63V20Z", fill: "#F36F98"
-        }),
-        createSvgEl("rect", {
-          x: "22", y: "87", width: "84", height: "10", rx: "5", fill: "#4CCBBB"
-        }),
-        createSvgEl("rect", {
-          x: "31", y: "103", width: "66", height: "5", rx: "2.5", fill: "#F7F9FA"
-        })
-      ]
-    );
+    return createSvgEl("svg", { viewBox: "0 0 128 128", fill: "none" }, [
+      createSvgEl("rect", {
+        x: "6",
+        y: "6",
+        width: "116",
+        height: "116",
+        rx: "30",
+        fill: "#18232D",
+      }),
+      createSvgEl("rect", {
+        x: "23",
+        y: "36",
+        width: "75",
+        height: "46",
+        rx: "10",
+        fill: "#344550",
+      }),
+      createSvgEl("rect", {
+        x: "30",
+        y: "28",
+        width: "75",
+        height: "48",
+        rx: "10",
+        fill: "#F7F9FA",
+      }),
+      createSvgEl("path", {
+        d: "M59 42.5V61.5L75 52L59 42.5Z",
+        fill: "#18232D",
+      }),
+      createSvgEl("path", {
+        d: "M84 20H103V63L93.5 56.5L84 63V20Z",
+        fill: "#F36F98",
+      }),
+      createSvgEl("rect", {
+        x: "22",
+        y: "87",
+        width: "84",
+        height: "10",
+        rx: "5",
+        fill: "#4CCBBB",
+      }),
+      createSvgEl("rect", {
+        x: "31",
+        y: "103",
+        width: "66",
+        height: "5",
+        rx: "2.5",
+        fill: "#F7F9FA",
+      }),
+    ]);
   }
 
   function createFloatingButtonSvg() {
@@ -521,9 +655,9 @@ import {
           d: "M7 4.75C7 3.78 7.78 3 8.75 3h6.5C16.22 3 17 3.78 17 4.75V21l-5-3.2L7 21V4.75Z",
           stroke: "currentColor",
           "stroke-width": "1.8",
-          "stroke-linejoin": "round"
-        })
-      ]
+          "stroke-linejoin": "round",
+        }),
+      ],
     );
   }
 
@@ -537,9 +671,9 @@ import {
           stroke: "currentColor",
           "stroke-width": "2",
           "stroke-linecap": "round",
-          "stroke-linejoin": "round"
-        })
-      ]
+          "stroke-linejoin": "round",
+        }),
+      ],
     );
   }
 
@@ -550,7 +684,8 @@ import {
     const normalized = value.startsWith("//") ? `https:${value}` : value;
     try {
       const url = new URL(normalized);
-      if (url.protocol !== "http:" && url.protocol !== "https:") return fallback;
+      if (url.protocol !== "http:" && url.protocol !== "https:")
+        return fallback;
       if (url.protocol === "http:" && /(^|\.)hdslb\.com$/i.test(url.hostname)) {
         url.protocol = "https:";
       }
@@ -571,7 +706,7 @@ import {
       /相关视频/i,
       /弹幕列表/i,
       /\b\d+(?:\.\d+)?万\b/i,
-      /\b\d+(?:\.\d+)?亿\b/i
+      /\b\d+(?:\.\d+)?亿\b/i,
     ];
 
     const sourceLines = (input || "").replace(/\r\n/g, "\n").split("\n");
@@ -588,14 +723,19 @@ import {
         (raw || "")
           .split(/[,\s]+/)
           .map((item) => item.trim())
-          .filter(Boolean)
-      )
+          .filter(Boolean),
+      ),
     ];
   }
 
   function normalizeLocalContentKey(value) {
     const bvid = normalizeBvidToken(value);
-    return bvid || String(value || "").trim().toLowerCase();
+    return (
+      bvid ||
+      String(value || "")
+        .trim()
+        .toLowerCase()
+    );
   }
 
   function resolveSpecialMediaFromUrl(rawUrl) {
@@ -604,7 +744,7 @@ import {
       return {
         mediaKind: "bangumi",
         mediaId: bangumiSeasonId,
-        contentKey: `bilishelf:bangumi:${bangumiSeasonId}`
+        contentKey: `bilishelf:bangumi:${bangumiSeasonId}`,
       };
     }
     const audioId = extractAudioId(rawUrl);
@@ -612,7 +752,7 @@ import {
       return {
         mediaKind: "audio",
         mediaId: audioId,
-        contentKey: `bilishelf:audio:${audioId}`
+        contentKey: `bilishelf:audio:${audioId}`,
       };
     }
     return null;
@@ -621,31 +761,42 @@ import {
   function pickBasePayload() {
     const canonical = attrOf('link[rel="canonical"]', "href") || location.href;
     const specialMedia =
-      resolveSpecialMediaFromUrl(location.href) || resolveSpecialMediaFromUrl(canonical);
+      resolveSpecialMediaFromUrl(location.href) ||
+      resolveSpecialMediaFromUrl(canonical);
     const canonicalBvid = normalizeBvidToken(
-      canonical.match(/\/video\/(BV[0-9A-Za-z]+)/i)?.[1] || ""
+      canonical.match(/\/video\/(BV[0-9A-Za-z]+)/i)?.[1] || "",
     );
     const pathnameBvid = normalizeBvidToken(
-      location.pathname.match(/\/(BV[0-9A-Za-z]+)/i)?.[1] || ""
+      location.pathname.match(/\/(BV[0-9A-Za-z]+)/i)?.[1] || "",
     );
     const queryBvid = normalizeBvidToken(
-      new URLSearchParams(location.search).get("bvid")
+      new URLSearchParams(location.search).get("bvid"),
     );
     const dynamicBvid = normalizeBvidToken(
       [...document.querySelectorAll("a[href], script")]
-        .map((element) => element.getAttribute?.("href") || element.textContent || "")
-        .find((href) => /\/video\/BV[0-9A-Za-z]+|BV[0-9A-Za-z]{10}/i.test(href)) ||
+        .map(
+          (element) =>
+            element.getAttribute?.("href") || element.textContent || "",
+        )
+        .find((href) =>
+          /\/video\/BV[0-9A-Za-z]+|BV[0-9A-Za-z]{10}/i.test(href),
+        ) ||
         document.documentElement?.innerHTML.match(/BV[0-9A-Za-z]{10}/i)?.[0] ||
-        ""
+        "",
     );
-    const detectedBvid = canonicalBvid || pathnameBvid || queryBvid || dynamicBvid;
-    const detectedAid = extractAidFromAny(location.href) ||
+    const detectedBvid =
+      canonicalBvid || pathnameBvid || queryBvid || dynamicBvid;
+    const detectedAid =
+      extractAidFromAny(location.href) ||
       extractAidFromAny(canonical) ||
       extractAidFromAny(new URLSearchParams(location.search).get("oid"));
     const canonicalUrl = ensureAbsoluteUrl(canonical, location.href);
     const contentKey = specialMedia?.contentKey || detectedBvid;
     const mediaKind = specialMedia?.mediaKind || "video";
-    const mediaId = specialMedia?.mediaId || detectedBvid || (detectedAid ? `av${detectedAid}` : "");
+    const mediaId =
+      specialMedia?.mediaId ||
+      detectedBvid ||
+      (detectedAid ? `av${detectedAid}` : "");
 
     const uploaderHref =
       attrOf(".up-name", "href") ||
@@ -653,8 +804,10 @@ import {
       attrOf('a[href*="space.bilibili.com"]', "href");
     const normalizedUploaderHref = uploaderHref
       ? ensureAbsoluteUrl(
-          uploaderHref.startsWith("//") ? `https:${uploaderHref}` : uploaderHref,
-          ""
+          uploaderHref.startsWith("//")
+            ? `https:${uploaderHref}`
+            : uploaderHref,
+          "",
         )
       : "";
 
@@ -667,8 +820,8 @@ import {
       bvidUrl: specialMedia
         ? ensureAbsoluteUrl(location.href, canonicalUrl)
         : detectedBvid
-        ? `https://www.bilibili.com/video/${detectedBvid}/`
-        : canonicalUrl,
+          ? `https://www.bilibili.com/video/${detectedBvid}/`
+          : canonicalUrl,
       title:
         attrOf('meta[property="og:title"]', "content") ||
         document.title.replace(/_bilibili$/i, "").trim(),
@@ -677,7 +830,7 @@ import {
       coverUrl:
         attrOf('meta[property="og:image"]', "content") ||
         attrOf('meta[itemprop="image"]', "content") ||
-        ""
+        "",
     };
   }
 
@@ -688,7 +841,7 @@ import {
       ".desc-info .desc",
       ".video-desc-container .basic-desc-info",
       ".basic-desc-info",
-      ".video-desc-container"
+      ".video-desc-container",
     ];
 
     for (const selector of selectors) {
@@ -699,7 +852,9 @@ import {
   }
 
   function pickDescriptionFromJsonLd() {
-    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+    const scripts = document.querySelectorAll(
+      'script[type="application/ld+json"]',
+    );
     for (const script of scripts) {
       const raw = script.textContent?.trim();
       if (!raw) continue;
@@ -718,8 +873,7 @@ import {
             if (desc) return desc;
           }
         }
-      } catch {
-      }
+      } catch {}
     }
     return "";
   }
@@ -734,7 +888,7 @@ import {
             ? detail.description
             : typeof detail?.intro === "string"
               ? detail.intro
-              : ""
+              : "",
     );
     if (apiDesc) return apiDesc;
 
@@ -782,7 +936,7 @@ import {
 
     return body.data
       .map((item) =>
-        typeof item?.tag_name === "string" ? item.tag_name.trim() : ""
+        typeof item?.tag_name === "string" ? item.tag_name.trim() : "",
       )
       .filter(Boolean);
   }
@@ -802,8 +956,8 @@ import {
   async function fetchBangumiDetail(seasonId) {
     return fetchSpecialApi(
       `${BILI_BANGUMI_SEASON_API}?season_id=${encodeURIComponent(
-        seasonId.replace(/^ss/i, "")
-      )}`
+        seasonId.replace(/^ss/i, ""),
+      )}`,
     );
   }
 
@@ -812,7 +966,9 @@ import {
     let lastError = null;
     for (const endpoint of BILI_AUDIO_INFO_APIS) {
       try {
-        return await fetchSpecialApi(`${endpoint}?sid=${encodeURIComponent(sid)}`);
+        return await fetchSpecialApi(
+          `${endpoint}?sid=${encodeURIComponent(sid)}`,
+        );
       } catch (error) {
         lastError = error;
       }
@@ -837,14 +993,26 @@ import {
   }
 
   function pickSpecialMetadata(detail, mediaKind) {
-    const nested = mediaKind === "bangumi"
-      ? [detail?.season, detail?.series, detail]
-      : [detail?.song, detail?.music, detail?.data, detail];
+    const nested =
+      mediaKind === "bangumi"
+        ? [detail?.season, detail?.series, detail]
+        : [detail?.song, detail?.music, detail?.data, detail];
     const title = firstNonEmptyText(
-      ...nested.flatMap((item) => [item?.season_title, item?.song_title, item?.title, item?.name])
+      ...nested.flatMap((item) => [
+        item?.season_title,
+        item?.song_title,
+        item?.title,
+        item?.name,
+      ]),
     );
     const coverUrl = firstNonEmptyText(
-      ...nested.flatMap((item) => [item?.cover, item?.cover_url, item?.pic, item?.image, item?.album?.cover])
+      ...nested.flatMap((item) => [
+        item?.cover,
+        item?.cover_url,
+        item?.pic,
+        item?.image,
+        item?.album?.cover,
+      ]),
     );
     const uploader = firstNonEmptyText(
       ...nested.flatMap((item) => [
@@ -855,18 +1023,27 @@ import {
         item?.artist?.uname,
         item?.artist,
         item?.author,
-        item?.uname
-      ])
+        item?.uname,
+      ]),
     );
     const uploaderSpaceUrl = firstNonEmptyText(
       ...nested.flatMap((item) => [
         item?.owner?.mid ? `https://space.bilibili.com/${item.owner.mid}` : "",
-        item?.up_info?.mid ? `https://space.bilibili.com/${item.up_info.mid}` : "",
-        item?.artist?.mid ? `https://space.bilibili.com/${item.artist.mid}` : ""
-      ])
+        item?.up_info?.mid
+          ? `https://space.bilibili.com/${item.up_info.mid}`
+          : "",
+        item?.artist?.mid
+          ? `https://space.bilibili.com/${item.artist.mid}`
+          : "",
+      ]),
     );
     const publishAt = firstFiniteNumber(
-      ...nested.flatMap((item) => [item?.pubdate, item?.pubtime, item?.ctime, item?.created_at])
+      ...nested.flatMap((item) => [
+        item?.pubdate,
+        item?.pubtime,
+        item?.ctime,
+        item?.created_at,
+      ]),
     );
     return { title, coverUrl, uploader, uploaderSpaceUrl, publishAt };
   }
@@ -879,7 +1056,8 @@ import {
       if (value && !merged.includes(value)) merged.push(value);
     }
 
-    const typeName = typeof detail?.tname === "string" ? detail.tname.trim() : "";
+    const typeName =
+      typeof detail?.tname === "string" ? detail.tname.trim() : "";
     if (typeName && !merged.includes(typeName)) merged.push(typeName);
 
     return merged;
@@ -899,7 +1077,7 @@ import {
       };
       const timer = window.setTimeout(() => {
         finish(() =>
-          reject(new Error(`Local API request timeout (${method} ${path})`))
+          reject(new Error(`Local API request timeout (${method} ${path})`)),
         );
       }, LOCAL_API_TIMEOUT_MS);
 
@@ -909,25 +1087,30 @@ import {
           request: {
             method,
             path,
-            body
-          }
+            body,
+          },
         },
         (response) => {
           const runtimeError = chrome.runtime.lastError;
           if (runtimeError) {
-            const runtimeMessage = runtimeError.message || "Local API unavailable";
-            if (runtimeMessage.toLowerCase().includes("extension context invalidated")) {
+            const runtimeMessage =
+              runtimeError.message || "Local API unavailable";
+            if (
+              runtimeMessage
+                .toLowerCase()
+                .includes("extension context invalidated")
+            ) {
               extensionContextInvalidated = true;
               if (!extensionReloadToastShown) {
                 extensionReloadToastShown = true;
                 showToast(t("toast.extensionReloadRequired"), "err");
               }
-              finish(() => reject(new Error(t("toast.extensionReloadRequired"))));
+              finish(() =>
+                reject(new Error(t("toast.extensionReloadRequired"))),
+              );
               return;
             }
-            finish(() =>
-              reject(new Error(runtimeMessage))
-            );
+            finish(() => reject(new Error(runtimeMessage)));
             return;
           }
 
@@ -944,7 +1127,7 @@ import {
           const error = new Error(response.error || t("error.unknown"));
           error.statusCode = response.status || 500;
           finish(() => reject(error));
-        }
+        },
       );
     });
   }
@@ -1012,16 +1195,22 @@ import {
       ".video-toolbar-left .video-fav",
       ".video-toolbar-left [class*='fav']",
       ".video-toolbar .video-fav",
-      "button[aria-label*='收藏']",
-      "button[title*='收藏']",
-      "[role='button'][aria-label*='收藏']"
+      "#arc_toolbar_report [class*='fav']",
+      "#arc_toolbar_report [class*='collect']",
+      "#arc_toolbar_report button[aria-label*='收藏']",
+      "#arc_toolbar_report button[title*='收藏']",
+      "#arc_toolbar_report [role='button'][aria-label*='收藏']",
+      ".video-toolbar button[aria-label*='收藏']",
+      ".video-toolbar button[title*='收藏']",
+      ".video-toolbar [role='button'][aria-label*='收藏']",
     ];
     for (const selector of selectors) {
       for (const candidate of document.querySelectorAll(selector)) {
         if (
           candidate !== nativeFavoriteStatus &&
           !candidate.closest?.("[data-bilishelf-native-status='true']") &&
-          (!root || !root.contains(candidate))
+          (!root || !root.contains(candidate)) &&
+          isNativeVideoToolbarElement(candidate)
         ) {
           return candidate;
         }
@@ -1030,21 +1219,41 @@ import {
     return null;
   }
 
+  function isNativeVideoToolbarElement(element) {
+    if (!(element instanceof Element)) return false;
+    if (root?.contains(element)) return false;
+    if (
+      element.closest(
+        "#biliMainHeader, header, nav, [class*='bili-header'], [class*='nav-header'], [class*='navigation']",
+      )
+    ) {
+      return false;
+    }
+    return Boolean(
+      element.closest(
+        "#arc_toolbar_report, .video-toolbar, .video-toolbar-left, [class*='video-toolbar'], [class*='video-actions'], [class*='action-bar']",
+      ),
+    );
+  }
+
   function findNativeToolbarActionItem(element) {
-    if (!(element instanceof Element)) return null;
+    if (!isNativeVideoToolbarElement(element)) return null;
     return (
       element.closest(
-        ".video-toolbar-left-item, .video-toolbar-item, [class*='video-toolbar-left-item'], [class*='video-toolbar-item']"
+        ".video-toolbar-left-item, .video-toolbar-item, [class*='video-toolbar-left-item'], [class*='video-toolbar-item']",
       ) || element
     );
   }
 
   function findNativeToolbarContainer(element) {
+    if (!isNativeVideoToolbarElement(element)) return null;
     const actionItem = findNativeToolbarActionItem(element);
     return (
       actionItem?.closest?.(
-        ".video-toolbar-left, .video-toolbar, [class*='video-toolbar-left']:not([class*='item']), [class*='video-toolbar']:not([class*='item'])"
-      ) || actionItem?.parentElement || null
+        "#arc_toolbar_report, .video-toolbar-left, .video-toolbar, [class*='video-toolbar-left']:not([class*='item']), [class*='video-toolbar']:not([class*='item'])",
+      ) ||
+      actionItem?.parentElement ||
+      null
     );
   }
 
@@ -1061,7 +1270,7 @@ import {
       "button[aria-label*='转发']",
       "button[title*='转发']",
       "[role='button'][aria-label*='转发']",
-      "[class*='share']"
+      "[class*='share']",
     ];
     for (const selector of selectors) {
       for (const candidate of toolbar.querySelectorAll(selector)) {
@@ -1090,21 +1299,28 @@ import {
         : state === "saved"
           ? t("status.localFavoriteNearNative")
           : t("status.localFavoriteNearNativeIdle");
-    nativeFavoriteStatus.setAttribute("aria-label", nativeFavoriteStatus.textContent);
+    nativeFavoriteStatus.setAttribute(
+      "aria-label",
+      nativeFavoriteStatus.textContent,
+    );
     nativeFavoriteStatus.title = nativeFavoriteStatus.textContent;
-    nativeFavoriteStatus.style.color = state === "saved"
-      ? "#fb7299"
-      : "var(--text2, #61666d)";
-    nativeFavoriteStatus.style.borderColor = state === "saved"
-      ? "rgba(251,114,153,.55)"
-      : "rgba(128,128,128,.35)";
-    nativeFavoriteStatus.style.background = state === "saved"
-      ? "rgba(251,114,153,.1)"
-      : "var(--bg1, rgba(255,255,255,.72))";
+    nativeFavoriteStatus.style.color =
+      state === "saved" ? "#fb7299" : "var(--text2, #61666d)";
+    nativeFavoriteStatus.style.borderColor =
+      state === "saved" ? "rgba(251,114,153,.55)" : "rgba(128,128,128,.35)";
+    nativeFavoriteStatus.style.background =
+      state === "saved"
+        ? "rgba(251,114,153,.1)"
+        : "var(--bg1, rgba(255,255,255,.72))";
   }
 
   function placeNativeFavoriteStatus(anchor) {
-    if (!nativeFavoriteStatus || !anchor?.isConnected) return;
+    if (
+      !nativeFavoriteStatus ||
+      !anchor?.isConnected ||
+      !isNativeVideoToolbarElement(anchor)
+    )
+      return;
     const anchorItem = findNativeToolbarActionItem(anchor);
     const toolbar = findNativeToolbarContainer(anchor);
     const forwardItem = findNativeForwardActionItem(anchor);
@@ -1124,7 +1340,9 @@ import {
       nativeFavoriteStatus.style.left = `${Math.max(0, targetRect.right - toolbarRect.left + 10)}px`;
       nativeFavoriteStatus.style.top = `${Math.max(
         0,
-        targetRect.top - toolbarRect.top + (targetRect.height - nativeFavoriteStatus.offsetHeight) / 2
+        targetRect.top -
+          toolbarRect.top +
+          (targetRect.height - nativeFavoriteStatus.offsetHeight) / 2,
       )}px`;
       return;
     }
@@ -1132,13 +1350,20 @@ import {
     const parent = targetItem.parentNode;
     if (!parent) return;
     nativeFavoriteStatus.style.position = "static";
-    if (nativeFavoriteStatus.parentNode !== parent || nativeFavoriteStatus.previousElementSibling !== targetItem) {
+    if (
+      nativeFavoriteStatus.parentNode !== parent ||
+      nativeFavoriteStatus.previousElementSibling !== targetItem
+    ) {
       parent.insertBefore(nativeFavoriteStatus, targetItem.nextSibling);
     }
   }
 
   function mountNativeFavoriteStatus() {
-    if (!isCollectorUiUrl(location.href) || articleMode || isSpecialMediaUrl(location.href)) {
+    if (
+      !isCollectorUiUrl(location.href) ||
+      articleMode ||
+      isSpecialMediaUrl(location.href)
+    ) {
       nativeFavoriteStatus?.remove();
       nativeFavoriteStatus = null;
       return;
@@ -1157,13 +1382,17 @@ import {
     nativeFavoriteStatus?.remove();
     nativeFavoriteStatus = createEl("button", {
       className: "bl-native-favorite-status",
-      attrs: { type: "button", "data-bilishelf-native-status": "true" }
+      attrs: { type: "button", "data-bilishelf-native-status": "true" },
     });
-    nativeFavoriteStatus.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      void openCollectorModal();
-    }, true);
+    nativeFavoriteStatus.addEventListener(
+      "click",
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void openCollectorModal();
+      },
+      true,
+    );
     nativeFavoriteStatus.style.cssText = [
       "display:inline-flex",
       "flex:0 0 auto",
@@ -1181,7 +1410,7 @@ import {
       "white-space:nowrap",
       "box-shadow:0 1px 3px rgba(0,0,0,.08)",
       "cursor:pointer",
-      "transition:color .16s ease,border-color .16s ease,background .16s ease"
+      "transition:color .16s ease,border-color .16s ease,background .16s ease",
     ].join(";");
     placeNativeFavoriteStatus(anchor);
     syncNativeFavoriteStatus();
@@ -1193,6 +1422,17 @@ import {
       nativeFavoriteMountTimer = 0;
       mountNativeFavoriteStatus();
     }, 80);
+  }
+
+  function startNativeFavoriteStatusWatch() {
+    if (nativeFavoriteStatusPollTimer) {
+      window.clearInterval(nativeFavoriteStatusPollTimer);
+    }
+    // Bilibili rebuilds the toolbar during hydration and SPA navigation. Polling
+    // only the toolbar mount path avoids observing the entire page DOM.
+    nativeFavoriteStatusPollTimer = window.setInterval(() => {
+      scheduleNativeFavoriteStatusMount();
+    }, 1000);
   }
 
   function normalizeArticleText(value, max = 12000) {
@@ -1211,41 +1451,47 @@ import {
       attrOf('link[rel="canonical"]', "href"),
       /^\/read\/cv/i.test(location.pathname)
         ? `https://www.bilibili.com/read/cv${opusId}`
-        : `https://www.bilibili.com/opus/${opusId}`
+        : `https://www.bilibili.com/opus/${opusId}`,
     );
     const contentSelectors = [
       ".opus-module-content",
       ".opus-module-content-inner",
       "article",
       "[class*='opus-module']",
-      "main"
+      "main",
     ];
     let content = "";
     for (const selector of contentSelectors) {
       const element = document.querySelector(selector);
-      const value = normalizeArticleText(element?.innerText || element?.textContent || "");
+      const value = normalizeArticleText(
+        element?.innerText || element?.textContent || "",
+      );
       if (value.length > content.length) content = value;
     }
     const title = normalizeArticleText(
       attrOf('meta[property="og:title"]', "content") ||
         textOf("h1") ||
         document.title.replace(/_bilibili$/i, "").trim(),
-      300
+      300,
     );
     const summary = normalizeArticleText(
       attrOf('meta[property="og:description"]', "content") || content,
-      1200
+      1200,
     );
     const authorLink =
       document.querySelector("a[href*='space.bilibili.com']") ||
       document.querySelector("a[href*='space.bilibili.com']");
-    const authorSpaceUrl = ensureAbsoluteUrl(authorLink?.getAttribute("href") || "", "");
-    const authorMid = authorSpaceUrl.match(/space\.bilibili\.com\/(\d+)/)?.[1] || "";
+    const authorSpaceUrl = ensureAbsoluteUrl(
+      authorLink?.getAttribute("href") || "",
+      "",
+    );
+    const authorMid =
+      authorSpaceUrl.match(/space\.bilibili\.com\/(\d+)/)?.[1] || "";
     const authorName = normalizeArticleText(
       authorLink?.textContent ||
         textOf(".opus-author-name") ||
         textOf("[class*='author']"),
-      160
+      160,
     );
     return {
       sourceKey: buildArticleSourceKey(opusId),
@@ -1256,15 +1502,17 @@ import {
       coverUrl: ensureAbsoluteUrl(
         attrOf('meta[property="og:image"]', "content") ||
           attrOf('meta[itemprop="image"]', "content"),
-        ""
+        "",
       ),
       authorName,
       authorMid,
       authorAvatarUrl: ensureAbsoluteUrl(
-        document.querySelector("img[class*='avatar'], img[class*='face']")?.getAttribute("src") || "",
-        ""
+        document
+          .querySelector("img[class*='avatar'], img[class*='face']")
+          ?.getAttribute("src") || "",
+        "",
       ),
-      sourceUrl: canonical
+      sourceUrl: canonical,
     };
   }
 
@@ -1294,7 +1542,9 @@ import {
   }
 
   function currentCollectorFolderIds() {
-    const folders = articleMode ? currentArticleLocalFolders : currentVideoLocalFolders;
+    const folders = articleMode
+      ? currentArticleLocalFolders
+      : currentVideoLocalFolders;
     return folders
       .map((folder) => Number(folder?.id))
       .filter((id) => Number.isInteger(id) && id > 0);
@@ -1307,7 +1557,9 @@ import {
 
   async function refreshFloatingFavoriteStateFromPage(force = false) {
     const base = pickBasePayload();
-    const contentKey = normalizeLocalContentKey(base?.contentKey || base?.bvid || "");
+    const contentKey = normalizeLocalContentKey(
+      base?.contentKey || base?.bvid || "",
+    );
     if (!contentKey) {
       lastFloatingFavoriteBvid = "";
       setFloatingFavoriteState(false);
@@ -1338,20 +1590,23 @@ import {
     if (!normalizedContentKey) return [];
     const result = await requestLocalApi(
       "GET",
-      `/videos/by-bvid?bvid=${encodeURIComponent(normalizedContentKey)}`
+      `/videos/by-bvid?bvid=${encodeURIComponent(normalizedContentKey)}`,
     );
     return Array.isArray(result?.folders) ? result.folders : [];
   }
 
   async function refreshCurrentVideoLocalFolders() {
-    const contentKey = normalizeLocalContentKey(currentVideo?.contentKey || currentVideo?.bvid || "");
+    const contentKey = normalizeLocalContentKey(
+      currentVideo?.contentKey || currentVideo?.bvid || "",
+    );
     if (!contentKey) {
       currentVideoLocalFolders = [];
       syncCurrentFavoriteUi();
       return;
     }
     try {
-      currentVideoLocalFolders = await fetchCurrentVideoLocalFoldersByBvid(contentKey);
+      currentVideoLocalFolders =
+        await fetchCurrentVideoLocalFoldersByBvid(contentKey);
     } catch {
       currentVideoLocalFolders = [];
     }
@@ -1371,7 +1626,7 @@ import {
     return {
       biliToLocalEnabled: Boolean(raw?.biliToLocalEnabled),
       localToBiliEnabled: Boolean(raw?.localToBiliEnabled),
-      updatedAt: Number(raw?.updatedAt || 0)
+      updatedAt: Number(raw?.updatedAt || 0),
     };
   }
 
@@ -1385,18 +1640,21 @@ import {
       return bidirectionalSettingsCache.value;
     }
     try {
-      const data = await requestLocalApi("GET", "/sync/bilibili/bidirectional/settings");
+      const data = await requestLocalApi(
+        "GET",
+        "/sync/bilibili/bidirectional/settings",
+      );
       const normalized = normalizeBidirectionalSettings(data);
       bidirectionalSettingsCache = {
         value: normalized,
-        expiresAt: nowTs + BIDIRECTIONAL_SETTINGS_CACHE_MS
+        expiresAt: nowTs + BIDIRECTIONAL_SETTINGS_CACHE_MS,
       };
       return normalized;
     } catch {
       const fallback = normalizeBidirectionalSettings(null);
       bidirectionalSettingsCache = {
         value: fallback,
-        expiresAt: nowTs + 6_000
+        expiresAt: nowTs + 6_000,
       };
       return fallback;
     }
@@ -1416,7 +1674,7 @@ import {
       interactive.getAttribute("title"),
       interactive.id,
       interactive.className,
-      interactive.textContent
+      interactive.textContent,
     ]
       .map((value) => String(value || ""))
       .join(" ");
@@ -1425,7 +1683,13 @@ import {
 
   function collectBvidCandidatesFromElement(element, bucket) {
     if (!(element instanceof Element)) return;
-    const attrs = ["data-bvid", "data-bv", "data-bv-id", "data-video-bvid", "href"];
+    const attrs = [
+      "data-bvid",
+      "data-bv",
+      "data-bv-id",
+      "data-video-bvid",
+      "href",
+    ];
     for (const attr of attrs) {
       bucket.push(element.getAttribute(attr));
     }
@@ -1466,10 +1730,11 @@ import {
     if (!Number.isFinite(remoteFolderId) || remoteFolderId <= 0) return;
     try {
       await requestLocalApi("POST", "/sync/bilibili/history-model/start", {
-        selectedRemoteFolderIds: [Math.trunc(remoteFolderId)]
+        selectedRemoteFolderIds: [Math.trunc(remoteFolderId)],
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("error.unknown");
+      const message =
+        error instanceof Error ? error.message : t("error.unknown");
       const lower = String(message).toLowerCase();
       if (lower.includes("already running")) return;
       if (lower.includes("favorites sync is running")) return;
@@ -1480,20 +1745,23 @@ import {
   async function pullCurrentVideoFromBiliAction(
     preferredBvid = "",
     preferredFolderId = 0,
-    forceFolderReconcile = false
+    forceFolderReconcile = false,
   ) {
     const settings = await fetchBidirectionalSettings();
     if (!settings.biliToLocalEnabled) return;
 
     const base = pickBasePayload();
-    const bvid = normalizeBvidToken(preferredBvid || currentVideo?.bvid || base.bvid || "");
+    const bvid = normalizeBvidToken(
+      preferredBvid || currentVideo?.bvid || base.bvid || "",
+    );
     const aid = Number(currentVideo?.aid || 0);
     if (!bvid && !(Number.isFinite(aid) && aid > 0)) {
       if (Number.isFinite(preferredFolderId) && preferredFolderId > 0) {
         try {
           await startFavoriteFolderReconcileFromBiliAction(preferredFolderId);
         } catch (error) {
-          const message = error instanceof Error ? error.message : t("error.unknown");
+          const message =
+            error instanceof Error ? error.message : t("error.unknown");
           showToast(message, "err");
         }
       }
@@ -1501,10 +1769,14 @@ import {
     }
 
     try {
-      const result = await requestLocalApi("POST", "/sync/bilibili/video/pull", {
-        bvid: bvid || undefined,
-        aid: Number.isFinite(aid) && aid > 0 ? aid : undefined
-      });
+      const result = await requestLocalApi(
+        "POST",
+        "/sync/bilibili/video/pull",
+        {
+          bvid: bvid || undefined,
+          aid: Number.isFinite(aid) && aid > 0 ? aid : undefined,
+        },
+      );
       if (
         Number(result?.folderLinksAdded || 0) > 0 ||
         Number(result?.folderLinksRemoved || 0) > 0
@@ -1512,13 +1784,19 @@ import {
         showToast(t("toast.biliPullSynced"), "info");
       }
       await refreshFloatingFavoriteStateFromPage(true);
-      if (forceFolderReconcile && Number.isFinite(preferredFolderId) && preferredFolderId > 0) {
+      if (
+        forceFolderReconcile &&
+        Number.isFinite(preferredFolderId) &&
+        preferredFolderId > 0
+      ) {
         await startFavoriteFolderReconcileFromBiliAction(preferredFolderId);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("error.unknown");
+      const message =
+        error instanceof Error ? error.message : t("error.unknown");
       if (String(message).toLowerCase().includes("disabled")) return;
-      if (String(message).toLowerCase().includes("favorites sync is running")) return;
+      if (String(message).toLowerCase().includes("favorites sync is running"))
+        return;
       showToast(message, "err");
     }
   }
@@ -1526,7 +1804,7 @@ import {
   function schedulePullCurrentVideoFromBiliAction(
     candidateBvid = "",
     candidateFolderId = 0,
-    forceFolderReconcile = false
+    forceFolderReconcile = false,
   ) {
     const normalizedCandidate = normalizeBvidToken(candidateBvid);
     if (normalizedCandidate) {
@@ -1558,7 +1836,8 @@ import {
   }
 
   function bindNativeFavoriteActionListener() {
-    if (isDynamicVideoUrl(location.href) || isSpecialMediaUrl(location.href)) return;
+    if (isDynamicVideoUrl(location.href) || isSpecialMediaUrl(location.href))
+      return;
     if (nativeFavoriteActionListenerBound) return;
     nativeFavoriteActionListenerBound = true;
     document.addEventListener(
@@ -1573,11 +1852,11 @@ import {
           schedulePullCurrentVideoFromBiliAction(
             candidateBvid,
             candidateFolderId,
-            forceFolderReconcile
+            forceFolderReconcile,
           );
         });
       },
-      true
+      true,
     );
   }
 
@@ -1591,7 +1870,8 @@ import {
 
     const icon = document.createElement("span");
     icon.className = "Vue-Toastification__icon";
-    icon.textContent = toastType === "error" ? "!" : toastType === "info" ? "i" : "✓";
+    icon.textContent =
+      toastType === "error" ? "!" : toastType === "info" ? "i" : "✓";
 
     const body = document.createElement("div");
     body.className = "Vue-Toastification__toast-body";
@@ -1640,7 +1920,7 @@ import {
   function renderSelectedCount() {
     if (!selectedCountEl) return;
     selectedCountEl.textContent = t("status.selectedCount", {
-      count: selectedFolderIds.size
+      count: selectedFolderIds.size,
     });
   }
 
@@ -1651,12 +1931,14 @@ import {
       .filter((folder) => ids.has(Number(folder.id)))
       .map((folder) => String(folder.name || "").trim())
       .filter(Boolean);
-    currentFavoriteFoldersEl.textContent = names.length > 0
-      ? `${activeLocale === LOCALE_ZH ? "已收藏到：" : "Saved in: "} ${names.join("、")}`
-      : activeLocale === LOCALE_ZH
-        ? "当前内容尚未收藏到 BiliShelf"
-        : "This content is not saved in BiliShelf";
-    currentFavoriteFoldersEl.dataset.saved = names.length > 0 ? "true" : "false";
+    currentFavoriteFoldersEl.textContent =
+      names.length > 0
+        ? `${activeLocale === LOCALE_ZH ? "已收藏到：" : "Saved in: "} ${names.join("、")}`
+        : activeLocale === LOCALE_ZH
+          ? "当前内容尚未收藏到 BiliShelf"
+          : "This content is not saved in BiliShelf";
+    currentFavoriteFoldersEl.dataset.saved =
+      names.length > 0 ? "true" : "false";
   }
 
   function renderCustomTagSuggestions() {
@@ -1669,7 +1951,10 @@ import {
       8,
     );
 
-    customTagSuggestionsEl.classList.toggle("bl-hidden", suggestions.length === 0);
+    customTagSuggestionsEl.classList.toggle(
+      "bl-hidden",
+      suggestions.length === 0,
+    );
     if (suggestions.length === 0) {
       return;
     }
@@ -1700,7 +1985,7 @@ import {
     if (!folderListEl) return;
     const lower = keyword.trim().toLowerCase();
     const visible = allFolders.filter((folder) =>
-      folder.name.toLowerCase().includes(lower)
+      folder.name.toLowerCase().includes(lower),
     );
     const grouped = new Map();
     for (const folder of visible) {
@@ -1710,19 +1995,25 @@ import {
       grouped.set(key, bucket);
     }
     const currentFolderIds = new Set(currentCollectorFolderIds());
-    const groupedVisible = [...grouped.entries()].sort(([left, leftFolders], [right, rightFolders]) => {
-      if (!left && right) return 1;
-      if (left && !right) return -1;
-      const leftHasCurrent = leftFolders.some((folder) => currentFolderIds.has(Number(folder.id)));
-      const rightHasCurrent = rightFolders.some((folder) => currentFolderIds.has(Number(folder.id)));
-      if (leftHasCurrent !== rightHasCurrent) return leftHasCurrent ? -1 : 1;
-      return left.localeCompare(right, activeLocale);
-    });
+    const groupedVisible = [...grouped.entries()].sort(
+      ([left, leftFolders], [right, rightFolders]) => {
+        if (!left && right) return 1;
+        if (left && !right) return -1;
+        const leftHasCurrent = leftFolders.some((folder) =>
+          currentFolderIds.has(Number(folder.id)),
+        );
+        const rightHasCurrent = rightFolders.some((folder) =>
+          currentFolderIds.has(Number(folder.id)),
+        );
+        if (leftHasCurrent !== rightHasCurrent) return leftHasCurrent ? -1 : 1;
+        return left.localeCompare(right, activeLocale);
+      },
+    );
 
     folderListEl.replaceChildren();
     if (visible.length === 0) {
       folderListEl.appendChild(
-        createEl("div", { className: "bl-empty", text: t("status.noFolders") })
+        createEl("div", { className: "bl-empty", text: t("status.noFolders") }),
       );
       renderSelectedCount();
       renderCurrentFavoriteFolders();
@@ -1733,7 +2024,7 @@ import {
       const collapsed = collapsedFolderGroups.has(groupKey);
       const groupHeader = createEl("div", { className: "bl-folder-group" });
       const groupLabel = createEl("span", {
-        text: groupKey || (activeLocale === LOCALE_ZH ? "未分组" : "Ungrouped")
+        text: groupKey || (activeLocale === LOCALE_ZH ? "未分组" : "Ungrouped"),
       });
       const groupToggle = createEl("button", {
         className: "bl-folder-group-toggle",
@@ -1742,9 +2033,9 @@ import {
           "aria-expanded": collapsed ? "false" : "true",
           "aria-label": collapsed
             ? t("status.expandFolderGroup")
-            : t("status.collapseFolderGroup")
+            : t("status.collapseFolderGroup"),
         },
-        text: collapsed ? "▸" : "▾"
+        text: collapsed ? "▸" : "▾",
       });
       groupToggle.addEventListener("click", () => {
         if (collapsed) collapsedFolderGroups.delete(groupKey);
@@ -1759,41 +2050,47 @@ import {
         const leftCurrent = currentFolderIds.has(Number(left.id));
         const rightCurrent = currentFolderIds.has(Number(right.id));
         if (leftCurrent !== rightCurrent) return leftCurrent ? -1 : 1;
-        return String(left.name || "").localeCompare(String(right.name || ""), activeLocale);
+        return String(left.name || "").localeCompare(
+          String(right.name || ""),
+          activeLocale,
+        );
       });
       for (const folder of folders) {
         const node = createEl("label", {
           className: currentFolderIds.has(Number(folder.id))
             ? "bl-folder-item is-active"
-            : "bl-folder-item"
+            : "bl-folder-item",
         });
-      const checkbox = createEl("input", {
-        attrs: {
-          type: "checkbox",
-          "data-folder-id": String(folder.id)
-        }
-      });
-      checkbox.checked = selectedFolderIds.has(folder.id);
-      const content = createEl("div", { className: "bl-folder-content" }, [
-        createEl("p", { className: "bl-folder-name", text: folder.name }),
-        createEl("p", {
-          className: "bl-folder-meta",
-          text: t(articleMode ? "status.articlesCount" : "status.videosCount", {
-            count: folder.itemCount ?? 0
-          })
-        })
-      ]);
-      node.appendChild(checkbox);
-      node.appendChild(content);
+        const checkbox = createEl("input", {
+          attrs: {
+            type: "checkbox",
+            "data-folder-id": String(folder.id),
+          },
+        });
+        checkbox.checked = selectedFolderIds.has(folder.id);
+        const content = createEl("div", { className: "bl-folder-content" }, [
+          createEl("p", { className: "bl-folder-name", text: folder.name }),
+          createEl("p", {
+            className: "bl-folder-meta",
+            text: t(
+              articleMode ? "status.articlesCount" : "status.videosCount",
+              {
+                count: folder.itemCount ?? 0,
+              },
+            ),
+          }),
+        ]);
+        node.appendChild(checkbox);
+        node.appendChild(content);
 
-      checkbox?.addEventListener("change", (event) => {
-        const target = event.target;
-        const id = Number(target?.dataset?.folderId);
-        if (!Number.isInteger(id)) return;
-        if (target.checked) selectedFolderIds.add(id);
-        else selectedFolderIds.delete(id);
-        renderSelectedCount();
-      });
+        checkbox?.addEventListener("change", (event) => {
+          const target = event.target;
+          const id = Number(target?.dataset?.folderId);
+          if (!Number.isInteger(id)) return;
+          if (target.checked) selectedFolderIds.add(id);
+          else selectedFolderIds.delete(id);
+          renderSelectedCount();
+        });
 
         folderListEl.appendChild(node);
       }
@@ -1805,7 +2102,9 @@ import {
 
   async function readRememberedCollectorFolderIds() {
     try {
-      const result = await chrome.storage.local.get([COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY]);
+      const result = await chrome.storage.local.get([
+        COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY,
+      ]);
       return resolveRememberedCollectorFolderIds(
         result?.[COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY] ?? [],
         allFolders,
@@ -1836,7 +2135,9 @@ import {
     }
     customTagsSection?.classList.toggle("bl-hidden", articleMode);
     await refreshCollectorData();
-    const rememberedFolderIds = articleMode ? [] : await readRememberedCollectorFolderIds();
+    const rememberedFolderIds = articleMode
+      ? []
+      : await readRememberedCollectorFolderIds();
     selectedFolderIds = new Set([
       ...currentCollectorFolderIds(),
       ...rememberedFolderIds,
@@ -1848,7 +2149,10 @@ import {
 
   function closeCollectorModal() {
     if (!panel || !panelBackdrop) return;
-    if (panel.classList.contains("bl-hidden") || panel.classList.contains("is-closing")) {
+    if (
+      panel.classList.contains("bl-hidden") ||
+      panel.classList.contains("is-closing")
+    ) {
       return;
     }
     panel.classList.add("is-closing");
@@ -1874,8 +2178,11 @@ import {
     const base = pickBasePayload();
     return {
       bvid: normalizeBvidToken(
-        extractBvidFromAny(location.href) || base.bvid || currentVideo?.bvid || ""
-      )
+        extractBvidFromAny(location.href) ||
+          base.bvid ||
+          currentVideo?.bvid ||
+          "",
+      ),
     };
   }
 
@@ -1896,7 +2203,10 @@ import {
         bvid: normalizeBvidToken(item?.bvid || "") || undefined,
       });
     } catch (error) {
-      console.warn("[BiliShelf extension] playback cursor update failed", error);
+      console.warn(
+        "[BiliShelf extension] playback cursor update failed",
+        error,
+      );
     }
     window.location.assign(url);
   }
@@ -1906,7 +2216,10 @@ import {
     playbackOverlay.dataset.collapsed = playbackCollapsed ? "true" : "false";
     playbackOverlay.dataset.listOpen = playbackListOpen ? "true" : "false";
     if (playbackListEl) {
-      playbackListEl.classList.toggle("bl-hidden", playbackCollapsed || !playbackListOpen);
+      playbackListEl.classList.toggle(
+        "bl-hidden",
+        playbackCollapsed || !playbackListOpen,
+      );
     }
     if (playbackListToggleBtn) {
       playbackListToggleBtn.textContent = playbackListOpen
@@ -1914,7 +2227,7 @@ import {
         : t("button.showList");
       playbackListToggleBtn.setAttribute(
         "aria-pressed",
-        playbackListOpen ? "true" : "false"
+        playbackListOpen ? "true" : "false",
       );
     }
     if (playbackCollapseBtn) {
@@ -1923,7 +2236,7 @@ import {
         : t("button.collapse");
       playbackCollapseBtn.setAttribute(
         "aria-pressed",
-        playbackCollapsed ? "true" : "false"
+        playbackCollapsed ? "true" : "false",
       );
     }
   }
@@ -1950,8 +2263,8 @@ import {
       playbackListEl.appendChild(
         createEl("div", {
           className: "bl-playback-empty",
-          text: t("playback.queueEmpty")
-        })
+          text: t("playback.queueEmpty"),
+        }),
       );
       return;
     }
@@ -1965,8 +2278,8 @@ import {
           attrs: {
             type: "button",
             "data-queue-index": String(index),
-            "aria-current": isActive ? "true" : "false"
-          }
+            "aria-current": isActive ? "true" : "false",
+          },
         },
         [
           createEl("img", {
@@ -1974,26 +2287,26 @@ import {
             attrs: {
               src: ensureAbsoluteUrl(item?.coverUrl, DEFAULT_COVER),
               alt: item?.title || t("status.coverAlt"),
-              loading: "lazy"
-            }
+              loading: "lazy",
+            },
           }),
           createEl("div", { className: "bl-playback-list-copy" }, [
             createEl("p", {
               className: "bl-playback-list-title",
-              text: item?.title || t("status.untitled")
+              text: item?.title || t("status.untitled"),
             }),
             createEl("p", {
               className: "bl-playback-list-meta",
               text: isActive
                 ? t("playback.current")
-                : normalizeBvidToken(item?.bvid || "") || ""
-            })
+                : normalizeBvidToken(item?.bvid || "") || "",
+            }),
           ]),
           createEl("span", {
             className: "bl-playback-list-index",
-            text: String(index + 1)
-          })
-        ]
+            text: String(index + 1),
+          }),
+        ],
       );
 
       row.disabled = isActive;
@@ -2033,10 +2346,16 @@ import {
 
       let activeSession = session;
       if (Number(session.currentIndex) !== currentIndex) {
-        activeSession = await requestLocalApi("PATCH", "/playback/session/current", cursor);
+        activeSession = await requestLocalApi(
+          "PATCH",
+          "/playback/session/current",
+          cursor,
+        );
       }
 
-      const activeQueue = Array.isArray(activeSession?.queue) ? activeSession.queue : session.queue;
+      const activeQueue = Array.isArray(activeSession?.queue)
+        ? activeSession.queue
+        : session.queue;
       const currentItem = activeQueue[currentIndex] || null;
       const adjacent = getAdjacentPlaybackItems(activeQueue, currentIndex);
 
@@ -2048,11 +2367,12 @@ import {
         playbackOverlayProgressEl.textContent = [
           t("playback.progress", {
             current: currentIndex + 1,
-            total: activeQueue.length
+            total: activeQueue.length,
           }),
           t("playback.folder", {
-            folderId: Number(activeSession?.folderId) || Number(session.folderId) || 0
-          })
+            folderId:
+              Number(activeSession?.folderId) || Number(session.folderId) || 0,
+          }),
         ].join(" · ");
       }
 
@@ -2079,7 +2399,10 @@ import {
 
       playbackOverlay.classList.remove("bl-hidden");
     } catch (error) {
-      console.warn("[BiliShelf extension] playback overlay refresh failed", error);
+      console.warn(
+        "[BiliShelf extension] playback overlay refresh failed",
+        error,
+      );
       hidePlaybackOverlay();
     } finally {
       playbackOverlayBusy = false;
@@ -2189,48 +2512,69 @@ import {
       }
     }
 
-    const specialMetadata = base.mediaKind === "video"
-      ? {}
-      : pickSpecialMetadata(detail, base.mediaKind);
-    const rawPublishAt = base.mediaKind === "video"
-      ? detail?.pubdate
-      : specialMetadata.publishAt;
+    const specialMetadata =
+      base.mediaKind === "video"
+        ? {}
+        : pickSpecialMetadata(detail, base.mediaKind);
+    const rawPublishAt =
+      base.mediaKind === "video" ? detail?.pubdate : specialMetadata.publishAt;
     const publishAt = Number.isFinite(Number(rawPublishAt))
-      ? Math.trunc(Number(rawPublishAt) > 1e12 ? Number(rawPublishAt) : Number(rawPublishAt) * 1000)
+      ? Math.trunc(
+          Number(rawPublishAt) > 1e12
+            ? Number(rawPublishAt)
+            : Number(rawPublishAt) * 1000,
+        )
       : null;
 
     currentVideo = {
       bvid: (base.contentKey || base.bvid || detail?.bvid || "").trim(),
       aid:
-        base.mediaKind === "video" && typeof detail?.aid === "number" && Number.isFinite(detail.aid)
+        base.mediaKind === "video" &&
+        typeof detail?.aid === "number" &&
+        Number.isFinite(detail.aid)
           ? Math.trunc(detail.aid)
           : base.mediaKind === "video" && Number(base.aid) > 0
             ? Number(base.aid)
-          : null,
+            : null,
       mediaKind: base.mediaKind,
       mediaId: base.mediaId,
       contentKey: base.contentKey || base.bvid || "",
       bvidUrl: ensureAbsoluteUrl(base.bvidUrl, location.href),
-      title: (specialMetadata.title || detail?.title || base.title || "").trim(),
+      title: (
+        specialMetadata.title ||
+        detail?.title ||
+        base.title ||
+        ""
+      ).trim(),
       coverUrl: ensureAbsoluteUrl(
         specialMetadata.coverUrl || detail?.pic || base.coverUrl,
-        DEFAULT_COVER
+        DEFAULT_COVER,
       ),
       uploader:
-        (specialMetadata.uploader || detail?.owner?.name || base.uploader || "").trim() ||
-        t("status.unknownUploader"),
+        (
+          specialMetadata.uploader ||
+          detail?.owner?.name ||
+          base.uploader ||
+          ""
+        ).trim() || t("status.unknownUploader"),
       uploaderSpaceUrl:
-        (base.mediaKind === "video" && typeof detail?.owner?.mid === "number" && Number.isFinite(detail.owner.mid)
+        base.mediaKind === "video" &&
+        typeof detail?.owner?.mid === "number" &&
+        Number.isFinite(detail.owner.mid)
           ? `https://space.bilibili.com/${Math.trunc(detail.owner.mid)}`
-          : specialMetadata.uploaderSpaceUrl || base.uploaderSpaceUrl || ""),
+          : specialMetadata.uploaderSpaceUrl || base.uploaderSpaceUrl || "",
       description: pickSafeDescription(detail),
       partition: firstNonEmptyText(
         detail?.tname,
         detail?.type_name,
-        base.mediaKind === "bangumi" ? "Bangumi" : base.mediaKind === "audio" ? "Audio" : ""
+        base.mediaKind === "bangumi"
+          ? "Bangumi"
+          : base.mediaKind === "audio"
+            ? "Audio"
+            : "",
       ),
       publishAt,
-      systemTags: mergeSystemTags(apiSystemTags, detail)
+      systemTags: mergeSystemTags(apiSystemTags, detail),
     };
 
     if (!currentVideo.title) {
@@ -2250,13 +2594,13 @@ import {
       allFolders = await fetchFolders();
       const idSet = new Set(allFolders.map((folder) => folder.id));
       selectedFolderIds = new Set(
-        [...selectedFolderIds].filter((id) => idSet.has(id))
+        [...selectedFolderIds].filter((id) => idSet.has(id)),
       );
       renderFolders(folderSearchInput?.value || "");
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : t("toast.folderLoadFail"),
-        "err"
+        "err",
       );
     }
   }
@@ -2287,7 +2631,7 @@ import {
       const created = await createFolder({
         name,
         description: description || undefined,
-        groupName: groupName || null
+        groupName: groupName || null,
       });
 
       folderModalNameInput.value = "";
@@ -2304,16 +2648,17 @@ import {
       renderFolders(folderSearchInput?.value || "");
       setStatus(t("toast.folderCreatedSelected"), "ok");
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("error.unknown");
+      const message =
+        error instanceof Error ? error.message : t("error.unknown");
       const isConflict =
         message.includes("Folder name already exists") ||
         message.includes("Article folder name already exists") ||
-        message.includes("statusCode\":409");
+        message.includes('statusCode":409');
 
       if (isConflict) {
         await loadFolders();
         const existing = allFolders.find(
-          (folder) => folder.name.trim().toLowerCase() === name.toLowerCase()
+          (folder) => folder.name.trim().toLowerCase() === name.toLowerCase(),
         );
         if (existing) {
           selectedFolderIds.add(existing.id);
@@ -2334,7 +2679,9 @@ import {
     const fromLoadedFolders = folderNamesFromIds(folderIds);
     if (fromLoadedFolders.length > 0) return fromLoadedFolders;
     const idSet = new Set(folderIds.map((id) => Number(id)));
-    const finalFolders = Array.isArray(result?.finalFolders) ? result.finalFolders : [];
+    const finalFolders = Array.isArray(result?.finalFolders)
+      ? result.finalFolders
+      : [];
     return finalFolders
       .filter((folder) => idSet.has(Number(folder?.id)))
       .map((folder) => String(folder?.name || "").trim())
@@ -2350,7 +2697,8 @@ import {
   }
 
   function showSaveFeedback(result, message, wasSaved) {
-    if (!saveFeedbackEl || !saveFeedbackTitleEl || !saveFeedbackMessageEl) return;
+    if (!saveFeedbackEl || !saveFeedbackTitleEl || !saveFeedbackMessageEl)
+      return;
     const addedCount = Array.isArray(result?.addedFolderIds)
       ? result.addedFolderIds.length
       : 0;
@@ -2412,12 +2760,21 @@ import {
         folderIds: [...folderIds],
         customTags: parseTags(customTagsInput?.value || ""),
         systemTags: currentVideo.systemTags || [],
-        isInvalid: false
+        isInvalid: false,
       };
       const result = await requestLocalApi("POST", "/videos", payload);
-      const addedFolderNames = folderNamesFromSaveResult(result, "addedFolderIds");
-      const existingFolderNames = folderNamesFromSaveResult(result, "existingFolderIds");
-      const removedFolderNames = folderNamesFromSaveResult(result, "removedFolderIds");
+      const addedFolderNames = folderNamesFromSaveResult(
+        result,
+        "addedFolderIds",
+      );
+      const existingFolderNames = folderNamesFromSaveResult(
+        result,
+        "existingFolderIds",
+      );
+      const removedFolderNames = folderNamesFromSaveResult(
+        result,
+        "removedFolderIds",
+      );
       const toastMessage =
         addedFolderNames.length > 0 ||
         existingFolderNames.length > 0 ||
@@ -2426,21 +2783,22 @@ import {
               {
                 addedFolderNames,
                 existingFolderNames,
-                removedFolderNames
+                removedFolderNames,
               },
-              t
+              t,
             )
           : t("toast.saved");
 
-      currentVideoLocalFolders = Array.isArray(result?.finalFolders) ? result.finalFolders : [];
+      currentVideoLocalFolders = Array.isArray(result?.finalFolders)
+        ? result.finalFolders
+        : [];
       selectedFolderIds = new Set(currentVideoLocalFolderIds());
       showSaveFeedback(result, toastMessage, wasSaved);
       try {
         await chrome.storage.local.set(
-          createRememberedCollectorFolderIdsRecord([...folderIds])
+          createRememberedCollectorFolderIdsRecord([...folderIds]),
         );
-      } catch {
-      }
+      } catch {}
       syncCurrentFavoriteUi();
       renderFolders(folderSearchInput?.value || "");
       await loadFolders();
@@ -2448,7 +2806,7 @@ import {
     } catch (error) {
       setStatus(
         `${t("toast.saveFail")}: ${error instanceof Error ? error.message : t("error.unknown")}`,
-        "err"
+        "err",
       );
     } finally {
       if (triggerButton) {
@@ -2468,7 +2826,9 @@ import {
       setStatus(t("toast.articleIncomplete"), "err");
       return;
     }
-    const normalizedFolderIds = [...folderIds].map(Number).filter((id) => Number.isInteger(id) && id > 0);
+    const normalizedFolderIds = [...folderIds]
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0);
     if (normalizedFolderIds.length === 0 && !articleSaved) {
       setStatus(t("toast.articleFolderRequired"), "err");
       return;
@@ -2489,11 +2849,22 @@ import {
       currentArticleLocalFolders = Array.isArray(result?.finalFolders)
         ? result.finalFolders
         : [];
-      const addedFolderNames = folderNamesFromSaveResult(result, "addedFolderIds");
-      const existingFolderNames = folderNamesFromSaveResult(result, "existingFolderIds");
-      const removedFolderNames = folderNamesFromSaveResult(result, "removedFolderIds");
+      const addedFolderNames = folderNamesFromSaveResult(
+        result,
+        "addedFolderIds",
+      );
+      const existingFolderNames = folderNamesFromSaveResult(
+        result,
+        "existingFolderIds",
+      );
+      const removedFolderNames = folderNamesFromSaveResult(
+        result,
+        "removedFolderIds",
+      );
       const toastMessage =
-        addedFolderNames.length > 0 || existingFolderNames.length > 0 || removedFolderNames.length > 0
+        addedFolderNames.length > 0 ||
+        existingFolderNames.length > 0 ||
+        removedFolderNames.length > 0
           ? buildQuickFavoriteToastMessage(
               { addedFolderNames, existingFolderNames, removedFolderNames },
               t,
@@ -2521,7 +2892,8 @@ import {
   }
 
   async function saveCollectorItem() {
-    if (articleMode) return saveArticleWithFolderIds(selectedFolderIds, { button: saveBtn });
+    if (articleMode)
+      return saveArticleWithFolderIds(selectedFolderIds, { button: saveBtn });
     return saveVideo();
   }
 
@@ -2546,7 +2918,10 @@ import {
     }
   }
 
-  function calcButtonRange(viewportWidth = window.innerWidth, viewportHeight = window.innerHeight) {
+  function calcButtonRange(
+    viewportWidth = window.innerWidth,
+    viewportHeight = window.innerHeight,
+  ) {
     const width = floatingBtn?.offsetWidth || 56;
     const height = floatingBtn?.offsetHeight || 56;
     const min = BUTTON_MIN_MARGIN;
@@ -2557,7 +2932,7 @@ import {
       maxX,
       maxY,
       rangeX: Math.max(1, maxX - min),
-      rangeY: Math.max(1, maxY - min)
+      rangeY: Math.max(1, maxY - min),
     };
   }
 
@@ -2574,7 +2949,7 @@ import {
     if (Number.isFinite(nx) && Number.isFinite(ny)) {
       return {
         x: currentRange.min + clamp01(nx) * currentRange.rangeX,
-        y: currentRange.min + clamp01(ny) * currentRange.rangeY
+        y: currentRange.min + clamp01(ny) * currentRange.rangeY,
       };
     }
 
@@ -2590,7 +2965,7 @@ import {
       const ratioY = clamp01((y - oldRange.min) / oldRange.rangeY);
       return {
         x: currentRange.min + ratioX * currentRange.rangeX,
-        y: currentRange.min + ratioY * currentRange.rangeY
+        y: currentRange.min + ratioY * currentRange.rangeY,
       };
     }
 
@@ -2604,8 +2979,7 @@ import {
       if (stored && typeof stored === "object") {
         return stored;
       }
-    } catch {
-    }
+    } catch {}
 
     return (
       readButtonPositionFromLocalStorage(BUTTON_POS_STORAGE_KEY) ||
@@ -2623,31 +2997,29 @@ import {
       ny: clamp01((position.y - range.min) / range.rangeY),
       vw: window.innerWidth,
       vh: window.innerHeight,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     };
 
     try {
       localStorage.setItem(BUTTON_POS_STORAGE_KEY, JSON.stringify(record));
       localStorage.setItem(
         LEGACY_BUTTON_POS_STORAGE_KEY,
-        JSON.stringify({ x: position.x, y: position.y })
+        JSON.stringify({ x: position.x, y: position.y }),
       );
-    } catch {
-    }
+    } catch {}
 
     try {
       void chrome.storage.local.set({
-        [BUTTON_POS_STORAGE_KEY]: record
+        [BUTTON_POS_STORAGE_KEY]: record,
       });
-    } catch {
-    }
+    } catch {}
   }
 
   function clampButtonPosition(x, y) {
     const range = calcButtonRange();
     return {
       x: Math.min(Math.max(range.min, x), range.maxX),
-      y: Math.min(Math.max(range.min, y), range.maxY)
+      y: Math.min(Math.max(range.min, y), range.maxY),
     };
   }
 
@@ -2676,15 +3048,13 @@ import {
     try {
       localStorage.setItem(BUTTON_SIDE_STORAGE_KEY, normalized);
       localStorage.setItem(LEGACY_BUTTON_SIDE_STORAGE_KEY, normalized);
-    } catch {
-    }
+    } catch {}
 
     try {
       void chrome.storage.local.set({
-        [BUTTON_SIDE_STORAGE_KEY]: normalized
+        [BUTTON_SIDE_STORAGE_KEY]: normalized,
       });
-    } catch {
-    }
+    } catch {}
   }
 
   async function applyStoredButtonSide() {
@@ -2699,8 +3069,7 @@ import {
       if (stored === "left" || stored === "right") {
         side = stored;
       }
-    } catch {
-    }
+    } catch {}
 
     setButtonSide(side, false);
   }
@@ -2712,7 +3081,7 @@ import {
     placeFloatingButtonAt(
       window.innerWidth - width - 24,
       window.innerHeight - height - 24,
-      false
+      false,
     );
   }
 
@@ -2722,7 +3091,6 @@ import {
     if (!position) return;
     placeFloatingButtonAt(position.x, position.y, false);
   }
-
 
   function bindFloatingButtonDrag() {
     if (!floatingBtn) return;
@@ -2793,7 +3161,9 @@ import {
     }
 
     const playerContainer = document.querySelector(".bpx-player-container");
-    const playerScreen = String(playerContainer?.getAttribute("data-screen") || "");
+    const playerScreen = String(
+      playerContainer?.getAttribute("data-screen") || "",
+    );
     if (playerScreen === "full" || playerScreen === "web") {
       return true;
     }
@@ -2818,7 +3188,10 @@ import {
   function startFullscreenWatch() {
     updateFloatingUiVisibility();
     window.addEventListener("fullscreenchange", updateFloatingUiVisibility);
-    window.addEventListener("webkitfullscreenchange", updateFloatingUiVisibility);
+    window.addEventListener(
+      "webkitfullscreenchange",
+      updateFloatingUiVisibility,
+    );
 
     if (fullscreenObserver) {
       fullscreenObserver.disconnect();
@@ -2831,7 +3204,7 @@ import {
       });
       fullscreenObserver.observe(observerTarget, {
         attributes: true,
-        attributeFilter: ["class"]
+        attributeFilter: ["class"],
       });
     }
 
@@ -2881,8 +3254,7 @@ import {
       if (mode === THEME_DARK || mode === THEME_LIGHT || mode === THEME_AUTO) {
         return mode;
       }
-    } catch {
-    }
+    } catch {}
     return THEME_AUTO;
   }
 
@@ -2906,20 +3278,19 @@ import {
     style.id = "bl-floating-style";
     style.textContent = `
       #bl-floating-root {
-        position: fixed;
-        inset: 0;
+        position: static;
         pointer-events: none;
-        z-index: 999998;
         font-family: "Noto Sans SC", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", system-ui, -apple-system, sans-serif;
       }
       #bl-floating-root.bl-fullscreen-hidden {
         display: none !important;
       }
-      .bl-hidden { display: none !important; }
+      #bl-floating-root .bl-hidden { display: none !important; }
 
       #bl-floating-btn {
         position: fixed;
-        z-index: 999999;
+        /* The idle control must stay below Bilibili's sticky navigation. */
+        z-index: 900;
         pointer-events: auto;
         width: 48px;
         height: 48px;
@@ -3236,7 +3607,7 @@ import {
         position: fixed;
         right: 16px;
         top: 16px;
-        z-index: 1000001;
+        z-index: 900;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -3546,7 +3917,7 @@ import {
         position: fixed;
         left: 16px;
         bottom: 16px;
-        z-index: 1000000;
+        z-index: 900;
         width: min(420px, calc(100vw - 32px));
         border-radius: 8px;
         border: 1px solid;
@@ -3785,7 +4156,10 @@ import {
           transition-duration: .01ms !important;
         }
       }
-    `;
+    `.replace(
+      /(^[ \t]*|,[ \t]*)(\.(?:bl-|Vue-Toastification__)[\w-]+)/gm,
+      "$1#bl-floating-root $2",
+    );
     document.head.appendChild(style);
   }
 
@@ -3873,7 +4247,7 @@ import {
 
     panelBackdrop = createEl("div", {
       id: "bl-collector-backdrop",
-      className: "bl-hidden"
+      className: "bl-hidden",
     });
 
     panel = createEl(
@@ -3886,22 +4260,29 @@ import {
           role: "dialog",
           "aria-modal": "true",
           "aria-hidden": "true",
-          "aria-labelledby": "bl-collector-title"
-        }
+          "aria-labelledby": "bl-collector-title",
+        },
       },
       [
         createEl("div", { className: "bl-header" }, [
           createEl("div", { className: "bl-title-wrap" }, [
-            createEl("h2", { id: "bl-collector-title", className: "bl-title" }, [
-              createEl("span", { className: "bl-title-row" }, [
-                createEl(
-                  "span",
-                  { className: "bl-brand-mark", attrs: { "aria-hidden": "true" } },
-                  [createBrandMarkSvg()]
-                ),
-                createEl("span", { text: t("title.collector") })
-              ])
-            ])
+            createEl(
+              "h2",
+              { id: "bl-collector-title", className: "bl-title" },
+              [
+                createEl("span", { className: "bl-title-row" }, [
+                  createEl(
+                    "span",
+                    {
+                      className: "bl-brand-mark",
+                      attrs: { "aria-hidden": "true" },
+                    },
+                    [createBrandMarkSvg()],
+                  ),
+                  createEl("span", { text: t("title.collector") }),
+                ]),
+              ],
+            ),
           ]),
           createEl("button", {
             id: "bl-close-btn",
@@ -3909,132 +4290,150 @@ import {
             attrs: {
               type: "button",
               title: t("button.close"),
-              "aria-label": t("button.close")
+              "aria-label": t("button.close"),
             },
-            text: "×"
-          })
+            text: "×",
+          }),
         ]),
         createEl("div", { className: "bl-panel-scroll" }, [
-        createEl("section", { className: "bl-video-card" }, [
-          createEl("img", {
-            id: "bl-video-cover",
-            className: "bl-video-cover",
-            attrs: { src: DEFAULT_COVER, alt: t("status.coverAlt") }
-          }),
-          createEl("div", {}, [
-            createEl("p", {
-              id: "bl-video-title",
-              className: "bl-video-title",
-              text: t("status.noVideoTitle")
+          createEl("section", { className: "bl-video-card" }, [
+            createEl("img", {
+              id: "bl-video-cover",
+              className: "bl-video-cover",
+              attrs: { src: DEFAULT_COVER, alt: t("status.coverAlt") },
             }),
-            createEl("p", {
-              id: "bl-video-meta",
-              className: "bl-video-meta",
-              text: "-"
-            })
-          ])
-        ]),
-        createEl("section", { className: "bl-card" }, [
-          createEl("div", { className: "bl-card-head" }, [
-            createEl("span", {
-              className: "bl-label",
-              text: t(articleMode ? "section.articleFolders" : "section.folders")
-            }),
-            createEl("span", {
-              id: "bl-selected-count",
-              className: "bl-selected-count",
-              text: t("status.selectedCount", { count: 0 })
-            })
-          ]),
-          createEl("div", { className: "bl-folder-toolbar" }, [
-            createEl("input", {
-              id: "bl-folder-search",
-              className: "bl-input",
-              attrs: { placeholder: t("field.searchFolders") }
-            }),
-            createEl("button", {
-              id: "bl-folder-create-open",
-              className: "bl-btn bl-btn-secondary",
-              attrs: { type: "button" },
-              text: t(articleMode ? "button.newArticleFolder" : "button.newFolder")
-            })
-          ]),
-          createEl("p", {
-            id: "bl-current-favorite-folders",
-            className: "bl-current-favorite-folders",
-            text: activeLocale === LOCALE_ZH
-              ? "当前内容尚未收藏到 BiliShelf"
-              : "This content is not saved in BiliShelf"
-          }),
-          createEl("div", { className: "bl-folder-actions" }, [
-            createEl("div", { className: "bl-folder-actions-left" }, [
-              createEl("button", {
-                id: "bl-select-all-folders",
-                className: "bl-btn bl-btn-outline",
-                attrs: { type: "button" },
-                text: t("button.selectAll")
+            createEl("div", {}, [
+              createEl("p", {
+                id: "bl-video-title",
+                className: "bl-video-title",
+                text: t("status.noVideoTitle"),
               }),
-              createEl("button", {
-                id: "bl-clear-folders",
-                className: "bl-btn bl-btn-outline",
-                attrs: { type: "button" },
-                text: t("button.clear")
-              })
+              createEl("p", {
+                id: "bl-video-meta",
+                className: "bl-video-meta",
+                text: "-",
+              }),
             ]),
           ]),
-          createEl("div", { id: "bl-folder-list", className: "bl-folder-list" })
-        ]),
-        createEl("section", { id: "bl-custom-tags-section", className: "bl-card" }, [
-          createEl("div", { className: "bl-card-head" }, [
-            createEl("span", {
-              className: "bl-label",
-              text: t("section.customTags")
-            })
-          ]),
-          createEl("input", {
-            id: "bl-custom-tags",
-            className: "bl-input",
-            attrs: { placeholder: t("field.customTags") }
-          }),
-          createEl("div", {
-            id: "bl-custom-tag-suggestions",
-            className: "bl-tag-suggestions bl-hidden"
-          })
-        ]),
-        createEl(
-          "div",
-          {
-            id: "bl-save-feedback",
-            className: "bl-save-feedback bl-hidden",
-            attrs: { role: "status", "aria-live": "polite", "data-state": "saved" }
-          },
-          [
-            createEl("span", { className: "bl-save-feedback-icon" }, [createCheckSvg()]),
-            createEl("div", { className: "bl-save-feedback-copy" }, [
-              createEl("p", {
-                id: "bl-save-feedback-title",
-                className: "bl-save-feedback-title",
-                text: t("status.favoriteSavedTitle")
+          createEl("section", { className: "bl-card" }, [
+            createEl("div", { className: "bl-card-head" }, [
+              createEl("span", {
+                className: "bl-label",
+                text: t(
+                  articleMode ? "section.articleFolders" : "section.folders",
+                ),
               }),
-              createEl("p", {
-                id: "bl-save-feedback-message",
-                className: "bl-save-feedback-message",
-                text: ""
-              })
-            ])
-          ]
-        ),
+              createEl("span", {
+                id: "bl-selected-count",
+                className: "bl-selected-count",
+                text: t("status.selectedCount", { count: 0 }),
+              }),
+            ]),
+            createEl("div", { className: "bl-folder-toolbar" }, [
+              createEl("input", {
+                id: "bl-folder-search",
+                className: "bl-input",
+                attrs: { placeholder: t("field.searchFolders") },
+              }),
+              createEl("button", {
+                id: "bl-folder-create-open",
+                className: "bl-btn bl-btn-secondary",
+                attrs: { type: "button" },
+                text: t(
+                  articleMode ? "button.newArticleFolder" : "button.newFolder",
+                ),
+              }),
+            ]),
+            createEl("p", {
+              id: "bl-current-favorite-folders",
+              className: "bl-current-favorite-folders",
+              text:
+                activeLocale === LOCALE_ZH
+                  ? "当前内容尚未收藏到 BiliShelf"
+                  : "This content is not saved in BiliShelf",
+            }),
+            createEl("div", { className: "bl-folder-actions" }, [
+              createEl("div", { className: "bl-folder-actions-left" }, [
+                createEl("button", {
+                  id: "bl-select-all-folders",
+                  className: "bl-btn bl-btn-outline",
+                  attrs: { type: "button" },
+                  text: t("button.selectAll"),
+                }),
+                createEl("button", {
+                  id: "bl-clear-folders",
+                  className: "bl-btn bl-btn-outline",
+                  attrs: { type: "button" },
+                  text: t("button.clear"),
+                }),
+              ]),
+            ]),
+            createEl("div", {
+              id: "bl-folder-list",
+              className: "bl-folder-list",
+            }),
+          ]),
+          createEl(
+            "section",
+            { id: "bl-custom-tags-section", className: "bl-card" },
+            [
+              createEl("div", { className: "bl-card-head" }, [
+                createEl("span", {
+                  className: "bl-label",
+                  text: t("section.customTags"),
+                }),
+              ]),
+              createEl("input", {
+                id: "bl-custom-tags",
+                className: "bl-input",
+                attrs: { placeholder: t("field.customTags") },
+              }),
+              createEl("div", {
+                id: "bl-custom-tag-suggestions",
+                className: "bl-tag-suggestions bl-hidden",
+              }),
+            ],
+          ),
+          createEl(
+            "div",
+            {
+              id: "bl-save-feedback",
+              className: "bl-save-feedback bl-hidden",
+              attrs: {
+                role: "status",
+                "aria-live": "polite",
+                "data-state": "saved",
+              },
+            },
+            [
+              createEl("span", { className: "bl-save-feedback-icon" }, [
+                createCheckSvg(),
+              ]),
+              createEl("div", { className: "bl-save-feedback-copy" }, [
+                createEl("p", {
+                  id: "bl-save-feedback-title",
+                  className: "bl-save-feedback-title",
+                  text: t("status.favoriteSavedTitle"),
+                }),
+                createEl("p", {
+                  id: "bl-save-feedback-message",
+                  className: "bl-save-feedback-message",
+                  text: "",
+                }),
+              ]),
+            ],
+          ),
         ]),
         createEl("div", { className: "bl-footer" }, [
           createEl("button", {
             id: "bl-save-btn",
             className: "bl-btn bl-btn-primary",
             attrs: { type: "button" },
-            text: t("button.save")
+            text: t("button.save"),
           }),
-          createEl("p", { className: "bl-credit", text: t("footer.credit") })
-        ])
-      ]
+          createEl("p", { className: "bl-credit", text: t("footer.credit") }),
+        ]),
+      ],
     );
 
     modal = createEl(
@@ -4042,21 +4441,25 @@ import {
       {
         id: "bl-create-folder-modal",
         className: "bl-hidden",
-        attrs: { "data-theme": "light" }
+        attrs: { "data-theme": "light" },
       },
       [
         createEl("div", { className: "bl-modal-panel" }, [
           createEl("div", { className: "bl-modal-header" }, [
             createEl("h3", {
               className: "bl-modal-title",
-              text: t(articleMode ? "modal.createArticleFolder" : "modal.createFolder")
+              text: t(
+                articleMode
+                  ? "modal.createArticleFolder"
+                  : "modal.createFolder",
+              ),
             }),
             createEl("button", {
               id: "bl-modal-folder-close",
               className: "bl-btn bl-btn-outline",
               attrs: { type: "button" },
-              text: t("button.close")
-            })
+              text: t("button.close"),
+            }),
           ]),
           createEl("div", { className: "bl-form-item" }, [
             createEl("div", { className: "bl-form-row" }, [
@@ -4065,75 +4468,75 @@ import {
                 " ",
                 createEl("span", {
                   attrs: { style: "color:#ef4444" },
-                  text: "*"
-                })
+                  text: "*",
+                }),
               ]),
               createEl("span", {
                 id: "bl-folder-name-count",
                 className: "bl-form-count",
-                text: "0/20"
-              })
+                text: "0/20",
+              }),
             ]),
             createEl("input", {
               id: "bl-modal-folder-name",
               className: "bl-input",
               attrs: {
                 maxlength: "20",
-                placeholder: t("modal.folderNamePlaceholder")
-              }
-            })
+                placeholder: t("modal.folderNamePlaceholder"),
+              },
+            }),
           ]),
           createEl("div", { className: "bl-form-item" }, [
             createEl("div", { className: "bl-form-row" }, [
               createEl("span", {
                 className: "bl-form-label",
-                text: t("modal.description")
+                text: t("modal.description"),
               }),
               createEl("span", {
                 id: "bl-folder-desc-count",
                 className: "bl-form-count",
-                text: "0/200"
-              })
+                text: "0/200",
+              }),
             ]),
             createEl("textarea", {
               id: "bl-modal-folder-desc",
               className: "bl-textarea",
               attrs: {
                 maxlength: "200",
-                placeholder: t("modal.folderDescPlaceholder")
-              }
-            })
+                placeholder: t("modal.folderDescPlaceholder"),
+              },
+            }),
           ]),
           createEl("div", { className: "bl-form-item" }, [
             createEl("span", {
               className: "bl-form-label",
-              text: t("modal.group")
+              text: t("modal.group"),
             }),
             createEl("input", {
               id: "bl-modal-folder-group",
               className: "bl-input",
               attrs: {
                 maxlength: "40",
-                placeholder: t("modal.groupPlaceholder")
-              }
-            })
+                placeholder: t("modal.groupPlaceholder"),
+              },
+            }),
           ]),
           createEl("div", { className: "bl-modal-actions" }, [
             createEl("button", {
               id: "bl-modal-folder-cancel",
               className: "bl-btn bl-btn-outline",
               attrs: { type: "button" },
-              text: t("button.cancel")
+              text: t("button.cancel"),
             }),
             createEl("button", {
               id: "bl-modal-folder-save",
               className: "bl-btn bl-btn-primary",
               attrs: { type: "button" },
-              text: t("button.create")
-            })
-          ])
-        ])
-      ]
+              text: t("button.create"),
+            }),
+          ]),
+        ]),
+      ],
     );
 
     playbackOverlay = createEl(
@@ -4141,62 +4544,66 @@ import {
       {
         id: "bl-playback-overlay",
         className: "bl-hidden",
-        attrs: { "data-theme": "light", "aria-live": "polite" }
+        attrs: { "data-theme": "light", "aria-live": "polite" },
       },
       [
-        createEl("p", {
-          className: "bl-playback-header"
-        }, [
-          createEl("div", { className: "bl-playback-header-copy" }, [
-            createEl("p", {
-              className: "bl-playback-caption",
-              text: t("playback.title")
-            }),
-            createEl("p", {
-              id: "bl-playback-current-title",
-              className: "bl-playback-title",
-              text: t("status.noVideoTitle")
-            }),
-            createEl("p", {
-              id: "bl-playback-progress",
-              className: "bl-playback-meta",
-              text: t("playback.progress", { current: 0, total: 0 })
-            })
-          ]),
-          createEl("div", { className: "bl-playback-header-actions" }, [
-            createEl("button", {
-              id: "bl-playback-collapse",
-              className: "bl-btn bl-btn-outline",
-              attrs: { type: "button" },
-              text: t("button.collapse")
-            })
-          ])
-        ]),
+        createEl(
+          "p",
+          {
+            className: "bl-playback-header",
+          },
+          [
+            createEl("div", { className: "bl-playback-header-copy" }, [
+              createEl("p", {
+                className: "bl-playback-caption",
+                text: t("playback.title"),
+              }),
+              createEl("p", {
+                id: "bl-playback-current-title",
+                className: "bl-playback-title",
+                text: t("status.noVideoTitle"),
+              }),
+              createEl("p", {
+                id: "bl-playback-progress",
+                className: "bl-playback-meta",
+                text: t("playback.progress", { current: 0, total: 0 }),
+              }),
+            ]),
+            createEl("div", { className: "bl-playback-header-actions" }, [
+              createEl("button", {
+                id: "bl-playback-collapse",
+                className: "bl-btn bl-btn-outline",
+                attrs: { type: "button" },
+                text: t("button.collapse"),
+              }),
+            ]),
+          ],
+        ),
         createEl("div", { className: "bl-playback-actions" }, [
           createEl("button", {
             id: "bl-playback-prev",
             className: "bl-btn bl-btn-outline",
             attrs: { type: "button" },
-            text: t("button.previous")
+            text: t("button.previous"),
           }),
           createEl("button", {
             id: "bl-playback-next",
             className: "bl-btn bl-btn-primary",
             attrs: { type: "button" },
-            text: t("button.next")
+            text: t("button.next"),
           }),
           createEl("button", {
             id: "bl-playback-list-toggle",
             className: "bl-btn bl-btn-secondary",
             attrs: { type: "button" },
-            text: t("button.hideList")
-          })
+            text: t("button.hideList"),
+          }),
         ]),
         createEl("div", {
           id: "bl-playback-list",
-          className: "bl-playback-list"
-        })
-      ]
+          className: "bl-playback-list",
+        }),
+      ],
     );
 
     floatingBtn = createEl(
@@ -4210,15 +4617,15 @@ import {
           "aria-expanded": "false",
           "aria-pressed": "false",
           title: t("title.collector"),
-          "aria-label": t("title.collector")
-        }
+          "aria-label": t("title.collector"),
+        },
       },
-      [createFloatingButtonSvg()]
+      [createFloatingButtonSvg()],
     );
 
     toastRoot = createEl("div", {
       className: "bl-toast-root",
-      attrs: { "aria-live": "polite", "aria-atomic": "true" }
+      attrs: { "aria-live": "polite", "aria-atomic": "true" },
     });
 
     root.appendChild(panelBackdrop);
@@ -4227,7 +4634,8 @@ import {
     root.appendChild(playbackOverlay);
     root.appendChild(floatingBtn);
     root.appendChild(toastRoot);
-    document.body.appendChild(root);
+    // Keep the extension layer outside Bilibili's app tree and body-child layout rules.
+    (document.documentElement || document.body).appendChild(root);
 
     folderListEl = panel.querySelector("#bl-folder-list");
     folderSearchInput = panel.querySelector("#bl-folder-search");
@@ -4240,7 +4648,9 @@ import {
     selectAllFoldersBtn = panel.querySelector("#bl-select-all-folders");
     clearFolderSelectionBtn = panel.querySelector("#bl-clear-folders");
     selectedCountEl = panel.querySelector("#bl-selected-count");
-    currentFavoriteFoldersEl = panel.querySelector("#bl-current-favorite-folders");
+    currentFavoriteFoldersEl = panel.querySelector(
+      "#bl-current-favorite-folders",
+    );
     videoTitleEl = panel.querySelector("#bl-video-title");
     videoMetaEl = panel.querySelector("#bl-video-meta");
     videoCoverEl = panel.querySelector("#bl-video-cover");
@@ -4256,12 +4666,20 @@ import {
     folderModalSaveBtn = modal.querySelector("#bl-modal-folder-save");
     folderModalCancelBtn = modal.querySelector("#bl-modal-folder-cancel");
     folderModalCloseBtn = modal.querySelector("#bl-modal-folder-close");
-    playbackOverlayTitleEl = playbackOverlay.querySelector("#bl-playback-current-title");
-    playbackOverlayProgressEl = playbackOverlay.querySelector("#bl-playback-progress");
+    playbackOverlayTitleEl = playbackOverlay.querySelector(
+      "#bl-playback-current-title",
+    );
+    playbackOverlayProgressEl = playbackOverlay.querySelector(
+      "#bl-playback-progress",
+    );
     playbackPrevBtn = playbackOverlay.querySelector("#bl-playback-prev");
     playbackNextBtn = playbackOverlay.querySelector("#bl-playback-next");
-    playbackListToggleBtn = playbackOverlay.querySelector("#bl-playback-list-toggle");
-    playbackCollapseBtn = playbackOverlay.querySelector("#bl-playback-collapse");
+    playbackListToggleBtn = playbackOverlay.querySelector(
+      "#bl-playback-list-toggle",
+    );
+    playbackCollapseBtn = playbackOverlay.querySelector(
+      "#bl-playback-collapse",
+    );
     playbackListEl = playbackOverlay.querySelector("#bl-playback-list");
 
     applyInitialButtonPosition();
@@ -4271,9 +4689,7 @@ import {
     bindFloatingButtonDrag();
     bindEvents();
     mountNativeFavoriteStatus();
-    if (nativeFavoriteStatusObserver) nativeFavoriteStatusObserver.disconnect();
-    nativeFavoriteStatusObserver = new MutationObserver(scheduleNativeFavoriteStatusMount);
-    nativeFavoriteStatusObserver.observe(document.body, { childList: true, subtree: true });
+    startNativeFavoriteStatusWatch();
     startFullscreenWatch();
     startPlaybackOverlayWatch();
     renderVideo(null);
@@ -4318,7 +4734,7 @@ import {
         }
         if (changes[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY]) {
           activeQuickFavoriteShortcut = resolveStoredShortcut(
-            changes[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY].newValue ?? null
+            changes[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY].newValue ?? null,
           );
           syncFloatingButtonLabel();
         }
@@ -4354,7 +4770,7 @@ import {
     "bili-comment-user-info-renderer",
     "bili-comment-pictures-renderer",
     "bili-rich-text",
-    "bili-avatar"
+    "bili-avatar",
   ].join(",");
   const COMMENT_CANDIDATE_SELECTOR = [
     ".root-reply-container",
@@ -4370,7 +4786,7 @@ import {
     "[class*='reply-item']",
     "[class*='reply-wrap']",
     "bili-comment-renderer",
-    "bili-comment-reply-renderer"
+    "bili-comment-reply-renderer",
   ].join(",");
 
   function getComposedParent(element) {
@@ -4390,7 +4806,9 @@ import {
         roots.push(current.shadowRoot);
         queue.push(current.shadowRoot);
       }
-      for (const child of current?.querySelectorAll?.(COMMENT_COMPONENT_SELECTOR) || []) {
+      for (const child of current?.querySelectorAll?.(
+        COMMENT_COMPONENT_SELECTOR,
+      ) || []) {
         if (child.shadowRoot && !seen.has(child.shadowRoot)) {
           seen.add(child.shadowRoot);
           roots.push(child.shadowRoot);
@@ -4423,13 +4841,19 @@ import {
         current.reply?.rpid,
         current.reply?.rpid_str,
         current.__data?.rpid,
-        current.__data?.rpid_str
+        current.__data?.rpid_str,
       ];
       for (const candidate of propertyCandidates) {
         const match = String(candidate ?? "").match(/^(\d{3,32})$/);
         if (match) return match[1];
       }
-      for (const attribute of ["data-rpid", "rpid", "data-reply-id", "data-id", "id"]) {
+      for (const attribute of [
+        "data-rpid",
+        "rpid",
+        "data-reply-id",
+        "data-id",
+        "id",
+      ]) {
         const value = current.getAttribute?.(attribute) || "";
         const match = String(value).match(/^\D*(\d{3,32})\D*$/);
         if (match) return match[1];
@@ -4437,7 +4861,7 @@ import {
       const directLink = queryCommentElement(current, [
         "a[href*='#reply']",
         "a[href*='comment_secondary_id']",
-        "a[href*='comment_root_id']"
+        "a[href*='comment_root_id']",
       ]);
       const href = directLink?.href || directLink?.getAttribute?.("href") || "";
       const secondaryMatch = href.match(/[?&]comment_secondary_id=(\d{3,32})/);
@@ -4462,14 +4886,15 @@ import {
         current.reply?.root,
         current.reply?.root_str,
         current.__data?.root,
-        current.__data?.root_str
+        current.__data?.root_str,
       ]) {
         const match = String(candidate ?? "").match(/^(\d{3,32})$/);
         if (match) return match[1];
       }
       if (
         current.matches?.("bili-comment-thread") ||
-        (current.matches?.(".reply-item") && !current.matches?.(".sub-reply-item"))
+        (current.matches?.(".reply-item") &&
+          !current.matches?.(".sub-reply-item"))
       ) {
         const id = readCommentId(current);
         if (id) return id;
@@ -4490,7 +4915,7 @@ import {
       const lightText = root.textContent?.trim() || "";
       if (lightText && root === element) return lightText;
       const shadowContent = root.querySelector?.(
-        "#contents,#content,.contents,.content,[part='content']"
+        "#contents,#content,.contents,.content,[part='content']",
       );
       const nestedText = shadowContent?.textContent?.trim() || "";
       if (nestedText) return nestedText;
@@ -4525,7 +4950,9 @@ import {
           }
           urls.push(url);
         }
-        for (const styled of rootNode.querySelectorAll?.("[style*='background-image']") || []) {
+        for (const styled of rootNode.querySelectorAll?.(
+          "[style*='background-image']",
+        ) || []) {
           const styleValue = styled.style?.backgroundImage || "";
           const match = styleValue.match(/url\(["']?([^"')]+)["']?\)/i);
           const url = ensureAbsoluteUrl(match?.[1] || "", "");
@@ -4546,7 +4973,7 @@ import {
       "bili-rich-text",
       "[part='content']",
       "#content",
-      ".content"
+      ".content",
     ]);
     const content = readCommentElementText(contentElement);
     const pictureElement = queryCommentElement(element, [
@@ -4554,28 +4981,32 @@ import {
       ".reply-pictures",
       ".comment-pictures",
       "[class*='reply-picture']",
-      "[class*='comment-picture']"
+      "[class*='comment-picture']",
     ]);
-    const contentImageUrls = collectCommentImages(contentElement, pictureElement);
+    const contentImageUrls = collectCommentImages(
+      contentElement,
+      pictureElement,
+    );
     if (!content && contentImageUrls.length === 0) return null;
 
     const authorLink = queryCommentElement(element, [
       "a.user-name[href*='space.bilibili.com']",
-      "a[href*='space.bilibili.com']"
+      "a[href*='space.bilibili.com']",
     ]);
     const authorName =
       commentElementText(element, [
         ".user-name",
         ".sub-user-name",
         "[class*='user-name']",
-        "[part='user-name']"
+        "[part='user-name']",
       ]) || readCommentElementText(authorLink);
     const authorSpaceUrl = ensureAbsoluteUrl(authorLink?.href || "", "");
-    const authorMid = authorSpaceUrl.match(/space\.bilibili\.com\/(\d+)/)?.[1] || "";
+    const authorMid =
+      authorSpaceUrl.match(/space\.bilibili\.com\/(\d+)/)?.[1] || "";
     const avatarElement = queryCommentElement(element, [
       "img.avatar",
       "img[class*='avatar']",
-      "img[class*='face']"
+      "img[class*='face']",
     ]);
     const timeElement = queryCommentElement(element, [
       "time",
@@ -4583,7 +5014,7 @@ import {
       ".sub-reply-time",
       "[class*='reply-time']",
       "[class*='pubdate']",
-      "[class*='time']"
+      "[class*='time']",
     ]);
     const publishedAtText = timeElement?.textContent?.trim() || "";
     const publishedAtRaw =
@@ -4594,7 +5025,7 @@ import {
     const likeText = commentElementText(element, [
       "[class*='like'] [class*='count']",
       "[class*='like-count']",
-      ".like"
+      ".like",
     ]);
     const rpid = readCommentId(element);
     const rootRpid = readRootCommentId(element, rpid);
@@ -4608,8 +5039,7 @@ import {
         rootRpid,
         bvid: articleMode ? "" : pageSource?.bvid || "",
         videoTitle:
-          pageSource?.title ||
-          document.title.replace(/_bilibili$/i, "").trim(),
+          pageSource?.title || document.title.replace(/_bilibili$/i, "").trim(),
         videoUrl:
           (articleMode ? pageSource?.sourceUrl : pageSource?.bvidUrl) ||
           location.href,
@@ -4619,16 +5049,16 @@ import {
         authorMid,
         authorAvatarUrl: ensureAbsoluteUrl(
           avatarElement?.currentSrc || avatarElement?.src || "",
-          ""
+          "",
         ),
         authorSpaceUrl,
         replyToName: commentElementText(contentElement, [
           ".at",
-          "[class*='reply-to']"
+          "[class*='reply-to']",
         ]).replace(/^@/, ""),
         likeCount: parseBilibiliCount(likeText),
         publishedAt: parseCommentPublishedAt(publishedAtRaw),
-        publishedAtText
+        publishedAtText,
       });
     } catch {
       return null;
@@ -4645,8 +5075,12 @@ import {
       : t("button.favoriteComment");
     button.setAttribute("aria-pressed", saved ? "true" : "false");
     button.style.color = saved ? "#fb7299" : "var(--text2, #61666d)";
-    button.style.borderColor = saved ? "rgba(251,114,153,.55)" : "rgba(128,128,128,.35)";
-    button.style.background = saved ? "rgba(251,114,153,.1)" : "var(--bg1, rgba(255,255,255,.72))";
+    button.style.borderColor = saved
+      ? "rgba(251,114,153,.55)"
+      : "rgba(128,128,128,.35)";
+    button.style.background = saved
+      ? "rgba(251,114,153,.1)"
+      : "var(--bg1, rgba(255,255,255,.72))";
   }
 
   function syncCommentFavoriteButtons(sourceKey) {
@@ -4677,7 +5111,7 @@ import {
     } catch (error) {
       showToast(
         `${t("toast.commentSaveFail")}: ${error instanceof Error ? error.message : t("error.unknown")}`,
-        "err"
+        "err",
       );
     } finally {
       button.disabled = false;
@@ -4686,7 +5120,7 @@ import {
 
   function resolveCommentFavoritePlacement(element) {
     const actionRenderer = element.matches?.(
-      "bili-comment-action-buttons-renderer"
+      "bili-comment-action-buttons-renderer",
     )
       ? element
       : queryCommentElement(element, ["bili-comment-action-buttons-renderer"]);
@@ -4694,7 +5128,8 @@ import {
     if (actionRoot) {
       const replyAction = actionRoot.querySelector("#reply");
       const moreAction = actionRoot.querySelector("#more");
-      const mountTarget = moreAction?.parentNode || replyAction?.parentNode || actionRoot;
+      const mountTarget =
+        moreAction?.parentNode || replyAction?.parentNode || actionRoot;
       const insertBefore =
         moreAction?.parentNode === mountTarget
           ? moreAction
@@ -4717,20 +5152,28 @@ import {
       "[part='footer']",
       ".footer",
       "[class*='footer']",
-      "[class*='action']"
+      "[class*='action']",
     ]);
-    const fallbackContainer = actionContainer || queryCommentElement(element, [
-      ".reply-content-container",
-      ".content-warp",
-      ".root-reply",
-      ".sub-reply-content",
-      "[class*='reply-content-container']",
-      "[part='content']"
-    ]) || element.shadowRoot || element;
+    const fallbackContainer =
+      actionContainer ||
+      queryCommentElement(element, [
+        ".reply-content-container",
+        ".content-warp",
+        ".root-reply",
+        ".sub-reply-content",
+        "[class*='reply-content-container']",
+        "[part='content']",
+      ]) ||
+      element.shadowRoot ||
+      element;
     const mountTarget = fallbackContainer.matches?.("button,a")
       ? fallbackContainer.parentNode
       : fallbackContainer;
-    return { mountTarget, insertBefore: null, embedded: Boolean(actionContainer) };
+    return {
+      mountTarget,
+      insertBefore: null,
+      embedded: Boolean(actionContainer),
+    };
   }
 
   function placeCommentFavoriteButton(button, placement) {
@@ -4760,7 +5203,7 @@ import {
       element.__bilishelfCommentFavoriteButton = null;
     }
     const existingButton = queryCommentElement(element, [
-      "[data-bilishelf-comment-favorite='true']"
+      "[data-bilishelf-comment-favorite='true']",
     ]);
     if (existingButton) {
       element.__bilishelfCommentFavoriteButton = existingButton;
@@ -4777,8 +5220,8 @@ import {
       attrs: {
         type: "button",
         "data-bilishelf-comment-favorite": "true",
-        "data-comment-source-key": comment?.sourceKey || ""
-      }
+        "data-comment-source-key": comment?.sourceKey || "",
+      },
     });
     button.style.cssText = [
       "display:inline-flex",
@@ -4795,7 +5238,7 @@ import {
       "white-space:nowrap",
       "box-shadow:0 1px 3px rgba(0,0,0,.08)",
       "cursor:pointer",
-      "transition:color .16s ease,border-color .16s ease,background .16s ease"
+      "transition:color .16s ease,border-color .16s ease,background .16s ease",
     ].join(";");
     button.addEventListener("click", (event) => {
       event.preventDefault();
@@ -4814,7 +5257,9 @@ import {
     const seen = new Set(roots);
     while (queue.length > 0) {
       const rootNode = queue.shift();
-      for (const element of rootNode.querySelectorAll?.(COMMENT_COMPONENT_SELECTOR) || []) {
+      for (const element of rootNode.querySelectorAll?.(
+        COMMENT_COMPONENT_SELECTOR,
+      ) || []) {
         if (!element.shadowRoot || seen.has(element.shadowRoot)) continue;
         seen.add(element.shadowRoot);
         roots.push(element.shadowRoot);
@@ -4826,10 +5271,16 @@ import {
 
   function scanCommentFavoriteButtons() {
     for (const rootNode of collectOpenCommentRoots()) {
-      if (rootNode.host?.matches?.("bili-comment-renderer,bili-comment-reply-renderer")) {
+      if (
+        rootNode.host?.matches?.(
+          "bili-comment-renderer,bili-comment-reply-renderer",
+        )
+      ) {
         mountCommentFavoriteButton(rootNode.host);
       }
-      for (const element of rootNode.querySelectorAll?.(COMMENT_CANDIDATE_SELECTOR) || []) {
+      for (const element of rootNode.querySelectorAll?.(
+        COMMENT_CANDIDATE_SELECTOR,
+      ) || []) {
         mountCommentFavoriteButton(element);
       }
     }
@@ -4842,7 +5293,7 @@ import {
       savedCommentKeys = new Set(
         (Array.isArray(result?.items) ? result.items : [])
           .map((item) => String(item || ""))
-          .filter(Boolean)
+          .filter(Boolean),
       );
     } catch {
       savedCommentKeys = new Set();
@@ -4851,8 +5302,27 @@ import {
     if (commentScanTimer) window.clearInterval(commentScanTimer);
     commentScanTimer = window.setInterval(
       scanCommentFavoriteButtons,
-      COMMENT_SCAN_INTERVAL_MS
+      COMMENT_SCAN_INTERVAL_MS,
     );
+  }
+
+  function waitForBilibiliShell() {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
+        window.removeEventListener("load", finish);
+        window.setTimeout(resolve, 600);
+      };
+      const timeoutId = window.setTimeout(finish, 1200);
+      if (document.readyState === "complete") {
+        finish();
+      } else {
+        window.addEventListener("load", finish, { once: true });
+      }
+    });
   }
 
   async function bootstrap() {
@@ -4862,6 +5332,7 @@ import {
     bindNativeFavoriteActionListener();
     void fetchBidirectionalSettings(true);
     if (articleMode) {
+      await waitForBilibiliShell();
       injectUi();
       setupThemeSync();
       await loadArticleFavorite();
@@ -4869,7 +5340,9 @@ import {
       return;
     }
     if (!isCollectorUiUrl(location.href)) return;
-    activeQuickFavoriteShortcut = await resolveQuickFavoriteShortcutPreference();
+    activeQuickFavoriteShortcut =
+      await resolveQuickFavoriteShortcutPreference();
+    await waitForBilibiliShell();
     injectUi();
     setupThemeSync();
     void startCommentFavoriteWatch();
@@ -4877,8 +5350,3 @@ import {
 
   void bootstrap();
 })();
-
-
-
-
-
