@@ -67,8 +67,8 @@ BiliShelf is mainly built to solve these common problems:
 
    GitHub Releases:
    - `https://github.com/TLRKFXE/BiliShelf/releases`
-   <!-- bilishelf-store-version: edge=1.0.1; firefox=1.0.1 -->
-   - Current store versions: Edge v1.0.1; Firefox v1.0.1
+   <!-- bilishelf-store-version: edge=1.0.1.1; firefox=1.0.1.1 -->
+   - Current store versions: Edge v1.0.1.1; Firefox v1.0.1.1
 
    After downloading the package, unzip it and install it from your browser's extension manager:
    - Chromium-based browsers (Chrome / Edge / Brave / Arc, etc.): enable Developer Mode, then choose `Load unpacked` and point it to the extension directory
@@ -112,7 +112,7 @@ pnpm ext:zip:all
 
 ## Release Summary
 
-### v1.0.1
+### v1.0.1.1
 
 Added:
 

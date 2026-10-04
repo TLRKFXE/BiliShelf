@@ -1,6 +1,6 @@
 {
   "name": "bilishelf-frontend",
-  "version": "1.0.1",
+  "version": "1.0.1.1",
   "private": true,
   "type": "module",
   "scripts": {

@@ -66,8 +66,8 @@ BiliShelf 主要解决这些常见问题：
 
 - (2).前往仓库 `Releases` 页面，下载对应浏览器的插件压缩包：
 - `https://github.com/TLRKFXE/BiliShelf/releases`
-<!-- bilishelf-store-version: edge=1.0.1; firefox=1.0.1 -->
-- 商店当前版本：Edge v1.0.1；Firefox v1.0.1
+<!-- bilishelf-store-version: edge=1.0.1.1; firefox=1.0.1.1 -->
+- 商店当前版本：Edge v1.0.1.1；Firefox v1.0.1.1
 - 解压下载的插件包，打开浏览器扩展管理页面并安装：
 - Chromium 内核浏览器（Chrome / Edge / Brave / Arc 等）：开启开发者模式后，选择“加载已解压的扩展程序”，指向插件目录。
 - Firefox：通过“调试附加组件”或“从文件安装附加组件”安装对应包。
@@ -110,7 +110,7 @@ pnpm ext:zip:all
 
 ## 版本更新汇总
 
-### v1.0.1
+### v1.0.1.1
 
 已新增：
 
