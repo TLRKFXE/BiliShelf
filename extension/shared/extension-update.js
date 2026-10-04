@@ -65,7 +65,7 @@ export function resolveExtensionUpdateAvailability({
       ? String(githubLabel).trim()
       : `v${latestVersion}`;
   const storePending = Boolean(
-    storeUrl && githubUpdateAvailable && !storeUpdateAvailable,
+    store && storeUrl && githubUpdateAvailable && !storeUpdateAvailable,
   );
   const preferredSource = storeUpdateAvailable
     ? "store"

@@ -527,10 +527,22 @@ const EXTENSION_UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const EXTENSION_UPDATE_CHECK_INTERVAL_MINUTES = 24 * 60;
 const EXTENSION_UPDATE_README_URL =
   "https://raw.githubusercontent.com/TLRKFXE/BiliShelf/main/README.md";
+const EXTENSION_UPDATE_README_MIRROR_URLS = [
+  "https://cdn.jsdelivr.net/gh/TLRKFXE/BiliShelf@main/README.md",
+  "https://fastly.jsdelivr.net/gh/TLRKFXE/BiliShelf@main/README.md",
+  "https://gh-proxy.com/https://raw.githubusercontent.com/TLRKFXE/BiliShelf/main/README.md",
+  EXTENSION_UPDATE_README_URL,
+];
 const EXTENSION_UPDATE_GITHUB_API_URL =
   "https://api.github.com/repos/TLRKFXE/BiliShelf/releases/latest";
+const EXTENSION_UPDATE_GITHUB_PROXY_API_URL =
+  "https://gh-proxy.com/https://api.github.com/repos/TLRKFXE/BiliShelf/releases/latest";
 const EXTENSION_UPDATE_GITHUB_ATOM_URL =
   "https://github.com/TLRKFXE/BiliShelf/releases.atom";
+const EXTENSION_UPDATE_GITHUB_PROXY_ATOM_URL =
+  "https://gh-proxy.com/https://github.com/TLRKFXE/BiliShelf/releases.atom";
+const EXTENSION_UPDATE_GITHUB_CDN_PACKAGE_URL =
+  "https://cdn.jsdelivr.net/gh/TLRKFXE/BiliShelf@latest/extension/package.json";
 const EXTENSION_UPDATE_REQUEST_TIMEOUT_MS = 12_000;
 const GITHUB_REPOSITORY_URL = "https://github.com/TLRKFXE/BiliShelf";
 const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
@@ -1844,14 +1856,13 @@ async function fetchExtensionReleaseDocument() {
   };
 
   const [readmeResult, githubResult] = await Promise.allSettled([
-    fetchWithTimeout(
-      EXTENSION_UPDATE_README_URL,
+    fetchFromUpdateMirrors(
+      EXTENSION_UPDATE_README_MIRROR_URLS,
       {
         method: "GET",
         headers: { Accept: "text/plain, text/markdown" },
         cache: "no-store",
       },
-      EXTENSION_UPDATE_REQUEST_TIMEOUT_MS,
       "Extension store version request",
     ),
     fetchLatestGithubReleaseEntry(),
@@ -1909,14 +1920,20 @@ async function fetchExtensionReleaseDocument() {
   if (errors.length >= 2) {
     throw new Error(errors.join("; "));
   }
-  return { document, warning: errors[0] ?? null };
+  // A mirror can be unavailable while the other source still provides a
+  // complete and usable update result. Do not turn that partial network issue
+  // into a failed check in the UI.
+  return { document, warning: null };
 }
 
 async function fetchLatestGithubReleaseEntry(): Promise<ExtensionReleaseEntry> {
   let apiError: unknown = null;
   try {
-    const response = await fetchWithTimeout(
-      EXTENSION_UPDATE_GITHUB_API_URL,
+    const response = await fetchFromUpdateMirrors(
+      [
+        EXTENSION_UPDATE_GITHUB_PROXY_API_URL,
+        EXTENSION_UPDATE_GITHUB_API_URL,
+      ],
       {
         method: "GET",
         headers: {
@@ -1926,12 +1943,8 @@ async function fetchLatestGithubReleaseEntry(): Promise<ExtensionReleaseEntry> {
         },
         cache: "no-store",
       },
-      EXTENSION_UPDATE_REQUEST_TIMEOUT_MS,
       "GitHub release version request",
     );
-    if (!response.ok) {
-      throw new Error(`GitHub release request failed (${response.status})`);
-    }
     const payload = (await response.json()) as Record<string, unknown>;
     const version = normalizeText(payload.tag_name);
     if (!version) throw new Error("GitHub latest release has no tag");
@@ -1947,39 +1960,71 @@ async function fetchLatestGithubReleaseEntry(): Promise<ExtensionReleaseEntry> {
     apiError = error;
   }
 
-  const response = await fetchWithTimeout(
-    EXTENSION_UPDATE_GITHUB_ATOM_URL,
-    {
-      method: "GET",
-      headers: { Accept: "application/atom+xml, application/xml, text/xml" },
-      cache: "no-store",
-    },
-    EXTENSION_UPDATE_REQUEST_TIMEOUT_MS,
-    "GitHub release feed request",
-  );
-  if (!response.ok) {
-    throw new Error(
-      `${apiError instanceof Error ? apiError.message : String(apiError)}; GitHub release feed failed (${response.status})`,
+  let atomError: unknown = null;
+  try {
+    const response = await fetchFromUpdateMirrors(
+      [
+        EXTENSION_UPDATE_GITHUB_PROXY_ATOM_URL,
+        EXTENSION_UPDATE_GITHUB_ATOM_URL,
+      ],
+      {
+        method: "GET",
+        headers: { Accept: "application/atom+xml, application/xml, text/xml" },
+        cache: "no-store",
+      },
+      "GitHub release feed request",
     );
-  }
-  const atom = await response.text();
-  const firstEntry = atom.match(/<entry\b[\s\S]*?<\/entry>/i)?.[0] ?? atom;
-  const link =
-    firstEntry.match(/<link\b[^>]*\bhref=["']([^"']+)["']/i)?.[1] ?? "";
-  const version = link.match(/\/tag\/([^/?#]+)/i)?.[1] ?? "";
-  if (!version) {
-    throw new Error(
-      `${apiError instanceof Error ? apiError.message : String(apiError)}; GitHub release feed has no tag`,
+    const atom = await response.text();
+    const firstEntry = atom.match(/<entry\b[\s\S]*?<\/entry>/i)?.[0] ?? atom;
+    const link =
+      firstEntry.match(/<link\b[^>]*\bhref=["']([^"']+)["']/i)?.[1] ?? "";
+    const version = link.match(/\/tag\/([^/?#]+)/i)?.[1] ?? "";
+    if (!version) throw new Error("GitHub release feed has no tag");
+    return normalizeReleaseEntry(
+      {
+        version,
+        label: version,
+        url: normalizeUpdateUrl(link) ?? GITHUB_RELEASES_URL,
+      },
+      defaultExtensionReleaseDocument().github,
     );
+  } catch (error) {
+    atomError = error;
   }
-  return normalizeReleaseEntry(
-    {
-      version,
-      label: version,
-      url: normalizeUpdateUrl(link) ?? GITHUB_RELEASES_URL,
-    },
-    defaultExtensionReleaseDocument().github,
-  );
+
+  // jsDelivr mirrors repository tags and remains reachable where GitHub does
+  // not. It is the final version-only fallback; the release page link still
+  // points to GitHub for users who can access it.
+  try {
+    const response = await fetchFromUpdateMirrors(
+      [EXTENSION_UPDATE_GITHUB_CDN_PACKAGE_URL],
+      {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      },
+      "CDN release version request",
+    );
+    const payload = (await response.json()) as Record<string, unknown>;
+    const version = normalizeText(payload.version);
+    if (!version) throw new Error("CDN package has no version");
+    return normalizeReleaseEntry(
+      {
+        version,
+        label: `v${version}`,
+        url: GITHUB_RELEASES_URL,
+      },
+      defaultExtensionReleaseDocument().github,
+    );
+  } catch (cdnError) {
+    const apiMessage =
+      apiError instanceof Error ? apiError.message : String(apiError);
+    const atomMessage =
+      atomError instanceof Error ? atomError.message : String(atomError);
+    const cdnMessage =
+      cdnError instanceof Error ? cdnError.message : String(cdnError);
+    throw new Error(`${apiMessage}; ${atomMessage}; ${cdnMessage}`);
+  }
 }
 
 async function readExtensionUpdateState() {
@@ -3288,12 +3333,51 @@ async function fetchWithTimeout(
       signal: controller.signal,
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (
+      (typeof DOMException !== "undefined" &&
+        error instanceof DOMException &&
+        error.name === "AbortError") ||
+      (error &&
+        typeof error === "object" &&
+        "name" in error &&
+        (error as { name?: unknown }).name === "AbortError")
+    ) {
       throw new Error(`${timeoutLabel} timeout (${timeoutMs}ms)`);
     }
     throw error;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function fetchFromUpdateMirrors(
+  urls: string[],
+  init: RequestInit,
+  timeoutLabel: string,
+) {
+  const attempts = urls.map(async (url) => {
+    const response = await fetchWithTimeout(
+      url,
+      init,
+      EXTENSION_UPDATE_REQUEST_TIMEOUT_MS,
+      timeoutLabel,
+    );
+    if (!response.ok) {
+      throw new Error(`${timeoutLabel} failed (${response.status})`);
+    }
+    return response;
+  });
+
+  try {
+    return await Promise.any(attempts);
+  } catch (error) {
+    if (error instanceof AggregateError) {
+      const messages = error.errors
+        .map((item) => (item instanceof Error ? item.message : String(item)))
+        .filter(Boolean);
+      throw new Error(messages.join("; ") || `${timeoutLabel} failed`);
+    }
+    throw error;
   }
 }
 

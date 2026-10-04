@@ -125,8 +125,7 @@ pnpm ext:zip:all
 
 1. 悬浮收藏按钮会使用已收藏状态样式，并显示当前内容所属的 BiliShelf 收藏夹。
 2. 特殊内容页面使用对应的元数据接口识别标题、封面、作者和时间，收藏后仍可正常查询和管理。
-3. 更新检查改为从 README 读取商店版本、从 GitHub 最新 Release 读取 GitHub 版本，并增加 GitHub Atom feed 回退。
-4. 扩展构建 manifest 从 `extension/package.json` 自动读取版本，避免 package、manifest 和界面版本漂移。
+3. 更新检查改为从 README 读取商店版本、从 GitHub 最新 Release 读取 GitHub 版本，并增加 jsDelivr、GitHub 镜像和 Atom feed 回退。
 
 已修复：
 

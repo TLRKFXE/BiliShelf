@@ -56,6 +56,14 @@ test("update checks use README stores and the GitHub latest release API", async 
   );
   assert.match(
     backgroundSource,
+    /cdn\.jsdelivr\.net\/gh\/TLRKFXE\/BiliShelf@main\/README\.md/,
+  );
+  assert.match(
+    backgroundSource,
+    /gh-proxy\.com\/https:\/\/api\.github\.com\/repos\/TLRKFXE\/BiliShelf\/releases\/latest/,
+  );
+  assert.match(
+    backgroundSource,
     /api\.github\.com\/repos\/TLRKFXE\/BiliShelf\/releases\/latest/,
   );
   assert.match(
@@ -63,6 +71,10 @@ test("update checks use README stores and the GitHub latest release API", async 
     /github\.com\/TLRKFXE\/BiliShelf\/releases\.atom/,
   );
   assert.match(backgroundSource, /tag_name/);
+  assert.match(
+    backgroundSource,
+    /cdn\.jsdelivr\.net\/gh\/TLRKFXE\/BiliShelf@latest\/extension\/package\.json/,
+  );
   assert.doesNotMatch(backgroundSource, /0\.1\.5/);
 });
 

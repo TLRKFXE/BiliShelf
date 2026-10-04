@@ -127,8 +127,7 @@ Improved:
 
 1. The floating favorite button now uses a saved-state style and shows the BiliShelf favorite folders containing the current content.
 2. Special content pages use their corresponding metadata APIs to identify titles, covers, authors, and dates, and remain searchable and manageable after saving.
-3. Update checks now read store versions from the README and the GitHub version from the latest Release, with a GitHub Atom feed fallback.
-4. The extension build reads the manifest version from `extension/package.json`, preventing version drift between the package, manifest, and UI.
+3. Update checks read store versions from the README and the GitHub version from the latest Release, with jsDelivr, GitHub mirror, and Atom feed fallbacks.
 
 Fixed:
 
