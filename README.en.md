@@ -29,10 +29,12 @@ BiliShelf is mainly built to solve these common problems:
 
 - Local-first: data is stored locally in the browser by default
 - Folder management: create, rename, sort, describe, delete, and restore from trash
+- Folder groups: assign group names to folders, collapse / expand groups, and keep Ungrouped separate
 - AI organization: generate a classification plan for a selected scope from natural-language requirements, review it before applying, and retain snapshots for undo
 - Article favorites: save content from Bilibili article pages and organize it with article folders that are separate from video folders
 - Comment favorites: save comments from video pages, Watch Later pages, and article pages, including comment images and original-comment links
 - Custom tags: manage tags and use existing tags for autocomplete / selection while favoriting
+- Tag management: search tags and sort them by name, usage count, or creation time in either direction
 - Search capabilities:
   - global keyword search
   - filter by title, uploader, description, Bilibili tags, and custom tags
@@ -60,16 +62,15 @@ BiliShelf is mainly built to solve these common problems:
    Store versions usually lag behind GitHub Releases.
 
    Extension stores:
-
    - Edge: `[https://microsoftedge.microsoft.com/addons/detail/bilishelf-manager/](https://microsoftedge.microsoft.com/addons/detail/bilishelf-manager/cnenidkjccfkjjbkcmkkbgjilhohpjbi)`
    - Firefox: `https://addons.mozilla.org/en-GB/firefox/addon/bilishelf/`
 
    GitHub Releases:
-
    - `https://github.com/TLRKFXE/BiliShelf/releases`
+   <!-- bilishelf-store-version: edge=1.0.1; firefox=1.0.1 -->
+   - Current store versions: Edge v1.0.1; Firefox v1.0.1
 
    After downloading the package, unzip it and install it from your browser's extension manager:
-
    - Chromium-based browsers (Chrome / Edge / Brave / Arc, etc.): enable Developer Mode, then choose `Load unpacked` and point it to the extension directory
    - Firefox: install it through `about:debugging` or `Install Add-on From File`
 
@@ -110,6 +111,29 @@ pnpm ext:zip:all
 ```
 
 ## Release Summary
+
+### v1.0.1
+
+Added:
+
+1. Favorite-folder groups: folders can now have a group name and be managed by group.
+2. Collapsible folder groups: every group, including Ungrouped, can be expanded or collapsed; named groups appear before Ungrouped.
+3. Custom-tag search and sorting by name, usage count, or creation time, with ascending/descending toggle on repeated clicks.
+4. More Bilibili content pages: Bangumi, audio, AV videos, dynamic videos.
+5. A sponsor thanks list in About。
+
+Improved:
+
+1. The floating favorite button now uses a saved-state style and shows the BiliShelf folders containing the current content.
+2. Special content pages use their corresponding metadata APIs for titles, covers, authors, and dates, while remaining searchable and manageable after saving.
+3. Update checks now read store versions from README and GitHub versions from the latest Release, with a GitHub Atom feed fallback.
+4. Extension manifest versions are read from `extension/package.json`, keeping package, manifest, and UI versions aligned.
+
+Fixed:
+
+1. Removed the BiliShelf status button beside Bilibili's native favorite button so it no longer covers the share button or interferes with native actions; the floating button is now the single saved-state indicator.
+2. Fixed stale hard-coded versions that showed the wrong current version or reported a false update.
+3. Fixed incomplete content detection, saved-state lookup, and action-listener coverage for AV, dynamic video, Bangumi, audio, and article pages.
 
 ### v1.0
 

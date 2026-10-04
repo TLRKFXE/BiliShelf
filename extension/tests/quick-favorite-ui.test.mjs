@@ -29,11 +29,20 @@ test("collector shortcut opens the unified collector modal and wires remembered 
   assert.match(source, /QUICK_FAVORITE_SHORTCUT_STORAGE_KEY/);
   assert.match(source, /from "\.\/utils\/collector-folder-memory\.js"/);
   assert.match(source, /COLLECTOR_LAST_FOLDER_IDS_STORAGE_KEY/);
-  assert.match(source, /let activeQuickFavoriteShortcut = resolveStoredShortcut\(null\);/);
-  assert.match(source, /matchesQuickFavoriteShortcut\(event,\s*activeQuickFavoriteShortcut\)/);
+  assert.match(
+    source,
+    /let activeQuickFavoriteShortcut = resolveStoredShortcut\(null\);/,
+  );
+  assert.match(
+    source,
+    /matchesQuickFavoriteShortcut\(event,\s*activeQuickFavoriteShortcut\)/,
+  );
   assert.match(source, /formatShortcutLabel\(activeQuickFavoriteShortcut\)/);
   assert.match(source, /changes\[QUICK_FAVORITE_SHORTCUT_STORAGE_KEY\]/);
-  assert.match(source, /window\.addEventListener\("keydown", handleQuickFavoriteShortcut/);
+  assert.match(
+    source,
+    /window\.addEventListener\("keydown", handleQuickFavoriteShortcut/,
+  );
   assert.match(source, /void openCollectorModal\(\);/);
   assert.doesNotMatch(source, /quickSelectedFolderIds = new Set\(\);/);
   assert.doesNotMatch(source, /openQuickFavoriteLayer\(\)/);
@@ -68,7 +77,10 @@ test("collector panel keeps motion and shows a filled saved bookmark state", asy
   assert.doesNotMatch(source, /bl-floating-bookmark-fill/);
   assert.doesNotMatch(source, /bl-floating-saved-dot/);
   assert.match(source, /#bl-floating-btn\[data-favorite-state='saved'\]/);
-  assert.match(source, /#bl-floating-btn\[data-favorite-state='saved'\] > svg path/);
+  assert.match(
+    source,
+    /#bl-floating-btn\[data-favorite-state='saved'\] > svg path/,
+  );
   assert.match(source, /fill: currentColor/);
   assert.doesNotMatch(source, /bl-favorite-confirm/);
   assert.match(source, /@keyframes bl-panel-in/);
@@ -76,30 +88,30 @@ test("collector panel keeps motion and shows a filled saved bookmark state", asy
   assert.match(source, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
-test("collector stacking does not create a full-screen root layer over Bilibili navigation", async () => {
+test("collector restores the original full-screen stacking layer", async () => {
   const source = await readContentSource();
 
-  assert.match(source, /#bl-floating-root\s*\{\s*position:\s*static;/);
-  assert.match(source, /#bl-floating-btn\s*\{[\s\S]*z-index:\s*900;/);
-  assert.match(source, /\.bl-toast-root\s*\{[\s\S]*z-index:\s*900;/);
-  assert.match(source, /#bl-playback-overlay\s*\{[\s\S]*z-index:\s*900;/);
-  assert.doesNotMatch(source, /#bl-floating-root\s*\{[^}]*z-index:/);
+  assert.match(
+    source,
+    /#bl-floating-root\s*\{\s*position:\s*fixed;\s*inset:\s*0;\s*z-index:\s*999998;/,
+  );
+  assert.match(source, /#bl-floating-btn\s*\{[\s\S]*z-index:\s*999999;/);
+  assert.match(source, /\.bl-toast-root\s*\{[\s\S]*z-index:\s*1000001;/);
+  assert.match(source, /#bl-playback-overlay\s*\{[\s\S]*z-index:\s*1000000;/);
 });
 
-test("collector styles are scoped and native favorite status ignores navigation nodes", async () => {
+test("collector styles are scoped without injecting a native favorite status button", async () => {
   const source = await readContentSource();
 
   assert.match(source, /style\.textContent = `[\s\S]*`\.replace\(/);
   assert.match(source, /\"\$1#bl-floating-root \$2\"/);
   assert.doesNotMatch(source, /\n\s*\.bl-hidden\s*\{/);
-  assert.match(source, /function isNativeVideoToolbarElement\(element\)/);
-  assert.match(source, /#biliMainHeader, header, nav, \[class\*='bili-header'\]/);
-  assert.match(source, /#arc_toolbar_report, \.video-toolbar-left, \.video-toolbar/);
-  assert.match(source, /function startNativeFavoriteStatusWatch\(\)/);
-  assert.doesNotMatch(source, /nativeFavoriteStatusObserver/);
-  assert.match(source, /function waitForBilibiliShell\(\)/);
-  assert.match(source, /await waitForBilibiliShell\(\);/);
-  assert.match(source, /\(document\.documentElement \|\| document\.body\)\.appendChild\(root\)/);
+  assert.doesNotMatch(
+    source,
+    /nativeFavoriteStatus|NativeFavoriteStatus|bl-native-favorite-status/,
+  );
+  assert.doesNotMatch(source, /function waitForBilibiliShell\(\)/);
+  assert.match(source, /document\.body\.appendChild\(root\)/);
 });
 
 test("collector source removes the redundant subtitle and empty saved-folder placeholder copy", async () => {
@@ -112,10 +124,16 @@ test("collector source removes the redundant subtitle and empty saved-folder pla
 test("collector modal restores remembered folders on open and saves them only after a successful save", async () => {
   const source = await readContentSource();
 
-  assert.match(source, /const rememberedFolderIds = articleMode \? \[\] : await readRememberedCollectorFolderIds\(\);/);
+  assert.match(
+    source,
+    /const rememberedFolderIds = articleMode\s*\? \[\]\s*:\s*await readRememberedCollectorFolderIds\(\);/,
+  );
   assert.match(source, /\.\.\.currentCollectorFolderIds\(\)/);
   assert.match(source, /selectedFolderIds = new Set\(\[/);
-  assert.match(source, /createRememberedCollectorFolderIdsRecord\(\[\.\.\.folderIds\]\)/);
+  assert.match(
+    source,
+    /createRememberedCollectorFolderIdsRecord\(\[\.\.\.folderIds\]\)/,
+  );
   assert.match(
     source,
     /const result = await requestLocalApi\("POST", "\/videos", payload\);[\s\S]*createRememberedCollectorFolderIdsRecord\(\[\.\.\.folderIds\]\)/,
@@ -129,7 +147,10 @@ test("collector custom tags keep comma-separated input while layering suggestion
   assert.match(source, /id: "bl-custom-tag-suggestions"/);
   assert.match(source, /async function fetchAllCustomTags\(\)/);
   assert.match(source, /renderCustomTagSuggestions\(\);/);
-  assert.match(source, /customTagsInput\?\.addEventListener\("input", \(\) => \{/);
+  assert.match(
+    source,
+    /customTagsInput\?\.addEventListener\("input", \(\) => \{/,
+  );
   assert.match(source, /appendSuggestedCustomTag\(/);
   assert.match(source, /findMatchingCustomTagSuggestions\(/);
 });
@@ -152,7 +173,10 @@ test("content script uses compact solid toasts and an independently scrolling co
   assert.match(source, /let extensionContextInvalidated = false;/);
   assert.match(source, /extensionContextInvalidated = true;/);
   assert.match(source, /runtimeError\.message/);
-  assert.match(source, /showToast\(t\("toast\.extensionReloadRequired"\), "err"\);/);
+  assert.match(
+    source,
+    /showToast\(t\("toast\.extensionReloadRequired"\), "err"\);/,
+  );
   assert.match(
     source,
     /\.Vue-Toastification__toast\s*\{[\s\S]*min-width:\s*280px;[\s\S]*font-size:\s*13px;/,

@@ -196,18 +196,6 @@ import {
       [LOCALE_ZH]: "该视频已收藏，点击管理",
       [LOCALE_EN]: "This video is saved. Click to manage",
     },
-    "status.localFavoriteNearNative": {
-      [LOCALE_ZH]: "BiliShelf 已收藏",
-      [LOCALE_EN]: "BiliShelf saved",
-    },
-    "status.localFavoriteNearNativeIdle": {
-      [LOCALE_ZH]: "BiliShelf 未收藏",
-      [LOCALE_EN]: "BiliShelf not saved",
-    },
-    "status.localFavoriteNearNativeLoading": {
-      [LOCALE_ZH]: "BiliShelf 检查中",
-      [LOCALE_EN]: "Checking BiliShelf",
-    },
     "status.favoriteArticleButton": {
       [LOCALE_ZH]: "收藏专栏",
       [LOCALE_EN]: "Save article",
@@ -461,16 +449,12 @@ import {
     const label = `${actionLabel} (${shortcutLabel})`;
     floatingBtn.title = label;
     floatingBtn.setAttribute("aria-label", label);
-    syncNativeFavoriteStatus();
   }
 
   let root = null;
   let panelBackdrop = null;
   let panel = null;
   let floatingBtn = null;
-  let nativeFavoriteStatus = null;
-  let nativeFavoriteMountTimer = 0;
-  let nativeFavoriteStatusPollTimer = 0;
   let modal = null;
   let toastRoot = null;
   let folderListEl = null;
@@ -1187,252 +1171,6 @@ import {
     floatingBtn.dataset.favoriteState = saved ? "saved" : "idle";
     floatingBtn.setAttribute("aria-pressed", saved ? "true" : "false");
     syncFloatingButtonLabel();
-    mountNativeFavoriteStatus();
-  }
-
-  function findNativeFavoriteAnchor() {
-    const selectors = [
-      ".video-toolbar-left .video-fav",
-      ".video-toolbar-left [class*='fav']",
-      ".video-toolbar .video-fav",
-      "#arc_toolbar_report [class*='fav']",
-      "#arc_toolbar_report [class*='collect']",
-      "#arc_toolbar_report button[aria-label*='收藏']",
-      "#arc_toolbar_report button[title*='收藏']",
-      "#arc_toolbar_report [role='button'][aria-label*='收藏']",
-      ".video-toolbar button[aria-label*='收藏']",
-      ".video-toolbar button[title*='收藏']",
-      ".video-toolbar [role='button'][aria-label*='收藏']",
-    ];
-    for (const selector of selectors) {
-      for (const candidate of document.querySelectorAll(selector)) {
-        if (
-          candidate !== nativeFavoriteStatus &&
-          !candidate.closest?.("[data-bilishelf-native-status='true']") &&
-          (!root || !root.contains(candidate)) &&
-          isNativeVideoToolbarElement(candidate)
-        ) {
-          return candidate;
-        }
-      }
-    }
-    return null;
-  }
-
-  function isNativeVideoToolbarElement(element) {
-    if (!(element instanceof Element)) return false;
-    if (root?.contains(element)) return false;
-    if (
-      element.closest(
-        "#biliMainHeader, header, nav, [class*='bili-header'], [class*='nav-header'], [class*='navigation']",
-      )
-    ) {
-      return false;
-    }
-    return Boolean(
-      element.closest(
-        "#arc_toolbar_report, .video-toolbar, .video-toolbar-left, [class*='video-toolbar'], [class*='video-actions'], [class*='action-bar']",
-      ),
-    );
-  }
-
-  function findNativeToolbarActionItem(element) {
-    if (!isNativeVideoToolbarElement(element)) return null;
-    return (
-      element.closest(
-        ".video-toolbar-left-item, .video-toolbar-item, [class*='video-toolbar-left-item'], [class*='video-toolbar-item']",
-      ) || element
-    );
-  }
-
-  function findNativeToolbarContainer(element) {
-    if (!isNativeVideoToolbarElement(element)) return null;
-    const actionItem = findNativeToolbarActionItem(element);
-    return (
-      actionItem?.closest?.(
-        "#arc_toolbar_report, .video-toolbar-left, .video-toolbar, [class*='video-toolbar-left']:not([class*='item']), [class*='video-toolbar']:not([class*='item'])",
-      ) ||
-      actionItem?.parentElement ||
-      null
-    );
-  }
-
-  function findNativeForwardActionItem(favoriteAnchor) {
-    const favoriteItem = findNativeToolbarActionItem(favoriteAnchor);
-    const toolbar = findNativeToolbarContainer(favoriteAnchor);
-    if (!toolbar) return null;
-
-    const selectors = [
-      ".video-toolbar-left-item-share",
-      ".video-toolbar-item-share",
-      "[class*='video-toolbar-left-item-share']",
-      "[class*='video-toolbar-item-share']",
-      "button[aria-label*='转发']",
-      "button[title*='转发']",
-      "[role='button'][aria-label*='转发']",
-      "[class*='share']",
-    ];
-    for (const selector of selectors) {
-      for (const candidate of toolbar.querySelectorAll(selector)) {
-        if (
-          candidate === favoriteAnchor ||
-          candidate === nativeFavoriteStatus ||
-          candidate.closest?.("[data-bilishelf-native-status='true']") ||
-          favoriteItem === candidate ||
-          favoriteItem?.contains?.(candidate)
-        ) {
-          continue;
-        }
-        return findNativeToolbarActionItem(candidate);
-      }
-    }
-    return null;
-  }
-
-  function syncNativeFavoriteStatus() {
-    if (!nativeFavoriteStatus) return;
-    const state = floatingBtn?.dataset.favoriteState || "loading";
-    nativeFavoriteStatus.dataset.state = state;
-    nativeFavoriteStatus.textContent =
-      state === "loading"
-        ? t("status.localFavoriteNearNativeLoading")
-        : state === "saved"
-          ? t("status.localFavoriteNearNative")
-          : t("status.localFavoriteNearNativeIdle");
-    nativeFavoriteStatus.setAttribute(
-      "aria-label",
-      nativeFavoriteStatus.textContent,
-    );
-    nativeFavoriteStatus.title = nativeFavoriteStatus.textContent;
-    nativeFavoriteStatus.style.color =
-      state === "saved" ? "#fb7299" : "var(--text2, #61666d)";
-    nativeFavoriteStatus.style.borderColor =
-      state === "saved" ? "rgba(251,114,153,.55)" : "rgba(128,128,128,.35)";
-    nativeFavoriteStatus.style.background =
-      state === "saved"
-        ? "rgba(251,114,153,.1)"
-        : "var(--bg1, rgba(255,255,255,.72))";
-  }
-
-  function placeNativeFavoriteStatus(anchor) {
-    if (
-      !nativeFavoriteStatus ||
-      !anchor?.isConnected ||
-      !isNativeVideoToolbarElement(anchor)
-    )
-      return;
-    const anchorItem = findNativeToolbarActionItem(anchor);
-    const toolbar = findNativeToolbarContainer(anchor);
-    const forwardItem = findNativeForwardActionItem(anchor);
-    const targetItem = forwardItem || anchorItem;
-    if (!targetItem) return;
-
-    if (toolbar) {
-      if (getComputedStyle(toolbar).position === "static") {
-        toolbar.style.position = "relative";
-      }
-      if (nativeFavoriteStatus.parentNode !== toolbar) {
-        toolbar.appendChild(nativeFavoriteStatus);
-      }
-      const toolbarRect = toolbar.getBoundingClientRect();
-      const targetRect = targetItem.getBoundingClientRect();
-      nativeFavoriteStatus.style.position = "absolute";
-      nativeFavoriteStatus.style.left = `${Math.max(0, targetRect.right - toolbarRect.left + 10)}px`;
-      nativeFavoriteStatus.style.top = `${Math.max(
-        0,
-        targetRect.top -
-          toolbarRect.top +
-          (targetRect.height - nativeFavoriteStatus.offsetHeight) / 2,
-      )}px`;
-      return;
-    }
-
-    const parent = targetItem.parentNode;
-    if (!parent) return;
-    nativeFavoriteStatus.style.position = "static";
-    if (
-      nativeFavoriteStatus.parentNode !== parent ||
-      nativeFavoriteStatus.previousElementSibling !== targetItem
-    ) {
-      parent.insertBefore(nativeFavoriteStatus, targetItem.nextSibling);
-    }
-  }
-
-  function mountNativeFavoriteStatus() {
-    if (
-      !isCollectorUiUrl(location.href) ||
-      articleMode ||
-      isSpecialMediaUrl(location.href)
-    ) {
-      nativeFavoriteStatus?.remove();
-      nativeFavoriteStatus = null;
-      return;
-    }
-    const anchor = findNativeFavoriteAnchor();
-    if (!anchor) {
-      nativeFavoriteStatus?.remove();
-      nativeFavoriteStatus = null;
-      return;
-    }
-    if (nativeFavoriteStatus?.isConnected) {
-      syncNativeFavoriteStatus();
-      placeNativeFavoriteStatus(anchor);
-      return;
-    }
-    nativeFavoriteStatus?.remove();
-    nativeFavoriteStatus = createEl("button", {
-      className: "bl-native-favorite-status",
-      attrs: { type: "button", "data-bilishelf-native-status": "true" },
-    });
-    nativeFavoriteStatus.addEventListener(
-      "click",
-      (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        void openCollectorModal();
-      },
-      true,
-    );
-    nativeFavoriteStatus.style.cssText = [
-      "display:inline-flex",
-      "flex:0 0 auto",
-      "align-items:center",
-      "justify-content:center",
-      "align-self:center",
-      "z-index:2",
-      "min-height:24px",
-      "margin-left:8px",
-      "padding:2px 8px",
-      "border:1px solid rgba(128,128,128,.3)",
-      "border-radius:6px",
-      "font:500 12px/1.4 system-ui,sans-serif",
-      "letter-spacing:0",
-      "white-space:nowrap",
-      "box-shadow:0 1px 3px rgba(0,0,0,.08)",
-      "cursor:pointer",
-      "transition:color .16s ease,border-color .16s ease,background .16s ease",
-    ].join(";");
-    placeNativeFavoriteStatus(anchor);
-    syncNativeFavoriteStatus();
-  }
-
-  function scheduleNativeFavoriteStatusMount() {
-    if (nativeFavoriteMountTimer) window.clearTimeout(nativeFavoriteMountTimer);
-    nativeFavoriteMountTimer = window.setTimeout(() => {
-      nativeFavoriteMountTimer = 0;
-      mountNativeFavoriteStatus();
-    }, 80);
-  }
-
-  function startNativeFavoriteStatusWatch() {
-    if (nativeFavoriteStatusPollTimer) {
-      window.clearInterval(nativeFavoriteStatusPollTimer);
-    }
-    // Bilibili rebuilds the toolbar during hydration and SPA navigation. Polling
-    // only the toolbar mount path avoids observing the entire page DOM.
-    nativeFavoriteStatusPollTimer = window.setInterval(() => {
-      scheduleNativeFavoriteStatusMount();
-    }, 1000);
   }
 
   function normalizeArticleText(value, max = 12000) {
@@ -3269,7 +3007,6 @@ import {
     if (floatingBtn) floatingBtn.dataset.theme = mode;
     if (modal) modal.dataset.theme = mode;
     if (playbackOverlay) playbackOverlay.dataset.theme = mode;
-    if (nativeFavoriteStatus) nativeFavoriteStatus.dataset.theme = mode;
   }
 
   function injectStyles() {
@@ -3278,7 +3015,9 @@ import {
     style.id = "bl-floating-style";
     style.textContent = `
       #bl-floating-root {
-        position: static;
+        position: fixed;
+        inset: 0;
+        z-index: 999998;
         pointer-events: none;
         font-family: "Noto Sans SC", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", system-ui, -apple-system, sans-serif;
       }
@@ -3289,8 +3028,7 @@ import {
 
       #bl-floating-btn {
         position: fixed;
-        /* The idle control must stay below Bilibili's sticky navigation. */
-        z-index: 900;
+        z-index: 999999;
         pointer-events: auto;
         width: 48px;
         height: 48px;
@@ -3345,9 +3083,6 @@ import {
       #bl-floating-btn:active { cursor: grabbing; transform: scale(.98); }
       #bl-floating-btn > svg { width: 22px; height: 22px; }
       #bl-floating-btn[data-favorite-state="loading"] > svg { animation: bl-favorite-loading .8s ease-in-out infinite alternate; }
-      .bl-native-favorite-status { vertical-align: middle; }
-      .bl-native-favorite-status[data-state="loading"] { opacity: .68; }
-      .bl-native-favorite-status:hover { border-color: #d94872 !important; }
       @keyframes bl-favorite-loading {
         from { opacity: .38; transform: scale(.92); }
         to { opacity: .8; transform: scale(1.04); }
@@ -3607,7 +3342,7 @@ import {
         position: fixed;
         right: 16px;
         top: 16px;
-        z-index: 900;
+        z-index: 1000001;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -3917,7 +3652,7 @@ import {
         position: fixed;
         left: 16px;
         bottom: 16px;
-        z-index: 900;
+        z-index: 1000000;
         width: min(420px, calc(100vw - 32px));
         border-radius: 8px;
         border: 1px solid;
@@ -4234,7 +3969,6 @@ import {
       updateFloatingUiVisibility();
       const rect = floatingBtn.getBoundingClientRect();
       placeFloatingButtonAt(rect.left, rect.top, false);
-      scheduleNativeFavoriteStatusMount();
     });
     window.addEventListener("keydown", handleQuickFavoriteShortcut);
   }
@@ -4634,8 +4368,7 @@ import {
     root.appendChild(playbackOverlay);
     root.appendChild(floatingBtn);
     root.appendChild(toastRoot);
-    // Keep the extension layer outside Bilibili's app tree and body-child layout rules.
-    (document.documentElement || document.body).appendChild(root);
+    document.body.appendChild(root);
 
     folderListEl = panel.querySelector("#bl-folder-list");
     folderSearchInput = panel.querySelector("#bl-folder-search");
@@ -4688,8 +4421,6 @@ import {
     syncFloatingButtonLabel();
     bindFloatingButtonDrag();
     bindEvents();
-    mountNativeFavoriteStatus();
-    startNativeFavoriteStatusWatch();
     startFullscreenWatch();
     startPlaybackOverlayWatch();
     renderVideo(null);
@@ -5306,25 +5037,6 @@ import {
     );
   }
 
-  function waitForBilibiliShell() {
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        window.clearTimeout(timeoutId);
-        window.removeEventListener("load", finish);
-        window.setTimeout(resolve, 600);
-      };
-      const timeoutId = window.setTimeout(finish, 1200);
-      if (document.readyState === "complete") {
-        finish();
-      } else {
-        window.addEventListener("load", finish, { once: true });
-      }
-    });
-  }
-
   async function bootstrap() {
     activeLocale = await resolveLocale();
     if (!isActionSyncPageUrl(location.href)) return;
@@ -5332,7 +5044,6 @@ import {
     bindNativeFavoriteActionListener();
     void fetchBidirectionalSettings(true);
     if (articleMode) {
-      await waitForBilibiliShell();
       injectUi();
       setupThemeSync();
       await loadArticleFavorite();
@@ -5342,7 +5053,6 @@ import {
     if (!isCollectorUiUrl(location.href)) return;
     activeQuickFavoriteShortcut =
       await resolveQuickFavoriteShortcutPreference();
-    await waitForBilibiliShell();
     injectUi();
     setupThemeSync();
     void startCommentFavoriteWatch();

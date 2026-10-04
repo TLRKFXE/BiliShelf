@@ -85,16 +85,25 @@ test("background exposes paged comment routes and content script supports shadow
     readFile(path.join(repoRoot, "extension", "content.js"), "utf8"),
   ]);
 
-  assert.match(background, /if \(path === "\/comments"\) \{\s*return ok\(queryFavoriteComments/);
+  assert.match(
+    background,
+    /if \(path === "\/comments"\) \{\s*return ok\(queryFavoriteComments/,
+  );
   assert.match(background, /path === "\/comments\/keys"/);
   assert.match(background, /path === "\/comments\/toggle"/);
   assert.match(background, /path\.match\(\/\^\\\/comments\\\/\(\\d\+\)\$\//);
-  assert.match(background, /return paginate\(items, params\.get\("page"\), params\.get\("pageSize"\)\);/);
+  assert.match(
+    background,
+    /return paginate\(items, params\.get\("page"\), params\.get\("pageSize"\)\);/,
+  );
   assert.match(content, /bili-comment-renderer/);
   assert.match(content, /bili-comment-thread-renderer/);
   assert.match(content, /bili-rich-text/);
   assert.match(content, /collectOpenCommentRoots\(\)/);
-  assert.match(content, /requestLocalApi\("POST", "\/comments\/toggle", comment\)/);
+  assert.match(
+    content,
+    /requestLocalApi\("POST", "\/comments\/toggle", comment\)/,
+  );
   assert.match(content, /COMMENT_SCAN_INTERVAL_MS/);
   assert.match(content, /data-bilishelf-comment-favorite/);
   assert.match(content, /`♥ \$\{t\("button\.savedComment"\)\}`/);
@@ -106,18 +115,30 @@ test("background exposes paged comment routes and content script supports shadow
   assert.match(content, /function resolveCommentFavoritePlacement\(element\)/);
   assert.match(content, /actionRoot\.querySelector\("#reply"\)/);
   assert.match(content, /actionRoot\.querySelector\("#more"\)/);
-  assert.match(content, /mountTarget\.insertBefore\(button, insertBefore \|\| null\)/);
+  assert.match(
+    content,
+    /mountTarget\.insertBefore\(button, insertBefore \|\| null\)/,
+  );
   assert.match(content, /button\.parentNode !== mountTarget/);
   assert.match(content, /showToast\(t\("toast\.commentReadFail"\), "err"\)/);
   assert.match(content, /"bili-comment-pictures-renderer"/);
-  assert.match(content, /collectCommentImages\(contentElement, pictureElement\)/);
+  assert.match(
+    content,
+    /collectCommentImages\(\s*contentElement,\s*pictureElement\s*,?\s*\)/,
+  );
   assert.match(content, /current\.data\?\.rpid/);
-  assert.match(content, /url\.hash = `reply\$\{rpid \|\| rootRpid\}`|startCommentFavoriteWatch\(\)/);
+  assert.match(
+    content,
+    /url\.hash = `reply\$\{rpid \|\| rootRpid\}`|startCommentFavoriteWatch\(\)/,
+  );
   assert.match(
     content,
     /if \(articleMode\) \{[\s\S]*?await loadArticleFavorite\(\);[\s\S]*?startCommentFavoriteWatch\(\);[\s\S]*?return;/,
   );
   assert.doesNotMatch(content, /toast\.commentSaved/);
   assert.doesNotMatch(content, /toast\.commentRemoved/);
-  assert.doesNotMatch(content, /const comment = buildFavoriteCommentFromElement\(element\);\s*if \(!comment\) return;\s*const actionContainer/);
+  assert.doesNotMatch(
+    content,
+    /const comment = buildFavoriteCommentFromElement\(element\);\s*if \(!comment\) return;\s*const actionContainer/,
+  );
 });

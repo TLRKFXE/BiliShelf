@@ -15,16 +15,69 @@ async function readRepoJson(...relativePath) {
   return JSON.parse(await readRepoText(...relativePath));
 }
 
-test("frontend package, extension package, and extension manifest versions stay aligned and move past the initial release", async () => {
+test("frontend package and extension manifest use the extension package version", async () => {
   const frontendPackage = await readRepoJson("frontend", "package.json");
   const extensionPackage = await readRepoJson("extension", "package.json");
   const wxtConfigSource = await readRepoText("extension", "wxt.config.ts");
-  const manifestVersion = wxtConfigSource.match(/version:\s*"([^"]+)"/)?.[1];
 
-  assert.ok(manifestVersion, "expected manifest version in extension/wxt.config.ts");
   assert.equal(frontendPackage.version, extensionPackage.version);
-  assert.equal(manifestVersion, extensionPackage.version);
-  assert.equal(extensionPackage.version, "1.0.1");
+  assert.match(
+    wxtConfigSource,
+    /import\s+packageJson\s+from\s+["']\.\/package\.json["']/,
+    "expected WXT to read the extension package version",
+  );
+  assert.match(wxtConfigSource, /version:\s*packageJson\.version/);
+  assert.doesNotMatch(wxtConfigSource, /version:\s*["']/);
+});
+
+test("README store metadata matches the current package version", async () => {
+  const extensionPackage = await readRepoJson("extension", "package.json");
+  const readme = await readRepoText("README.md");
+
+  assert.match(
+    readme,
+    new RegExp(
+      `bilishelf-store-version:\\s*edge=${extensionPackage.version};\\s*firefox=${extensionPackage.version}`,
+      "i",
+    ),
+  );
+});
+
+test("update checks use README stores and the GitHub latest release API", async () => {
+  const backgroundSource = await readRepoText(
+    "extension",
+    "entrypoints",
+    "background.ts",
+  );
+
+  assert.match(
+    backgroundSource,
+    /raw\.githubusercontent\.com\/TLRKFXE\/BiliShelf\/main\/README\.md/,
+  );
+  assert.match(
+    backgroundSource,
+    /api\.github\.com\/repos\/TLRKFXE\/BiliShelf\/releases\/latest/,
+  );
+  assert.match(
+    backgroundSource,
+    /github\.com\/TLRKFXE\/BiliShelf\/releases\.atom/,
+  );
+  assert.match(backgroundSource, /tag_name/);
+  assert.doesNotMatch(backgroundSource, /0\.1\.5/);
+});
+
+test("about page makes the sponsor name interactive with a heart burst", async () => {
+  const source = await readRepoText(
+    "frontend",
+    "src",
+    "components",
+    "dialogs",
+    "AiSettingsDialog.vue",
+  );
+
+  assert.match(source, /celebrateSponsor/);
+  assert.match(source, /sponsor-heart/);
+  assert.match(source, /💖/u);
 });
 
 test("release packaging script does not hardcode the initial extension version", async () => {

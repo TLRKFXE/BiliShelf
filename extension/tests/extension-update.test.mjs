@@ -88,3 +88,18 @@ test("manual Chrome builds fall back to GitHub when no store URL is configured",
   assert.equal(result.preferredSource, "github");
   assert.equal(result.preferredUrl, "https://github.example/release");
 });
+
+test("current 1.0.1 does not report the mislabeled 1.0.0 release as an update", () => {
+  const result = resolveExtensionUpdateAvailability({
+    currentVersion: "1.0.1",
+    storeVersion: "1.0.1",
+    storeUrl: "https://store.example/item",
+    githubVersion: "1.0.0",
+    githubLabel: "v1.0.0",
+    githubUrl: "https://github.example/release",
+  });
+
+  assert.equal(result.updateAvailable, false);
+  assert.equal(result.storeUpdateAvailable, false);
+  assert.equal(result.githubUpdateAvailable, false);
+});
