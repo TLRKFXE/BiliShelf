@@ -116,24 +116,25 @@ pnpm ext:zip:all
 
 Added:
 
-1. Favorite-folder groups: folders can now have a group name and be managed by group.
-2. Collapsible folder groups: every group, including Ungrouped, can be expanded or collapsed; named groups appear before Ungrouped.
-3. Custom-tag search and sorting by name, usage count, or creation time, with ascending/descending toggle on repeated clicks.
-4. More Bilibili content pages: Bangumi, audio, AV videos, dynamic videos.
-5. A sponsor thanks list in About。
+1. Favorite-folder groups: folders can be assigned a group name and managed by group.
+2. Collapsible/expandable favorite-folder groups: each group can be collapsed or expanded independently, and newly created groups appear above Ungrouped.
+3. Custom-tag management with search and ascending/descending sorting by name, usage count, or creation time; clicking the same sort button again toggles its direction.
+4. Support for more Bilibili content pages, including Bangumi, audio, AV-number videos, dynamic videos, and more.
+5. Support for Firefox browser Multi-Account Containers and identity tabs.
+6. A sponsor thanks list on the About page.
 
 Improved:
 
-1. The floating favorite button now uses a saved-state style and shows the BiliShelf folders containing the current content.
-2. Special content pages use their corresponding metadata APIs for titles, covers, authors, and dates, while remaining searchable and manageable after saving.
-3. Update checks now read store versions from README and GitHub versions from the latest Release, with a GitHub Atom feed fallback.
-4. Extension manifest versions are read from `extension/package.json`, keeping package, manifest, and UI versions aligned.
+1. The floating favorite button now uses a saved-state style and shows the BiliShelf favorite folders containing the current content.
+2. Special content pages use their corresponding metadata APIs to identify titles, covers, authors, and dates, and remain searchable and manageable after saving.
+3. Update checks now read store versions from the README and the GitHub version from the latest Release, with a GitHub Atom feed fallback.
+4. The extension build reads the manifest version from `extension/package.json`, preventing version drift between the package, manifest, and UI.
 
 Fixed:
 
-1. Removed the BiliShelf status button beside Bilibili's native favorite button so it no longer covers the share button or interferes with native actions; the floating button is now the single saved-state indicator.
-2. Fixed stale hard-coded versions that showed the wrong current version or reported a false update.
-3. Fixed incomplete content detection, saved-state lookup, and action-listener coverage for AV, dynamic video, Bangumi, audio, and article pages.
+1. Fixed the issue where the current version was shown as an older version or an outdated hard-coded version triggered a false update notification.
+2. Fixed the issue where the favorite date `favoriteAt` property was overwritten.
+3. Fixed the DeepSeek official API provider configuration.
 
 ### v1.0
 
