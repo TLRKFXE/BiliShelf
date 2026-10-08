@@ -456,7 +456,7 @@ test("a local relationship is removed only after two complete remote omissions",
   });
 
   assert.equal(payload.result.afterFirst, 1);
-  assert.deepEqual(payload.result.candidatesAfterFirst, ["bvomitted"]);
+  assert.deepEqual(payload.result.candidatesAfterFirst, ["BVOMITTED"]);
   assert.equal(payload.result.firstRemoved, 0);
   assert.equal(payload.result.afterSecond, 0);
   assert.equal(payload.result.secondRemoved, 1);

@@ -75,7 +75,8 @@ export function createCommentSourceKey(raw) {
   const rpid = normalizeDigits(raw?.rpid);
   if (rpid) return `rpid:${rpid}`;
   const payload = [
-    normalizeText(raw?.bvid).toUpperCase(),
+    // Bilibili BV IDs are case-sensitive; preserve the identifier exactly.
+    normalizeText(raw?.bvid),
     normalizeDigits(raw?.authorMid),
     normalizeText(raw?.content).replace(/\s+/g, " ").slice(0, 20_000),
     (Array.isArray(raw?.contentImageUrls) ? raw.contentImageUrls : [])

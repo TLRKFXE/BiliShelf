@@ -43,7 +43,7 @@ test("favorites job normalization restores a valid cursor and rejects malformed 
   });
 
   assert.equal(payload.result.restoredPage, 3);
-  assert.deepEqual(payload.result.restoredSeen, ["bvpage1a", "bvpage1b"]);
+  assert.deepEqual(payload.result.restoredSeen, ["BVPAGE1A", "BVPAGE1B", "bvpage1a"]);
   assert.equal(payload.result.statusRunning, false);
   assert.deepEqual(payload.result.statusResume, { 99: 3 });
   assert.equal(payload.result.malformedPage, 1);
@@ -177,7 +177,7 @@ test("a page checkpoint persists imported relations and the next cursor together
 
   assert.equal(payload.result.relationCount, 2);
   assert.equal(payload.result.page, 2);
-  assert.deepEqual(payload.result.seen, ["bvpage1a", "bvpage1b"]);
+  assert.deepEqual(payload.result.seen, ["BVPAGE1A", "BVPAGE1B"]);
   assert.equal(payload.result.riskRetry.automatic, false);
   assert.equal(payload.result.riskRetry.reason, "risk-control");
   assert.ok(payload.result.riskRetry.nextRetryAt > 0);

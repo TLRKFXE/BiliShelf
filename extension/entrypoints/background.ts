@@ -1140,7 +1140,7 @@ function normalizeBvidKeysByFolder(value: unknown) {
     const remoteId = toInt(remoteIdRaw);
     if (remoteId <= 0 || !Array.isArray(keysRaw)) continue;
     normalized[String(remoteId)] = Array.from(
-      new Set(keysRaw.map((item) => normalizeKey(item)).filter(Boolean)),
+      new Set(keysRaw.map((item) => normalizeBvidKey(item)).filter(Boolean)),
     ).sort();
   }
   return normalized;
@@ -1594,6 +1594,12 @@ function normalizeText(value: unknown) {
 
 function normalizeKey(value: unknown) {
   return normalizeText(value).toLocaleLowerCase();
+}
+
+// BV IDs are case-sensitive. Keep the shared text normalization for folder,
+// tag, and search fields, but never fold the case of a video identifier.
+function normalizeBvidKey(value: unknown) {
+  return normalizeOutputBvid(normalizeText(value));
 }
 
 function normalizeOutputBvid(value: string) {
@@ -2485,6 +2491,26 @@ function markOrphanVideosDeleted(state: LocalState) {
       video.updatedAt = ts;
     }
   }
+}
+
+function copyVideoToFolder(state: LocalState, folderId: number, videoId: number) {
+  const video = state.videos.find(
+    (row) => row.id === videoId && row.deletedAt === null,
+  );
+  if (!video) return false;
+
+  // Copying changes folder membership only. Keep one video entity and one BV ID
+  // so tags, metadata, and later synchronization stay shared.
+  if (!folderItemExists(state, folderId, videoId)) {
+    state.folderItems.push({
+      id: state.counters.folderItem++,
+      folderId,
+      videoId,
+      addedAt: now(),
+    });
+  }
+  video.updatedAt = now();
+  return true;
 }
 
 function ensureTag(
@@ -4572,7 +4598,7 @@ function upsertVideoFromRemoteDetail(
   if (!bvid) return null;
   const timestamp = now();
   const existing = state.videos.find(
-    (video) => normalizeKey(video.bvid) === normalizeKey(bvid),
+    (video) => normalizeBvidKey(video.bvid) === normalizeBvidKey(bvid),
   );
   const publishAtRaw = toInt(detail?.pubdate, 0);
   const publishAt = publishAtRaw > 0 ? publishAtRaw * 1000 : null;
@@ -7559,7 +7585,7 @@ async function syncFromBilibiliToState(
           const video = state.videos.find(
             (candidate) => candidate.id === item.videoId,
           );
-          const key = normalizeKey(video?.bvid);
+          const key = normalizeBvidKey(video?.bvid);
           if (key) remoteBvidKeys.add(key);
         }
         if (!job)
@@ -7688,7 +7714,7 @@ async function syncFromBilibiliToState(
             }
             continue;
           }
-          remoteBvidKeys.add(normalizeKey(bvid));
+          remoteBvidKeys.add(normalizeBvidKey(bvid));
           videosProcessed += 1;
           videosSinceCooldown += 1;
           const timestamp = now();
@@ -7700,7 +7726,7 @@ async function syncFromBilibiliToState(
             mediaIndex,
           );
           const existing = state.videos.find(
-            (video) => normalizeKey(video.bvid) === normalizeKey(bvid),
+            (video) => normalizeBvidKey(video.bvid) === normalizeBvidKey(bvid),
           );
           const basePayload = {
             bvid,
@@ -7899,7 +7925,7 @@ async function syncFromBilibiliToState(
           const video = state.videos.find(
             (candidate) => candidate.id === item.videoId,
           );
-          const key = normalizeKey(video?.bvid);
+          const key = normalizeBvidKey(video?.bvid);
           if (key) existingLocalKeys.add(key);
         }
         const omittedKeys = Array.from(existingLocalKeys)
@@ -7917,7 +7943,7 @@ async function syncFromBilibiliToState(
             const video = state.videos.find(
               (candidate) => candidate.id === item.videoId,
             );
-            if (!confirmedRemovalKeys.has(normalizeKey(video?.bvid)))
+            if (!confirmedRemovalKeys.has(normalizeBvidKey(video?.bvid)))
               return true;
             folderLinksRemoved += 1;
             return false;
@@ -8846,7 +8872,7 @@ export function saveVideoSelectionToState(
     activeFolderIdSet.has(id),
   );
   const existed = state.videos.find(
-    (video) => normalizeKey(video.bvid) === normalizeKey(bvid),
+    (video) => normalizeBvidKey(video.bvid) === normalizeBvidKey(bvid),
   );
   if (validFolderIds.length === 0 && !existed) {
     return fail(400, "At least one folder is required");
@@ -8975,7 +9001,7 @@ function applyImportRowsToState(
   for (const row of rows) {
     const timestamp = now();
     const existed = state.videos.find(
-      (video) => normalizeKey(video.bvid) === normalizeKey(row.bvid),
+      (video) => normalizeBvidKey(video.bvid) === normalizeBvidKey(row.bvid),
     );
     const video: VideoRecord = existed || {
       id: state.counters.video++,
@@ -9626,8 +9652,7 @@ function handleReadOnlyApi(
     const video = state.videos.find(
       (row) =>
         row.deletedAt === null &&
-        (normalizeOutputBvid(row.bvid) === bvid ||
-          normalizeKey(normalizeOutputBvid(row.bvid)) === normalizeKey(bvid)),
+        normalizeBvidKey(row.bvid) === normalizeBvidKey(bvid),
     );
     if (!video) return ok(null);
     const folders = state.folderItems
@@ -11426,46 +11451,7 @@ async function handleApi(request: LocalApiRequest): Promise<ApiResult> {
               continue;
             }
 
-            const clonedAt = now();
-            const cloneSuffix = `${clonedAt}_${Math.random().toString(36).slice(2, 8)}`;
-            const copiedBvid = `${normalizeOutputBvid(video.bvid)}__copy__${cloneSuffix}`;
-            const clonedVideo: VideoRecord = {
-              id: state.counters.video++,
-              bvid: copiedBvid,
-              title: video.title,
-              coverUrl: video.coverUrl,
-              uploader: video.uploader,
-              uploaderSpaceUrl: video.uploaderSpaceUrl,
-              description: video.description,
-              partition: video.partition,
-              publishAt: video.publishAt,
-              bvidUrl: video.bvidUrl,
-              isInvalid: video.isInvalid,
-              deletedAt: null,
-              createdAt: clonedAt,
-              updatedAt: clonedAt,
-            };
-            state.videos.push(clonedVideo);
-
-            state.folderItems.push({
-              id: state.counters.folderItem++,
-              folderId,
-              videoId: clonedVideo.id,
-              addedAt: clonedAt,
-            });
-
-            const sourceTagRows = state.videoTags.filter(
-              (edge) => edge.videoId === video.id,
-            );
-            for (const sourceTag of sourceTagRows) {
-              state.videoTags.push({
-                id: state.counters.videoTag++,
-                videoId: clonedVideo.id,
-                tagId: sourceTag.tagId,
-              });
-            }
-
-            affected += 1;
+            if (copyVideoToFolder(state, folderId, videoId)) affected += 1;
           }
 
           if (mode === "move") {

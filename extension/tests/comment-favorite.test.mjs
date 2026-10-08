@@ -24,6 +24,10 @@ test("comment favorites prefer stable reply ids and build direct source links", 
 test("comment fallback keys are deterministic and normalized records reject empty content", () => {
   const input = { bvid: "bv1test", authorMid: "42", content: " same  comment " };
   assert.equal(createCommentSourceKey(input), createCommentSourceKey({ ...input }));
+  assert.notEqual(
+    createCommentSourceKey(input),
+    createCommentSourceKey({ ...input, bvid: "BV1TEST" }),
+  );
   assert.match(createCommentSourceKey(input), /^comment:/);
   assert.throws(() => normalizeFavoriteComment({ content: "  " }), /required/);
 
